@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SplashTrackWebApp.Models;
 using System.Diagnostics;
@@ -18,6 +19,7 @@ namespace SplashTrackWebApp.Controllers
             return View();
         }
 
+        [Authorize]
         public IActionResult Privacy()
         {
             return View();

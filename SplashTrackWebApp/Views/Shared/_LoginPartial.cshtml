@@ -1,6 +1,7 @@
 ﻿@using Microsoft.AspNetCore.Identity
-@inject SignInManager<IdentityUser> SignInManager
-@inject UserManager<IdentityUser> UserManager
+@using SplashTrackWebApp.Areas.Identity.Data
+@inject SignInManager<SplashTrackUser> SignInManager
+@inject UserManager<SplashTrackUser> UserManager
 
 <ul class="navbar-nav">
 @if (SignInManager.IsSignedIn(User))
