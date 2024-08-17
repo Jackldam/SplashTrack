@@ -1,26 +1,19 @@
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using SplashTrackWebApp.Models;
 using System.Diagnostics;
 
-namespace SplashTrackWebApp.Controllers
+namespace SplashTrackWebApp.Controllers.Admin
 {
-    public class HomeController : Controller
+    public class SetupController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
+        private readonly ILogger<SetupController> _logger;
 
-        public HomeController(ILogger<HomeController> logger)
+        public SetupController(ILogger<SetupController> logger)
         {
             _logger = logger;
         }
 
         public IActionResult Index()
-        {
-            return View();
-        }
-
-        [Authorize]
-        public IActionResult Privacy()
         {
             return View();
         }
