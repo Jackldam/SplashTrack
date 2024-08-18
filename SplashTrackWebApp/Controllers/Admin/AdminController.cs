@@ -1,9 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SplashTrackWebApp.Models;
 using System.Diagnostics;
 
 namespace SplashTrackWebApp.Controllers.Admin
 {
+    //[Authorize(Roles = "Admin")]
+    [Authorize]
     public class AdminController : Controller
     {
         private readonly ILogger<AdminController> _logger;
