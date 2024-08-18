@@ -1,0 +1,21 @@
+﻿@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Admin";
+
+    var IconSize = "fs-1";
+}
+
+<div class="container text-center p-1">
+    <h1>@ViewData["Title"] Panel</h1>
+    <div class="col-xl-auto p-2">
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 "><i class="bi bi-people-fill @IconSize"></i><br />Users</a>
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 "><i class="bi bi-eyeglasses @IconSize"></i><br />Teachers</a>
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 "><i class="bi bi-backpack-fill @IconSize"></i><br />Students</a>
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 "><i class="bi bi-book-half @IconSize"></i><br />Courses</a>
+    </div>
+    <div class="col-xl-auto p-2">
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 disabled"><i class="bi bi-geo-alt-fill @IconSize"></i><br />Locations</a>
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 disabled"><i class="bi bi-gear-fill @IconSize"></i><br />Configuration</a>
+        <a class="btn btn-primary btn-lg p-xxl-5 rounded-5 disabled"><i class="bi bi-people-fill @IconSize"></i><br />...</a>
+    </div>
+</div>
