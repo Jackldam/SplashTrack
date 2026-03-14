@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { SignOutButton } from '@/app/dashboard/sign-out-button';
 import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { canAccessOrganizationAdmin } from '@/lib/organization-admin';
 
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const authContext = await requireAuthContext({
@@ -9,16 +10,17 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
   });
 
   const displayName = authContext.session.user.name ?? authContext.session.user.email;
+  const showOrganizationAdmin = canAccessOrganizationAdmin(authContext);
 
   return (
     <div className="dashboard-shell">
       <aside className="dashboard-sidebar">
         <div>
-          <p className="eyebrow">Batch 4 RBAC skeleton</p>
+          <p className="eyebrow">Batch 6 admin foundation</p>
           <h1>Dashboard</h1>
           <p>
-            Protected shell op Better Auth + Prisma. Alleen ingelogde users met een actieve
-            membership mogen hier binnen.
+            Protected shell op Better Auth + Prisma. Ingelogde users met actieve membership mogen
+            hier binnen; organization admin onderdelen blijven beperkt tot OWNER/ADMIN.
           </p>
         </div>
 
@@ -45,6 +47,14 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
           <Link className="button secondary-button" href="/">
             Home
           </Link>
+          <Link className="button secondary-button" href="/dashboard">
+            Overview
+          </Link>
+          {showOrganizationAdmin ? (
+            <Link className="button secondary-button" href="/dashboard/organization">
+              Organization
+            </Link>
+          ) : null}
           <Link className="button secondary-button" href="/forbidden">
             Forbidden state
           </Link>

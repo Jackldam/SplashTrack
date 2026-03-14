@@ -1,20 +1,22 @@
 import Link from 'next/link';
 
-import { getAuthContext } from '@/lib/authz';
+import { CAPABILITIES, getAuthContext } from '@/lib/authz';
 import { appConfig } from '@/lib/env';
 import { getBaseUrl } from '@/lib/utils';
 
 export default async function HomePage() {
   const authContext = await getAuthContext();
+  const hasOrganizationAdmin = authContext?.capabilities.includes(CAPABILITIES.organizationAdmin) ?? false;
 
   return (
     <main className="page-shell">
       <section className="hero-card">
-        <p className="eyebrow">Batch 4 foundation</p>
+        <p className="eyebrow">Batch 6 foundation</p>
         <h1>{appConfig.appName}</h1>
         <p>
           Nieuwe Next.js app-root naast de legacy ASP.NET-app. Better Auth draait nu samen met een
-          minimale server-side RBAC skeleton en protected dashboard shell.
+          minimale server-side RBAC skeleton en een kleine admin/organization foundation voor de
+          huidige single-org setup.
         </p>
         <dl className="meta-grid">
           <div>
@@ -47,9 +49,16 @@ export default async function HomePage() {
             {authContext?.session.user ? 'Open dashboard' : 'Naar login'}
           </Link>
           {authContext?.session.user ? (
-            <Link className="button secondary-button" href="/api/auth/sign-out">
-              Sign out
-            </Link>
+            <>
+              {hasOrganizationAdmin ? (
+                <Link className="button secondary-button" href="/dashboard/organization">
+                  Organization shell
+                </Link>
+              ) : null}
+              <Link className="button secondary-button" href="/api/auth/sign-out">
+                Sign out
+              </Link>
+            </>
           ) : null}
         </div>
       </section>

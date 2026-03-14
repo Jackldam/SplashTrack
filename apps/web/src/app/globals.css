@@ -32,6 +32,12 @@ button {
   font: inherit;
 }
 
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .page-shell {
   min-height: 100vh;
   display: grid;
@@ -162,8 +168,14 @@ button {
   align-items: start;
 }
 
+.dashboard-stack {
+  width: min(1080px, 100%);
+  display: grid;
+  gap: 1.5rem;
+}
+
 .dashboard-panel {
-  width: min(820px, 100%);
+  width: min(1080px, 100%);
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -172,7 +184,8 @@ button {
 }
 
 .dashboard-panel h2,
-.dashboard-panel h3 {
+.dashboard-panel h3,
+.dashboard-panel h4 {
   margin-top: 0;
 }
 
@@ -193,20 +206,97 @@ button {
   margin-top: 1.5rem;
 }
 
-.status-grid article {
+.status-grid article,
+.callout-card,
+.empty-state,
+.audit-log-card {
   padding: 1rem;
   background: #f8fbff;
   border: 1px solid var(--border);
   border-radius: 16px;
 }
 
-.status-grid p {
+.status-grid p,
+.callout-card p,
+.empty-state p,
+.audit-log-card p {
   margin-bottom: 0;
+}
+
+.callout-card {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.subtle-card {
+  background: #fbfcfe;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-note {
+  max-width: 24rem;
+  color: var(--muted);
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.9rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.data-table th {
+  font-size: 0.85rem;
+}
+
+.audit-log-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.audit-log-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.audit-log-card pre {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: #eef4ff;
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 900px) {
   .dashboard-shell {
     grid-template-columns: 1fr;
+  }
+
+  .section-heading,
+  .audit-log-header {
+    grid-template-columns: 1fr;
+    display: grid;
   }
 }
 
