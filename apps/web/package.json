@@ -1,0 +1,41 @@
+{
+  "name": "@splashtrack/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma generate",
+    "prisma:validate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma validate",
+    "prisma:seed": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@better-auth/prisma-adapter": "^1.5.5",
+    "@prisma/client": "6.5.0",
+    "better-auth": "^1.5.5",
+    "next": "15.5.12",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.0",
+    "@types/node": "22.13.14",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "eslint": "9.22.0",
+    "eslint-config-next": "15.5.12",
+    "prettier": "3.5.3",
+    "prisma": "6.5.0",
+    "tsx": "4.19.3",
+    "typescript": "5.8.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
