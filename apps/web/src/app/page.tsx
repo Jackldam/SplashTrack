@@ -1,20 +1,20 @@
 import Link from 'next/link';
 
-import { getAuthSession } from '@/lib/auth-session';
+import { getAuthContext } from '@/lib/authz';
 import { appConfig } from '@/lib/env';
 import { getBaseUrl } from '@/lib/utils';
 
 export default async function HomePage() {
-  const session = await getAuthSession();
+  const authContext = await getAuthContext();
 
   return (
     <main className="page-shell">
       <section className="hero-card">
-        <p className="eyebrow">Batch 3 foundation</p>
+        <p className="eyebrow">Batch 4 foundation</p>
         <h1>{appConfig.appName}</h1>
         <p>
-          Nieuwe Next.js app-root naast de legacy ASP.NET-app. Better Auth is nu gekoppeld aan
-          Prisma als technische basis, zonder RBAC- of businessfeatures.
+          Nieuwe Next.js app-root naast de legacy ASP.NET-app. Better Auth draait nu samen met een
+          minimale server-side RBAC skeleton en protected dashboard shell.
         </p>
         <dl className="meta-grid">
           <div>
@@ -35,13 +35,22 @@ export default async function HomePage() {
           </div>
           <div>
             <dt>Current user</dt>
-            <dd>{session?.user.email ?? 'Niet ingelogd'}</dd>
+            <dd>{authContext?.session.user.email ?? 'Niet ingelogd'}</dd>
+          </div>
+          <div>
+            <dt>Current role</dt>
+            <dd>{authContext?.membership?.role ?? 'Geen membership'}</dd>
           </div>
         </dl>
         <div className="actions-row">
-          <Link className="button" href={session?.user ? '/api/auth/sign-out' : '/login'}>
-            {session?.user ? 'Auth routes' : 'Naar login'}
+          <Link className="button" href={authContext?.session.user ? '/dashboard' : '/login'}>
+            {authContext?.session.user ? 'Open dashboard' : 'Naar login'}
           </Link>
+          {authContext?.session.user ? (
+            <Link className="button secondary-button" href="/api/auth/sign-out">
+              Sign out
+            </Link>
+          ) : null}
         </div>
       </section>
     </main>

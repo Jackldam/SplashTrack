@@ -112,6 +112,12 @@ button {
   cursor: wait;
 }
 
+.secondary-button {
+  background: #e9f1ff;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
 .actions-row {
   display: flex;
   flex-wrap: wrap;
@@ -121,6 +127,87 @@ button {
 
 .auth-card {
   max-width: 32rem;
+}
+
+.dashboard-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.dashboard-sidebar {
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: #10233f;
+  color: #f6f9fd;
+}
+
+.dashboard-sidebar p {
+  color: #c6d5ea;
+}
+
+.dashboard-sidebar .meta-grid div {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-sidebar .meta-grid dd {
+  color: #f6f9fd;
+}
+
+.dashboard-main {
+  padding: 2rem;
+  display: grid;
+  align-items: start;
+}
+
+.dashboard-panel {
+  width: min(820px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 20px 45px rgba(19, 34, 56, 0.08);
+}
+
+.dashboard-panel h2,
+.dashboard-panel h3 {
+  margin-top: 0;
+}
+
+.dashboard-meta-grid {
+  margin-top: 0;
+}
+
+.dashboard-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.status-grid article {
+  padding: 1rem;
+  background: #f8fbff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.status-grid p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
 }
 
 .auth-form {

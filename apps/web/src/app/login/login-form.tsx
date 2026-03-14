@@ -6,7 +6,11 @@ import { useState } from 'react';
 
 import { authClient } from '@/lib/auth-client';
 
-export function LoginForm() {
+type LoginFormProps = {
+  redirectTo?: string;
+};
+
+export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +25,7 @@ export function LoginForm() {
     const result = await authClient.signIn.email({
       email,
       password,
-      callbackURL: '/',
+      callbackURL: redirectTo,
     });
 
     setIsPending(false);
@@ -31,7 +35,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push('/');
+    router.push(redirectTo);
     router.refresh();
   }
 
@@ -69,8 +73,8 @@ export function LoginForm() {
       </button>
 
       <p className="form-hint">
-        Dit is alleen de auth-foundation voor batch 3. Account provisioning en businessflows
-        volgen later.
+        Dit is alleen de auth- en access-foundation. Account provisioning en businessflows volgen
+        later.
       </p>
 
       <Link className="text-link" href="/">

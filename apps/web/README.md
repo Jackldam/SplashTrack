@@ -23,6 +23,9 @@ Vereist voor batch 3 auth-foundation:
 - `GET/POST /api/auth/[...all]` via Better Auth route handler
 - `src/lib/auth.ts` bevat de Better Auth basisconfig op Prisma
 - `src/lib/auth-session.ts` levert server helpers voor session/current-user
-- `GET /login` is een minimale loginpagina voor de foundation
+- `src/lib/authz.ts` bevat de minimale server-side RBAC skeleton (rollen, capabilities, auth-context en guards)
+- `GET /login` ondersteunt redirect naar protected routes
+- `GET /dashboard` is een protected shell voor ingelogde users met actieve membership
+- `GET /forbidden` handelt insufficient access netjes af
 
-Let op: deze batch levert bewust geen RBAC, adminfeatures of business-specifieke autorisatie op.
+Let op: deze batch levert bewust alleen een kleine technische RBAC-basis op. Geen adminfeatures, geen businessflows en geen uitgebreide policy engine.
