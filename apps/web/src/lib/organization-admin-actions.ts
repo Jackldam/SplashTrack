@@ -12,9 +12,6 @@ import {
 } from '@/lib/organization-admin-action-core';
 import { prisma } from '@/lib/prisma';
 
-export { DEFAULT_ORGANIZATION_ADMIN_ACTION_RESULT, ORGANIZATION_ADMIN_ACTIONS };
-export type { OrganizationAdminActionResult };
-
 export async function executeOrganizationMembershipAction(
   _previousStateUnused: OrganizationAdminActionResult = DEFAULT_ORGANIZATION_ADMIN_ACTION_RESULT,
   formData: FormData,

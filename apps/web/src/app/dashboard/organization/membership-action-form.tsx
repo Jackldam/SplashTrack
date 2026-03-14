@@ -2,11 +2,11 @@
 
 import { useActionState } from 'react';
 
+import { executeOrganizationMembershipAction } from '@/lib/organization-admin-actions';
 import {
   DEFAULT_ORGANIZATION_ADMIN_ACTION_RESULT,
-  executeOrganizationMembershipAction,
   type OrganizationAdminActionResult,
-} from '@/lib/organization-admin-actions';
+} from '@/lib/organization-admin-action-core';
 
 type MembershipActionFormProps = {
   membershipId: string;
