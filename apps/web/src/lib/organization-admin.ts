@@ -40,6 +40,7 @@ export type OrganizationShellSummary = {
     availableActions: {
       canActivate: boolean;
       canDeactivate: boolean;
+      canManageRoles: boolean;
       preparedHooks: Array<(typeof ORGANIZATION_ADMIN_ACTIONS)[keyof typeof ORGANIZATION_ADMIN_ACTIONS]>;
     };
   }>;
@@ -70,7 +71,8 @@ export async function getOrganizationAdminSummary(
     return null;
   }
 
-  const organizationId = authContext.membership.organization.id;
+  const currentMembership = authContext.membership;
+  const organizationId = currentMembership.organization.id;
 
   const [memberCount, roleBreakdown, activeAuditLogCount, members, auditLogs] = await Promise.all([
     prisma.organizationMember.count({
@@ -157,29 +159,32 @@ export async function getOrganizationAdminSummary(
 
   return {
     organization: {
-      id: authContext.membership.organization.id,
-      slug: authContext.membership.organization.slug,
-      name: authContext.membership.organization.name,
+      id: currentMembership.organization.id,
+      slug: currentMembership.organization.slug,
+      name: currentMembership.organization.name,
       memberCount,
       ownerCount,
       adminCount,
       activeAuditLogCount,
     },
     currentMembership: {
-      id: authContext.membership.id,
-      role: authContext.membership.role,
+      id: currentMembership.id,
+      role: currentMembership.role,
     },
     members: members.map((member) => ({
       ...member,
       availableActions: {
         ...resolveMembershipActionAvailability({
           isActive: member.isActive,
-          isCurrentMembership: member.id === authContext.membership?.id,
+          isCurrentMembership: member.id === currentMembership.id,
+          currentUserRole: currentMembership.role,
+          targetRole: member.role,
         }),
         preparedHooks: [
           ORGANIZATION_ADMIN_ACTIONS.viewRole,
           ORGANIZATION_ADMIN_ACTIONS.activateMembership,
           ORGANIZATION_ADMIN_ACTIONS.deactivateMembership,
+          ORGANIZATION_ADMIN_ACTIONS.updateMembershipRole,
         ],
       },
     })),

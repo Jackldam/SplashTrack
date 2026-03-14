@@ -2,7 +2,7 @@ import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
 import { ORGANIZATION_ADMIN_ACTIONS } from '@/lib/organization-admin-action-core';
 import { getOrganizationAdminSummary } from '@/lib/organization-admin';
 
-import { MembershipActionForm } from './membership-action-form';
+import { MembershipActionForm, MembershipRoleForm } from './membership-action-form';
 
 function formatDateTime(value: Date) {
   return new Intl.DateTimeFormat('nl-NL', {
@@ -12,12 +12,65 @@ function formatDateTime(value: Date) {
   }).format(value);
 }
 
+function getAuditMetadataValue(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const value = metadata[key as keyof typeof metadata];
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : null;
+}
+
 function renderMetadata(metadata: unknown) {
   if (!metadata) {
     return 'Geen metadata';
   }
 
   return JSON.stringify(metadata, null, 2);
+}
+
+function renderAuditSummary(metadata: unknown) {
+  const targetEmail = getAuditMetadataValue(metadata, 'targetUserEmail');
+  const previousRole = getAuditMetadataValue(metadata, 'previousRole');
+  const nextRole = getAuditMetadataValue(metadata, 'nextRole');
+  const previousIsActive = getAuditMetadataValue(metadata, 'previousIsActive');
+  const nextIsActive = getAuditMetadataValue(metadata, 'nextIsActive');
+  const performedByRole = getAuditMetadataValue(metadata, 'performedByRole');
+
+  return (
+    <dl className="audit-log-meta-grid">
+      {targetEmail ? (
+        <div>
+          <dt>Target</dt>
+          <dd>{targetEmail}</dd>
+        </div>
+      ) : null}
+      {previousRole || nextRole ? (
+        <div>
+          <dt>Rolwijziging</dt>
+          <dd>
+            {previousRole ?? 'onbekend'} → {nextRole ?? 'onbekend'}
+          </dd>
+        </div>
+      ) : null}
+      {previousIsActive || nextIsActive ? (
+        <div>
+          <dt>Statuswijziging</dt>
+          <dd>
+            {previousIsActive ?? 'onbekend'} → {nextIsActive ?? 'onbekend'}
+          </dd>
+        </div>
+      ) : null}
+      {performedByRole ? (
+        <div>
+          <dt>Uitgevoerd als</dt>
+          <dd>{performedByRole}</dd>
+        </div>
+      ) : null}
+    </dl>
+  );
 }
 
 export default async function OrganizationAdminPage() {
@@ -37,8 +90,8 @@ export default async function OrganizationAdminPage() {
         <p className="eyebrow">Organization admin foundation</p>
         <h2>{summary.organization.name}</h2>
         <p>
-          Kleine server-side beheerbasis voor de huidige single-organization setup. Batch 7 voegt
-          alleen technische membership-acties toe, zonder businessfeatures.
+          Kleine server-side beheerbasis voor de huidige single-organization setup. Batch 8 voegt
+          technische role-management en admin-UX polish toe, zonder businessfeatures.
         </p>
 
         <dl className="meta-grid">
@@ -74,8 +127,8 @@ export default async function OrganizationAdminPage() {
             <h3>Huidige organization members</h3>
           </div>
           <p className="section-note">
-            Alleen OWNER/ADMIN mag deze route en acties gebruiken. Mutaties blijven beperkt tot
-            activate/deactivate membership.
+            OWNER/ADMIN houdt route-toegang. Role-management blijft expres server-side begrensd:
+            alleen owners mogen rollen wijzigen, admins blijven beperkt tot veilige membership-statusacties.
           </p>
         </div>
 
@@ -88,8 +141,8 @@ export default async function OrganizationAdminPage() {
                 <th>Rol</th>
                 <th>User status</th>
                 <th>Membership</th>
-                <th>Voorbereide hooks</th>
-                <th>Actie</th>
+                <th>Role management</th>
+                <th>Membership actie</th>
                 <th>Sinds</th>
               </tr>
             </thead>
@@ -117,13 +170,32 @@ export default async function OrganizationAdminPage() {
                       {member.isActive ? 'Actief' : 'Inactief'}
                       {member.user.emailVerified ? ' · verified' : ' · unverified'}
                     </td>
-                    <td>{member.availableActions.preparedHooks.join(', ')}</td>
+                    <td>
+                      {member.availableActions.canManageRoles ? (
+                        <MembershipRoleForm
+                          membershipId={member.id}
+                          currentRole={member.role}
+                          helperText="Owner-only. Self-role change en laatste-owner downgrade zijn geblokkeerd."
+                        />
+                      ) : (
+                        <span className="section-note">
+                          {member.id === summary.currentMembership.id
+                            ? 'Eigen membership-rol blijft vergrendeld'
+                            : 'Geen role-management toegestaan'}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       {actionLabel && actionId ? (
                         <MembershipActionForm
                           membershipId={member.id}
                           action={actionId}
                           label={actionLabel}
+                          helperText={
+                            member.id === summary.currentMembership.id
+                              ? 'Eigen membership blijft beschermd.'
+                              : undefined
+                          }
                         />
                       ) : (
                         <span className="section-note">Geen veilige actie beschikbaar</span>
@@ -145,8 +217,8 @@ export default async function OrganizationAdminPage() {
             <h3>Recente organization events</h3>
           </div>
           <p className="section-note">
-            Nieuwe technische admin-acties loggen minimaal wie de actie uitvoerde, op welke
-            membership en met welke actieve statuswisseling.
+            Membership-activaties en rolwijzigingen tonen nu direct target, status/rol-mutatie en
+            uitvoerende admin-context. Ruwe metadata blijft beschikbaar voor debugging.
           </p>
         </div>
 
@@ -167,7 +239,11 @@ export default async function OrganizationAdminPage() {
                 <p>
                   Actor: {auditLog.actorUser?.email ?? auditLog.actorType} · type: {auditLog.actorType}
                 </p>
-                <pre>{renderMetadata(auditLog.metadata)}</pre>
+                {renderAuditSummary(auditLog.metadata)}
+                <details className="audit-log-details">
+                  <summary>Ruwe metadata</summary>
+                  <pre>{renderMetadata(auditLog.metadata)}</pre>
+                </details>
               </article>
             ))}
           </div>
@@ -175,8 +251,8 @@ export default async function OrganizationAdminPage() {
           <div className="empty-state">
             <h4>Nog geen audit events</h4>
             <p>
-              De foundation ondersteunt nu ook technische membership-admin-acties. Verdere
-              workflows, filters of exports horen in latere batches.
+              De foundation ondersteunt nu ook technische membership-admin-acties en rolwijzigingen.
+              Verdere workflows, filters of exports horen in latere batches.
             </p>
           </div>
         )}

@@ -279,6 +279,93 @@ pre {
   margin-bottom: 0.75rem;
 }
 
+.membership-action-form,
+.membership-role-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.membership-action-form button,
+.membership-role-form button,
+.membership-role-form select {
+  min-height: 2.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.membership-action-form button,
+.membership-role-form button {
+  padding: 0.6rem 0.9rem;
+  background: #0f4c81;
+  color: #fff;
+  font-weight: 700;
+}
+
+.membership-action-form button:disabled,
+.membership-role-form button:disabled,
+.membership-role-form select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.membership-role-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.membership-role-label select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+}
+
+.form-status-error,
+.form-status-success {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.form-status-error {
+  color: #b42318;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+}
+
+.form-status-success {
+  color: #0f5132;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+}
+
+.audit-log-meta-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.audit-log-meta-grid dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.audit-log-meta-grid dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+}
+
+.audit-log-details {
+  margin-top: 0.75rem;
+}
+
+.audit-log-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .audit-log-card pre {
   margin-top: 0.75rem;
   padding: 0.75rem;
@@ -286,6 +373,19 @@ pre {
   background: #eef4ff;
   border: 1px solid var(--border);
   font-size: 0.9rem;
+  overflow-x: auto;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 900px) {

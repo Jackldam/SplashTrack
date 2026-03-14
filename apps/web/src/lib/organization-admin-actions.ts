@@ -6,9 +6,11 @@ import { revalidatePath } from 'next/cache';
 import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
 import {
   DEFAULT_ORGANIZATION_ADMIN_ACTION_RESULT,
+  isAppRole,
   isOrganizationMembershipMutationAction,
   ORGANIZATION_ADMIN_ACTIONS,
   type OrganizationAdminActionResult,
+  validateRoleMutationPolicy,
 } from '@/lib/organization-admin-action-core';
 import { prisma } from '@/lib/prisma';
 
@@ -25,6 +27,7 @@ export async function executeOrganizationMembershipAction(
 
   const action = formData.get('action');
   const membershipId = formData.get('membershipId');
+  const nextRoleInput = formData.get('nextRole');
 
   if (typeof action !== 'string' || typeof membershipId !== 'string') {
     return {
@@ -36,7 +39,7 @@ export async function executeOrganizationMembershipAction(
   if (!isOrganizationMembershipMutationAction(action)) {
     return {
       status: 'error',
-      message: 'Deze admin-action is nog niet beschikbaar in batch 7.',
+      message: 'Deze admin-action is nog niet beschikbaar in batch 8.',
     };
   }
 
@@ -64,20 +67,98 @@ export async function executeOrganizationMembershipAction(
     },
   });
 
-  if (!membership) {
+  if (!membership || !authContext.membership) {
     return {
       status: 'error',
       message: 'Membership niet gevonden binnen jouw organization.',
     };
   }
 
+  const currentMembership = authContext.membership;
+
   if (
-    membership.id === authContext.membership?.id &&
+    membership.id === currentMembership.id &&
     action === ORGANIZATION_ADMIN_ACTIONS.deactivateMembership
   ) {
     return {
       status: 'error',
       message: 'Je kunt je eigen actieve admin-membership niet deactiveren.',
+    };
+  }
+
+  if (action === ORGANIZATION_ADMIN_ACTIONS.updateMembershipRole) {
+    if (typeof nextRoleInput !== 'string' || !isAppRole(nextRoleInput)) {
+      return {
+        status: 'error',
+        message: 'Ongeldige doelrol voor membership-update.',
+      };
+    }
+
+    const activeOwnerCount = await prisma.organizationMember.count({
+      where: {
+        organizationId: currentMembership.organization.id,
+        isActive: true,
+        role: APP_ROLES.OWNER,
+      },
+    });
+
+    const policy = validateRoleMutationPolicy({
+      actorRole: currentMembership.role,
+      actorMembershipId: currentMembership.id,
+      targetMembershipId: membership.id,
+      currentRole: membership.role,
+      nextRole: nextRoleInput,
+      activeOwnerCount,
+    });
+
+    if (!policy.allowed) {
+      return {
+        status: 'error',
+        message: policy.message ?? 'Rolwijziging is niet toegestaan.',
+      };
+    }
+
+    if (membership.role === nextRoleInput) {
+      return {
+        status: 'success',
+        message: policy.message ?? `Membership had rol ${nextRoleInput} al.`,
+      };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.organizationMember.update({
+        where: { id: membership.id },
+        data: { role: nextRoleInput },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          organizationId: membership.organization.id,
+          actorUserId: authContext.session.user.id,
+          actorType: AuditActorType.USER,
+          action: 'organization.membership.role-updated',
+          entityType: 'organization_membership',
+          entityId: membership.id,
+          metadata: {
+            membershipId: membership.id,
+            targetUserId: membership.userId,
+            targetUserEmail: membership.user.email,
+            targetUserName: membership.user.name,
+            previousRole: membership.role,
+            nextRole: nextRoleInput,
+            performedByMembershipId: currentMembership.id,
+            performedByRole: currentMembership.role,
+            preparedHooks: [ORGANIZATION_ADMIN_ACTIONS.viewRole],
+          },
+        },
+      });
+    });
+
+    revalidatePath('/dashboard/organization');
+
+    return {
+      status: 'success',
+      message: `Rol van ${membership.user.email} is gewijzigd naar ${nextRoleInput}.`,
     };
   }
 
@@ -114,7 +195,8 @@ export async function executeOrganizationMembershipAction(
           previousIsActive: membership.isActive,
           nextIsActive,
           targetRole: membership.role,
-          performedByMembershipId: authContext.membership?.id,
+          performedByMembershipId: currentMembership.id,
+          performedByRole: currentMembership.role,
           preparedHooks: [ORGANIZATION_ADMIN_ACTIONS.viewRole],
         },
       },

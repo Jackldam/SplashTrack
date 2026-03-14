@@ -13,7 +13,7 @@ Deze branch bevat de foundation-batches voor de nieuwe web-stack. Er zijn bewust
 - `package.json` — root npm workspace voor de web-app
 - `apps/web/` — Next.js app router project
 - `apps/web/src/app/` — layout, homepage, error/not-found, `api/health`, login, dashboard en organization shell
-- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers en kleine organization admin-querylaag
+- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers en kleine organization admin-querylaag met server-side membership mutations
 - `apps/web/prisma/schema.prisma` — Prisma foundation met alleen `User`, `Organization`, `OrganizationMember` en `AuditLog`
 - `apps/web/prisma/seed.ts` — idempotente demo seed voor auth/org foundation
 - `apps/web/.env.example` — voorbeeldvariabelen inclusief `DATABASE_URL` en `DIRECT_URL`

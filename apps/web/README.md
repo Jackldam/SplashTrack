@@ -28,16 +28,17 @@ Vereist voor batch 3 auth-foundation:
 - `src/lib/auth-session.ts` levert server helpers voor session/current-user
 - `src/lib/authz.ts` bevat de minimale server-side RBAC skeleton (rollen, capabilities, auth-context en guards)
 - `src/lib/organization-admin.ts` bundelt de kleine single-org admin-querylaag voor overzichtspagina's
+- `src/lib/organization-admin-actions.ts` voert server-side membership mutaties uit met expliciete owner/admin guardrails en audit logging
 - `GET /login` ondersteunt redirect naar protected routes
 - `GET /dashboard` is een protected shell voor ingelogde users met actieve membership
-- `GET /dashboard/organization` is een server-side afgeschermde owner/admin shell met read-only organization context
+- `GET /dashboard/organization` is een server-side afgeschermde owner/admin shell met technische membership-acties
 - `GET /forbidden` handelt insufficient access netjes af
 
 ## Seed foundation
 - Prisma seed is idempotent en maakt/actualiseert `demo-org` plus drie basisaccounts: owner, admin en member.
 - De seed koppelt elke demo-user aan de demo-organization met de juiste membership-role.
 - Voor Better Auth email/password wordt ook een credential-account met wachtwoordhash aangemaakt, zodat lokaal inloggen testbaar is.
-- De organization shell toont deze seeddata als read-only membership-overzicht en audit-log basis.
+- De organization shell toont deze seeddata als technisch membership-overzicht met activate/deactivate en owner-only role-management guardrails.
 - Demo accounts:
   - `demo.owner@splashtrack.local` / `DemoOwner123!`
   - `demo.admin@splashtrack.local` / `DemoAdmin123!`
@@ -46,7 +47,7 @@ Vereist voor batch 3 auth-foundation:
 
 ## Minimale testbasis
 - `npm run test --workspace @splashtrack/web` draait kleine foundation-tests op Node's ingebouwde test-runner.
-- Tests focussen bewust op seed-, RBAC- en organization-admin basislogica, inclusief action gating, niet op businessfeatures of uitgebreide E2E-flows.
+- Tests focussen bewust op seed-, RBAC- en organization-admin basislogica, inclusief action gating, role-policy guardrails en niet op businessfeatures of uitgebreide E2E-flows.
 - `npm run check --workspace @splashtrack/web` bundelt lint, typecheck, tests en build.
 
 Let op: deze batch levert bewust alleen een kleine technische auth/org-admin basis op. Geen businessflows, geen mutaties, geen students/teachers/attendance en geen uitgebreide policy engine.
