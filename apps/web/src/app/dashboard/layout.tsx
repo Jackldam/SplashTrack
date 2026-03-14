@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { SignOutButton } from '@/app/dashboard/sign-out-button';
 import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
 
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -47,9 +48,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
           <Link className="button secondary-button" href="/forbidden">
             Forbidden state
           </Link>
-          <Link className="button" href="/api/auth/sign-out">
-            Sign out
-          </Link>
+          <SignOutButton />
         </nav>
       </aside>
 
