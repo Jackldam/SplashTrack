@@ -4,24 +4,55 @@ on:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
-  build:
+  dotnet-build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup .NET Core 8.0.x
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
+      - name: Setup .NET Core 8.0.x
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
-    - name: Restore dependencies
-      run: dotnet restore
+      - name: Restore dependencies
+        run: dotnet restore
 
-    - name: Build App
-      run: dotnet build -c Release --no-restore
-    
-    - name: Test App
-      run: dotnet test -c Release --no-build
+      - name: Build App
+        run: dotnet build -c Release --no-restore
+
+      - name: Test App
+        run: dotnet test -c Release --no-build
+
+  web-build:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      APP_BASE_URL: http://localhost:3000
+      DATABASE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
+      DIRECT_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
+      BETTER_AUTH_SECRET: ci-build-placeholder-secret-32chars
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint web app
+        run: npm run lint:web
+
+      - name: Typecheck web app
+        run: npm run typecheck:web
+
+      - name: Build web app
+        run: npm run build:web
