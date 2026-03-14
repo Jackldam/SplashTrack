@@ -1,6 +1,10 @@
 import { type Prisma } from '@prisma/client';
 
 import { APP_ROLES, CAPABILITIES, type AuthContext } from '@/lib/authz';
+import {
+  ORGANIZATION_ADMIN_ACTIONS,
+  resolveMembershipActionAvailability,
+} from '@/lib/organization-admin-action-core';
 import { prisma } from '@/lib/prisma';
 
 const adminRoles = [APP_ROLES.OWNER, APP_ROLES.ADMIN] as const;
@@ -32,6 +36,11 @@ export type OrganizationShellSummary = {
       email: string;
       isActive: boolean;
       emailVerified: boolean;
+    };
+    availableActions: {
+      canActivate: boolean;
+      canDeactivate: boolean;
+      preparedHooks: Array<(typeof ORGANIZATION_ADMIN_ACTIONS)[keyof typeof ORGANIZATION_ADMIN_ACTIONS]>;
     };
   }>;
   auditLogs: Array<{
@@ -160,7 +169,20 @@ export async function getOrganizationAdminSummary(
       id: authContext.membership.id,
       role: authContext.membership.role,
     },
-    members,
+    members: members.map((member) => ({
+      ...member,
+      availableActions: {
+        ...resolveMembershipActionAvailability({
+          isActive: member.isActive,
+          isCurrentMembership: member.id === authContext.membership?.id,
+        }),
+        preparedHooks: [
+          ORGANIZATION_ADMIN_ACTIONS.viewRole,
+          ORGANIZATION_ADMIN_ACTIONS.activateMembership,
+          ORGANIZATION_ADMIN_ACTIONS.deactivateMembership,
+        ],
+      },
+    })),
     auditLogs,
   };
 }

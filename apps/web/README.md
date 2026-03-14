@@ -46,7 +46,9 @@ Vereist voor batch 3 auth-foundation:
 
 ## Minimale testbasis
 - `npm run test --workspace @splashtrack/web` draait kleine foundation-tests op Node's ingebouwde test-runner.
-- Tests focussen bewust op seed-, RBAC- en organization-admin basislogica, niet op businessfeatures of uitgebreide E2E-flows.
+- Tests focussen bewust op seed-, RBAC- en organization-admin basislogica, inclusief action gating, niet op businessfeatures of uitgebreide E2E-flows.
 - `npm run check --workspace @splashtrack/web` bundelt lint, typecheck, tests en build.
 
 Let op: deze batch levert bewust alleen een kleine technische auth/org-admin basis op. Geen businessflows, geen mutaties, geen students/teachers/attendance en geen uitgebreide policy engine.
+gine.
+sche auth/org-admin basis op. Geen businessflows, geen mutaties, geen students/teachers/attendance en geen uitgebreide policy engine.
