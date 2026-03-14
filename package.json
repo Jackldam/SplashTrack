@@ -13,6 +13,8 @@
     "dev:web": "npm run dev --workspace @splashtrack/web",
     "build:web": "npm run build --workspace @splashtrack/web",
     "lint:web": "npm run lint --workspace @splashtrack/web",
-    "typecheck:web": "npm run typecheck --workspace @splashtrack/web"
+    "typecheck:web": "npm run typecheck --workspace @splashtrack/web",
+    "test:web": "npm run test --workspace @splashtrack/web",
+    "check:web": "npm run check --workspace @splashtrack/web"
   }
 }

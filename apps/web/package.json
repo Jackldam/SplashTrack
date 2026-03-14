@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "prisma:generate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma generate",
     "prisma:validate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma validate",
     "prisma:seed": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed",
