@@ -2,15 +2,14 @@
 
 import { useActionState } from 'react';
 
-import {
-  createStudentAction,
-  DEFAULT_CREATE_STUDENT_ACTION_RESULT,
-} from '@/lib/student-actions';
+import { createStudentAction } from '@/lib/student-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function StudentCreateForm() {
   const [state, formAction, isPending] = useActionState(
     createStudentAction,
-    DEFAULT_CREATE_STUDENT_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

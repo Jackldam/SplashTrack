@@ -2,11 +2,8 @@
 
 import { useActionState } from 'react';
 
-import {
-  DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT,
-  updateStudentLifecycleAction,
-} from '@/lib/student-actions';
-import { resolveStudentLifecycleCopy } from '@/lib/student-lifecycle';
+import { updateStudentLifecycleAction } from '@/lib/student-actions';
+import { DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT, resolveStudentLifecycleCopy } from '@/lib/student-lifecycle';
 import type { StudentDetail } from '@/lib/student-detail';
 
 export function StudentLifecycleForm({ student }: { student: StudentDetail }) {

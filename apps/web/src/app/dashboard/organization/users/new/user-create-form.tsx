@@ -2,15 +2,14 @@
 
 import { useActionState } from 'react';
 
-import {
-  createOrganizationUserAction,
-  DEFAULT_USER_ADMIN_ACTION_RESULT,
-} from '@/lib/user-admin-actions';
+import { createOrganizationUserAction } from '@/lib/user-admin-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function UserCreateForm() {
   const [state, formAction, isPending] = useActionState(
     createOrganizationUserAction,
-    DEFAULT_USER_ADMIN_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

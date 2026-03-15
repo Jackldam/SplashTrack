@@ -2,10 +2,9 @@
 
 import { useActionState } from 'react';
 
-import {
-  toggleSwimGroupLifecycleAction,
-  DEFAULT_SWIM_GROUP_ACTION_RESULT,
-} from '@/lib/swim-group-actions';
+import { toggleSwimGroupLifecycleAction } from '@/lib/swim-group-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 type GroupLifecycleFormProps = {
   groupId: string;
@@ -16,7 +15,7 @@ export function GroupLifecycleForm({ groupId, isActive }: GroupLifecycleFormProp
   const toggleForGroup = toggleSwimGroupLifecycleAction.bind(null, groupId);
   const [state, formAction, isPending] = useActionState(
     toggleForGroup,
-    DEFAULT_SWIM_GROUP_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   const buttonLabel = isActive ? 'Groep deactiveren' : 'Groep heractiveren';

@@ -14,7 +14,7 @@ export type SwimGroupActionResult = {
   message: string;
 };
 
-export const DEFAULT_SWIM_GROUP_ACTION_RESULT: SwimGroupActionResult = {
+const DEFAULT_SWIM_GROUP_ACTION_RESULT: SwimGroupActionResult = {
   status: 'idle',
   message: '',
 };

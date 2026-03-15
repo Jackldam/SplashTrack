@@ -2,17 +2,16 @@
 
 import { useActionState } from 'react';
 
-import {
-  DEFAULT_UPDATE_STUDENT_ACTION_RESULT,
-  updateStudentAction,
-} from '@/lib/student-actions';
+import { updateStudentAction } from '@/lib/student-actions';
 import type { StudentDetail } from '@/lib/student-detail';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function StudentEditForm({ student }: { student: StudentDetail }) {
   const updateStudentForId = updateStudentAction.bind(null, student.id);
   const [state, formAction, isPending] = useActionState(
     updateStudentForId,
-    DEFAULT_UPDATE_STUDENT_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

@@ -2,10 +2,9 @@
 
 import { useActionState } from 'react';
 
-import {
-  removeStudentFromGroupAction,
-  DEFAULT_SWIM_GROUP_ACTION_RESULT,
-} from '@/lib/swim-group-actions';
+import { removeStudentFromGroupAction } from '@/lib/swim-group-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 type RemoveStudentFormProps = {
   groupId: string;
@@ -17,7 +16,7 @@ export function RemoveStudentForm({ groupId, studentId, displayName }: RemoveStu
   const removeForGroup = removeStudentFromGroupAction.bind(null, groupId);
   const [state, formAction, isPending] = useActionState(
     removeForGroup,
-    DEFAULT_SWIM_GROUP_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

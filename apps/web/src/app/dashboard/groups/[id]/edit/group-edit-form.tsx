@@ -2,17 +2,16 @@
 
 import { useActionState } from 'react';
 
-import {
-  updateSwimGroupAction,
-  DEFAULT_SWIM_GROUP_ACTION_RESULT,
-} from '@/lib/swim-group-actions';
+import { updateSwimGroupAction } from '@/lib/swim-group-actions';
 import type { SwimGroupDetail } from '@/lib/swim-group-admin';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function GroupEditForm({ group }: { group: SwimGroupDetail }) {
   const updateForGroup = updateSwimGroupAction.bind(null, group.id);
   const [state, formAction, isPending] = useActionState(
     updateForGroup,
-    DEFAULT_SWIM_GROUP_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

@@ -3,14 +3,13 @@
 import { useActionState } from 'react';
 
 import type { OrganizationUserDetail } from '@/lib/user-admin';
-import {
-  DEFAULT_USER_ADMIN_ACTION_RESULT,
-  updateOrganizationUserAction,
-} from '@/lib/user-admin-actions';
+import { updateOrganizationUserAction } from '@/lib/user-admin-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function UserEditForm({ user }: { user: OrganizationUserDetail }) {
   const action = updateOrganizationUserAction.bind(null, user.membershipId);
-  const [state, formAction, isPending] = useActionState(action, DEFAULT_USER_ADMIN_ACTION_RESULT);
+  const [state, formAction, isPending] = useActionState(action, INITIAL_ACTION_STATE);
 
   return (
     <form className="user-form" action={formAction}>

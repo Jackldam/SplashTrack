@@ -2,10 +2,9 @@
 
 import { useActionState } from 'react';
 
-import {
-  enrollStudentAction,
-  DEFAULT_SWIM_GROUP_ACTION_RESULT,
-} from '@/lib/swim-group-actions';
+import { enrollStudentAction } from '@/lib/swim-group-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 type EnrollStudentFormProps = {
   groupId: string;
@@ -20,7 +19,7 @@ export function EnrollStudentForm({ groupId, enrollableStudents }: EnrollStudent
   const enrollForGroup = enrollStudentAction.bind(null, groupId);
   const [state, formAction, isPending] = useActionState(
     enrollForGroup,
-    DEFAULT_SWIM_GROUP_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   if (enrollableStudents.length === 0) {

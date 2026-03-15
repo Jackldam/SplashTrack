@@ -2,15 +2,14 @@
 
 import { useActionState } from 'react';
 
-import {
-  createSwimGroupAction,
-  DEFAULT_SWIM_GROUP_ACTION_RESULT,
-} from '@/lib/swim-group-actions';
+import { createSwimGroupAction } from '@/lib/swim-group-actions';
+
+const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 
 export function GroupCreateForm() {
   const [state, formAction, isPending] = useActionState(
     createSwimGroupAction,
-    DEFAULT_SWIM_GROUP_ACTION_RESULT,
+    INITIAL_ACTION_STATE,
   );
 
   return (

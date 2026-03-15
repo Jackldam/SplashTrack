@@ -24,17 +24,15 @@ export type CreateStudentActionResult = {
   message: string;
 };
 
-export const DEFAULT_CREATE_STUDENT_ACTION_RESULT: CreateStudentActionResult = {
+const DEFAULT_CREATE_STUDENT_ACTION_RESULT: CreateStudentActionResult = {
   status: 'idle',
   message: '',
 };
 
-export const DEFAULT_UPDATE_STUDENT_ACTION_RESULT: CreateStudentActionResult = {
+const DEFAULT_UPDATE_STUDENT_ACTION_RESULT: CreateStudentActionResult = {
   status: 'idle',
   message: '',
 };
-
-export { DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT };
 
 export async function createStudentAction(
   _previousStateUnused: CreateStudentActionResult = DEFAULT_CREATE_STUDENT_ACTION_RESULT,

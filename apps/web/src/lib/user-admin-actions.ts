@@ -16,7 +16,7 @@ export type UserAdminActionResult = {
   message: string;
 };
 
-export const DEFAULT_USER_ADMIN_ACTION_RESULT: UserAdminActionResult = {
+const DEFAULT_USER_ADMIN_ACTION_RESULT: UserAdminActionResult = {
   status: 'idle',
   message: '',
 };
