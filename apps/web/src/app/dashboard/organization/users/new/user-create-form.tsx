@@ -14,8 +14,8 @@ export function UserCreateForm() {
   );
 
   return (
-    <form className="student-form" action={formAction}>
-      <div className="student-form-grid">
+    <form className="user-form" action={formAction}>
+      <div className="user-form-grid">
         <label className="field">
           <span>Naam</span>
           <input maxLength={120} name="name" required type="text" />
