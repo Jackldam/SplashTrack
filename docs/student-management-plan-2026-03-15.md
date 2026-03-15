@@ -33,6 +33,8 @@ The caveat is planning/documentation drift. The code moved a bit faster than the
 - Directory overview for the active organization
 - Summary metrics for total/active/inactive students
 - Active level spread breakdown
+- Server-side student directory filtering (`all` / `active` / `inactive`)
+- Server-side student directory search on name and swim level
 - Student detail page
 - Create student flow
 - Edit student flow

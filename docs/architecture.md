@@ -50,6 +50,7 @@ The repo contains:
 ### 4. Student management foundation
 - first student overview for the active organization
 - summary metrics and level spread
+- server-side student directory filtering/search within the active organization
 - student detail page
 - guarded create/update flows for OWNER/ADMIN with audit logging
 - guarded deactivate/reactivate lifecycle action via `isActive`

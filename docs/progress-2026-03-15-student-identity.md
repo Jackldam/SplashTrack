@@ -27,7 +27,11 @@ The new approach is a pragmatic middle ground that fits the current app behavior
 ## Validation run
 - `npm run check --workspace @splashtrack/web`
 
+## Follow-on note after this pass
+The next student-management slice landed immediately after the identity work: the student directory now supports validated server-side status filters (`all` / `active` / `inactive`) plus search across first name, last name, and swim level. That closes one of the short-term roadmap items and makes deactivation more usable in practice.
+
 ## Likely next steps
-1. Add a real Prisma migration that backfills `identityKey` for existing student rows.
-2. Add integration tests around duplicate create/update rejection once DB-backed test coverage exists.
-3. Consider surfacing a more specific UI hint when a same-name student is rejected because DOB is blank on both records.
+1. Add a dedicated activity/history section or recent audit events on the student detail page.
+2. Add a real Prisma migration that backfills `identityKey` for existing student rows.
+3. Add integration tests around duplicate create/update rejection plus lifecycle mutations once DB-backed coverage exists.
+4. Consider surfacing a more specific UI hint when a same-name student is rejected because DOB is blank on both records.

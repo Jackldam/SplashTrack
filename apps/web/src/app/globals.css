@@ -427,6 +427,51 @@ pre {
   }
 
   .section-heading,
+  .audit-log-header,
+  .directory-filter-actions {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.field input {
+  min-height: 2.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--foreground);
+}
+
+.form-error {
+  margin: 0;
+  color: #b42318;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading,
   .audit-log-header {
     grid-template-columns: 1fr;
     display: grid;

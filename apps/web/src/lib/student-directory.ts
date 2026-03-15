@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { AuthContext } from '@/lib/authz';
+import type { StudentDirectoryQuery } from '@/lib/student-directory-filters';
 
 export type StudentDirectorySummary = {
   organization: {
@@ -16,6 +17,9 @@ export type StudentDirectorySummary = {
       count: number;
     }>;
   };
+  filters: StudentDirectoryQuery & {
+    matchedStudents: number;
+  };
   students: Array<{
     id: string;
     firstName: string;
@@ -30,14 +34,44 @@ export type StudentDirectorySummary = {
 
 export async function getStudentDirectorySummary(
   authContext: AuthContext,
+  filters: StudentDirectoryQuery,
 ): Promise<StudentDirectorySummary | null> {
   if (!authContext.membership) {
     return null;
   }
 
   const organizationId = authContext.membership.organization.id;
+  const where = {
+    organizationId,
+    ...(filters.status === 'active' ? { isActive: true } : {}),
+    ...(filters.status === 'inactive' ? { isActive: false } : {}),
+    ...(filters.search
+      ? {
+          OR: [
+            {
+              firstName: {
+                contains: filters.search,
+                mode: 'insensitive' as const,
+              },
+            },
+            {
+              lastName: {
+                contains: filters.search,
+                mode: 'insensitive' as const,
+              },
+            },
+            {
+              swimLevel: {
+                contains: filters.search,
+                mode: 'insensitive' as const,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
 
-  const [totalStudents, activeStudents, students, levelBreakdown] = await Promise.all([
+  const [totalStudents, activeStudents, students, matchedStudents, levelBreakdown] = await Promise.all([
     prisma.student.count({
       where: {
         organizationId,
@@ -50,9 +84,7 @@ export async function getStudentDirectorySummary(
       },
     }),
     prisma.student.findMany({
-      where: {
-        organizationId,
-      },
+      where,
       orderBy: [
         {
           isActive: 'desc',
@@ -73,6 +105,9 @@ export async function getStudentDirectorySummary(
         isActive: true,
         createdAt: true,
       },
+    }),
+    prisma.student.count({
+      where,
     }),
     prisma.student.groupBy({
       by: ['swimLevel'],
@@ -99,6 +134,10 @@ export async function getStudentDirectorySummary(
         swimLevel: entry.swimLevel,
         count: entry._count.swimLevel,
       })),
+    },
+    filters: {
+      ...filters,
+      matchedStudents,
     },
     students: students.map((student) => ({
       ...student,
