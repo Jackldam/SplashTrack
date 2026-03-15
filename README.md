@@ -12,7 +12,7 @@ This repo currently focuses on the modern web stack foundation. The active imple
 - `package.json` — root npm workspace for the web app
 - `apps/web/` — Next.js app router project
 - `apps/web/src/app/` — layout, homepage, error/not-found, `api/health`, login, dashboard, organization shell, plus student directory/detail/create/edit routes
-- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers, RBAC helpers, organization admin logic, student read-models and student server actions
+- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers, RBAC helpers, organization admin logic, student read-models, lifecycle helpers and student server actions
 - `apps/web/prisma/schema.prisma` — Prisma foundation with `User`, `Organization`, `OrganizationMember`, `AuditLog` and `Student` (including normalized student identity keys for per-organization uniqueness)
 - `apps/web/prisma/seed.ts` — idempotente demo seed voor auth/org/student foundation
 - `apps/web/.env.example` — voorbeeldvariabelen inclusief `DATABASE_URL` en `DIRECT_URL`
@@ -39,6 +39,13 @@ Vanaf repository-root:
 - Health: `http://localhost:3000/api/health`
 - Postgres: `localhost:5432`
 
+## Current student-management status
+- directory + metrics
+- student detail
+- guarded create/update flows
+- deactivate/reactivate lifecycle flow via `isActive`
+- audit logging on student mutations
+
 ## Current product direction
 - Track student progress and attendance
 - Manage instructors and lesson schedules
@@ -47,3 +54,4 @@ Vanaf repository-root:
 - Customizable branding
 - Certificate printing
 - Certificate requirements & competencies
+mpetencies

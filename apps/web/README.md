@@ -35,6 +35,7 @@ Vereist voor de huidige auth foundation:
 - `GET /dashboard/students` levert de eerste organization-gebonden student directory
 - `GET /dashboard/students/[id]` levert een read-only detailweergave per student
 - `GET /dashboard/students/new` en `GET /dashboard/students/[id]/edit` bieden guarded create/update flows voor OWNER/ADMIN
+- `POST` server actions vanaf studentdetail ondersteunen deactiveren/heractiveren met audit logging
 - student uniqueness gebruikt een genormaliseerde identity key per organization: naam + geboortedatum wanneer bekend, anders naam-only fallback
 - `GET /forbidden` handelt insufficient access netjes af
 

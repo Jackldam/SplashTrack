@@ -50,10 +50,11 @@ The repo contains:
 ### 4. Student management foundation
 - first student overview for the active organization
 - summary metrics and level spread
-- read-only student detail page
+- student detail page
 - guarded create/update flows for OWNER/ADMIN with audit logging
+- guarded deactivate/reactivate lifecycle action via `isActive`
 - student uniqueness is enforced per organization through a normalized identity key (name + date of birth when available, otherwise name-only fallback)
-- no attendance, enrollment or group assignment flows yet
+- no attendance, enrollment, group assignment or delete policy flows yet
 
 ## Architectural boundaries
 

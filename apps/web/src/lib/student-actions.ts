@@ -9,6 +9,10 @@ import { getStudentDetail } from '@/lib/student-detail';
 import { parseCreateStudentFormData } from '@/lib/student-forms';
 import { prisma } from '@/lib/prisma';
 import { buildStudentIdentityKey } from '@/lib/student-identity';
+import {
+  DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT,
+  resolveStudentLifecycleCopy,
+} from '@/lib/student-lifecycle';
 
 export type CreateStudentActionResult = {
   status: 'idle' | 'success' | 'error';
@@ -24,6 +28,8 @@ export const DEFAULT_UPDATE_STUDENT_ACTION_RESULT: CreateStudentActionResult = {
   status: 'idle',
   message: '',
 };
+
+export { DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT };
 
 export async function createStudentAction(
   _previousStateUnused: CreateStudentActionResult = DEFAULT_CREATE_STUDENT_ACTION_RESULT,
@@ -238,4 +244,79 @@ export async function updateStudentAction(
   }
 
   redirect(`/dashboard/students/${studentId}`);
+}
+
+export async function updateStudentLifecycleAction(
+  studentId: string,
+  _previousStateUnused = DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT,
+): Promise<CreateStudentActionResult> {
+  void _previousStateUnused;
+
+  const authContext = await requireAuthContext({
+    capability: CAPABILITIES.organizationAdmin,
+    roles: [APP_ROLES.OWNER, APP_ROLES.ADMIN],
+  });
+
+  if (!authContext.membership) {
+    return {
+      status: 'error',
+      message: 'Geen actieve organization membership gevonden.',
+    };
+  }
+
+  const existingStudent = await getStudentDetail(authContext, studentId);
+
+  if (!existingStudent) {
+    return {
+      status: 'error',
+      message: 'Student niet gevonden binnen de huidige organization.',
+    };
+  }
+
+  const lifecycleCopy = resolveStudentLifecycleCopy(existingStudent.isActive);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.student.update({
+        where: {
+          id: existingStudent.id,
+        },
+        data: {
+          isActive: lifecycleCopy.nextIsActive,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          organizationId: authContext.membership!.organization.id,
+          actorUserId: authContext.session.user.id,
+          actorType: AuditActorType.USER,
+          action: lifecycleCopy.auditAction,
+          entityType: 'student',
+          entityId: existingStudent.id,
+          metadata: {
+            studentId: existingStudent.id,
+            previousIsActive: existingStudent.isActive,
+            nextIsActive: lifecycleCopy.nextIsActive,
+            performedByMembershipId: authContext.membership!.id,
+            performedByRole: authContext.membership!.role,
+          },
+        },
+      });
+    });
+  } catch {
+    return {
+      status: 'error',
+      message: 'Studentstatus wijzigen is niet gelukt.',
+    };
+  }
+
+  revalidatePath('/dashboard/students');
+  revalidatePath(`/dashboard/students/${studentId}`);
+  revalidatePath(`/dashboard/students/${studentId}/edit`);
+
+  return {
+    status: 'success',
+    message: lifecycleCopy.successMessage,
+  };
 }
