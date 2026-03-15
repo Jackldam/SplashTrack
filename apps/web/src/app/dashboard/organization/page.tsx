@@ -89,11 +89,11 @@ export default async function OrganizationAdminPage() {
   return (
     <div className="dashboard-stack">
       <section className="dashboard-panel">
-        <p className="eyebrow">Organization admin foundation</p>
+        <p className="eyebrow">Organization admin</p>
         <h2>{summary.organization.name}</h2>
         <p>
-          Kleine server-side beheerbasis voor de huidige single-organization setup. Batch 8 voegt
-          technische role-management en admin-UX polish toe, zonder businessfeatures.
+          Beheerbasis voor de huidige single-organization setup. Role-management en admin-UX
+          zijn beschikbaar voor owners en admins.
         </p>
 
         <dl className="meta-grid">

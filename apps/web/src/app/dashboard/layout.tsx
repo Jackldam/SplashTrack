@@ -16,7 +16,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
     <div className="dashboard-shell">
       <aside className="dashboard-sidebar">
         <div>
-          <p className="eyebrow">Batch 6 admin foundation</p>
+          <p className="eyebrow">SplashTrack</p>
           <h1>Dashboard</h1>
           <p>
             Protected shell op Better Auth + Prisma. Ingelogde users met actieve membership mogen
@@ -66,9 +66,6 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
               </Link>
             </>
           ) : null}
-          <Link className="button secondary-button" href="/forbidden">
-            Forbidden state
-          </Link>
           <SignOutButton />
         </nav>
       </aside>

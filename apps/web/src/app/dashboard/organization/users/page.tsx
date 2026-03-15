@@ -42,8 +42,7 @@ export default async function OrganizationUsersPage() {
         </div>
 
         <p>
-          Eerste GUI-laag voor userbeheer binnen de huidige organization. Je kunt users bekijken,
-          aanmaken en bijwerken zonder direct in Prisma of seed-data te hoeven zitten.
+          Userbeheer binnen de huidige organization. Je kunt users bekijken, aanmaken en bijwerken.
         </p>
         <p className="section-note">
           Let op: verwijderen is bewust nog geen flow. Gebruik inactief zetten voor veilige lifecycle.

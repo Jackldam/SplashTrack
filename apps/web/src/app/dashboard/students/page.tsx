@@ -76,7 +76,7 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
   return (
     <div className="dashboard-stack">
       <section className="dashboard-panel">
-        <p className="eyebrow">Batch 9 student foundation</p>
+        <p className="eyebrow">Student directory</p>
         <h2>Student directory</h2>
         <p>
           Organization-gebonden studentbeheer met server-side filtering op status en zoekterm, als

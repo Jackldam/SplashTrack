@@ -39,7 +39,7 @@ export async function executeOrganizationMembershipAction(
   if (!isOrganizationMembershipMutationAction(action)) {
     return {
       status: 'error',
-      message: 'Deze admin-action is nog niet beschikbaar in batch 8.',
+      message: 'Ongeldige admin-action.',
     };
   }
 

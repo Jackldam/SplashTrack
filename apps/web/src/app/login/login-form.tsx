@@ -72,11 +72,6 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
         {isPending ? 'Bezig...' : 'Inloggen'}
       </button>
 
-      <p className="form-hint">
-        Dit is alleen de auth- en access-foundation. Account provisioning en businessflows volgen
-        later.
-      </p>
-
       <Link className="text-link" href="/">
         Terug naar home
       </Link>
