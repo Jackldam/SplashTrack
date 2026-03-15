@@ -5,6 +5,8 @@ import {
   DEMO_ORGANIZATION,
   DEMO_STUDENTS,
   DEMO_SWIM_GROUPS,
+  DEMO_SKILLS,
+  DEMO_COURSES,
   DEMO_USERS,
   FOUNDATION_SEED_AUDIT,
 } from '@/lib/seed-data';
@@ -174,6 +176,83 @@ async function main() {
             }),
           );
       }),
+  );
+
+  // Seed skills
+  const seededSkills = await Promise.all(
+    DEMO_SKILLS.map((skill) =>
+      prisma.skill.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: demoOrganization.id,
+            name: skill.name,
+          },
+        },
+        update: {
+          description: skill.description,
+          swimLevel: skill.swimLevel,
+          isActive: skill.isActive,
+        },
+        create: {
+          organizationId: demoOrganization.id,
+          name: skill.name,
+          description: skill.description,
+          swimLevel: skill.swimLevel,
+          isActive: skill.isActive,
+        },
+      }),
+    ),
+  );
+
+  // Seed courses
+  const seededCourses = await Promise.all(
+    DEMO_COURSES.map((course) =>
+      prisma.course.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: demoOrganization.id,
+            name: course.name,
+          },
+        },
+        update: {
+          description: course.description,
+          swimLevel: course.swimLevel,
+          isActive: course.isActive,
+        },
+        create: {
+          organizationId: demoOrganization.id,
+          name: course.name,
+          description: course.description,
+          swimLevel: course.swimLevel,
+          isActive: course.isActive,
+        },
+      }),
+    ),
+  );
+
+  // Link skills to courses whose swimLevel matches
+  await Promise.all(
+    seededCourses.flatMap((course, index) => {
+      const matchingSkills = seededSkills.filter(
+        (skill) => skill.swimLevel === DEMO_COURSES[index].swimLevel,
+      );
+      return matchingSkills.map((skill, sortOrder) =>
+        prisma.courseSkill.upsert({
+          where: {
+            courseId_skillId: {
+              courseId: course.id,
+              skillId: skill.id,
+            },
+          },
+          update: {},
+          create: {
+            courseId: course.id,
+            skillId: skill.id,
+            sortOrder,
+          },
+        }),
+      );
+    }),
   );
 
   const existingSeedLog = await prisma.auditLog.findFirst({

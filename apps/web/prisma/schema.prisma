@@ -94,6 +94,8 @@ model Organization {
   auditLogs   AuditLog[]
   students    Student[]
   swimGroups  SwimGroup[]
+  skills      Skill[]
+  courses     Course[]
 
   @@index([createdAt])
 }
@@ -111,6 +113,8 @@ model Student {
   updatedAt        DateTime          @updatedAt
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   groupMemberships GroupMembership[]
+  courseEnrollments CourseEnrollment[]
+  studentSkills    StudentSkill[]
 
   @@unique([organizationId, identityKey])
   @@index([organizationId, isActive])
@@ -179,4 +183,84 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([entityType, entityId])
+}
+
+model Skill {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  swimLevel      String
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courseSkills   CourseSkill[]
+  studentSkills  StudentSkill[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@index([organizationId, swimLevel])
+}
+
+model StudentSkill {
+  id         String    @id @default(cuid())
+  studentId  String
+  skillId    String
+  achievedAt DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill      Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, skillId])
+  @@index([studentId])
+  @@index([skillId])
+}
+
+model Course {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  swimLevel      String
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courseSkills   CourseSkill[]
+  enrollments    CourseEnrollment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@index([organizationId, swimLevel])
+}
+
+model CourseSkill {
+  id        String   @id @default(cuid())
+  courseId  String
+  skillId   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, skillId])
+  @@index([courseId])
+  @@index([skillId])
+}
+
+model CourseEnrollment {
+  id        String   @id @default(cuid())
+  courseId  String
+  studentId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([courseId])
+  @@index([studentId])
 }

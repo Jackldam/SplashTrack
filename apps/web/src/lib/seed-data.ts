@@ -75,6 +75,60 @@ export const DEMO_SWIM_GROUPS = [
   },
 ] as const;
 
+export const DEMO_SKILLS = [
+  {
+    name: 'Watergewenning basis',
+    description: 'Basisvaardigheden voor watergewenning: vertrouwen in het water, onderdompelen.',
+    swimLevel: 'Watergewenning',
+    isActive: true,
+  },
+  {
+    name: 'Schoolslag armbewegingen',
+    description: 'Correcte armbewegingen bij schoolslag uitvoeren.',
+    swimLevel: 'Diploma A',
+    isActive: true,
+  },
+  {
+    name: 'Schoolslag beenbewegingen',
+    description: 'Correcte beenbewegingen bij schoolslag uitvoeren.',
+    swimLevel: 'Diploma A',
+    isActive: true,
+  },
+  {
+    name: 'Rugslag basis',
+    description: 'Op de rug zwemmen met correcte lichaamshouding.',
+    swimLevel: 'Diploma B',
+    isActive: true,
+  },
+  {
+    name: 'Borstcrawl coördinatie',
+    description: 'Armen, benen en ademhaling coördineren bij borstcrawl.',
+    swimLevel: 'Diploma B',
+    isActive: true,
+  },
+] as const;
+
+export const DEMO_COURSES = [
+  {
+    name: 'Watergewenning basis',
+    description: 'Introductiecursus voor jonge zwemmers om vertrouwen in het water te krijgen.',
+    swimLevel: 'Watergewenning',
+    isActive: true,
+  },
+  {
+    name: 'Diploma A voorbereiding',
+    description: 'Cursus ter voorbereiding op het zwem diploma A.',
+    swimLevel: 'Diploma A',
+    isActive: true,
+  },
+  {
+    name: 'Diploma B gevorderden',
+    description: 'Gevorderde cursus voor het behalen van zwem diploma B.',
+    swimLevel: 'Diploma B',
+    isActive: true,
+  },
+] as const;
+
 export const FOUNDATION_SEED_AUDIT = {
   action: 'foundation.seeded',
   entityType: 'system',
@@ -90,5 +144,7 @@ export const FOUNDATION_SEED_AUDIT = {
       isActive,
     })),
     seededSwimGroups: DEMO_SWIM_GROUPS.map(({ name, swimLevel }) => ({ name, swimLevel })),
+    seededSkills: DEMO_SKILLS.map(({ name, swimLevel }) => ({ name, swimLevel })),
+    seededCourses: DEMO_COURSES.map(({ name, swimLevel }) => ({ name, swimLevel })),
   },
 } as const;
