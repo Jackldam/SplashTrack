@@ -13,8 +13,8 @@ export function UserEditForm({ user }: { user: OrganizationUserDetail }) {
   const [state, formAction, isPending] = useActionState(action, DEFAULT_USER_ADMIN_ACTION_RESULT);
 
   return (
-    <form className="student-form" action={formAction}>
-      <div className="student-form-grid">
+    <form className="user-form" action={formAction}>
+      <div className="user-form-grid">
         <label className="field">
           <span>Naam</span>
           <input defaultValue={user.name ?? ''} maxLength={120} name="name" required type="text" />

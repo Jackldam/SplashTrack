@@ -33,7 +33,13 @@ const updateUserSchema = z.object({
   email: z.string().trim().email('E-mailadres is ongeldig.').max(320),
   role: z.enum([APP_ROLES.OWNER, APP_ROLES.ADMIN, APP_ROLES.MEMBER]),
   isActive: z.enum(['true', 'false']),
-  password: z.string().max(120).optional(),
+  password: z
+    .string()
+    .max(120)
+    .refine((val) => val === '' || val.length >= 8, {
+      message: 'Wachtwoord moet minimaal 8 tekens hebben.',
+    })
+    .optional(),
 });
 
 export async function createOrganizationUserAction(
