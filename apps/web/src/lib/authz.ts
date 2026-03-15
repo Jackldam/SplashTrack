@@ -40,6 +40,9 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     where: {
       userId: session.user.id,
       isActive: true,
+      user: {
+        isActive: true,
+      },
       organization: {
         isActive: true,
       },

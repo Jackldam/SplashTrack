@@ -20,9 +20,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="page-shell">
       <section className="hero-card auth-card">
-        <p className="eyebrow">Batch 4 access foundation</p>
+        <p className="eyebrow">SplashTrack</p>
         <h1>Login</h1>
-        <p>Better Auth is aangesloten op Prisma en klaar voor protected routes met minimale RBAC.</p>
+        <p>Log in om het dashboard te openen.</p>
         <LoginForm redirectTo={redirectTo} />
       </section>
     </main>
