@@ -1,24 +1,24 @@
 # SplashTrack
 
-SplashTrack bevat op dit moment twee sporen naast elkaar:
+SplashTrack is currently a single active web application:
 
-- `SplashTrackWebApp/` — bestaande legacy ASP.NET Core MVC-app
-- `apps/web/` — nieuwe Next.js + TypeScript foundation voor de toekomstige frontend
+- `apps/web/` — Next.js + TypeScript frontend/app foundation for the product
 
-Deze branch bevat de foundation-batches voor de nieuwe web-stack. Er zijn bewust geen businessfeatures of inhoudelijke legacy-wijzigingen meegenomen; alleen de nieuwe web/auth-basis en repo-root ondersteuning daaromheen.
+This repo currently focuses on the modern web stack foundation. The active implementation work is in `apps/web`.
 
-## Nieuwe web foundation
+## Current web foundation
 
-### Structuur
-- `package.json` — root npm workspace voor de web-app
+### Structure
+- `package.json` — root npm workspace for the web app
 - `apps/web/` — Next.js app router project
-- `apps/web/src/app/` — layout, homepage, error/not-found, `api/health`, login, dashboard en organization shell
-- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers en kleine organization admin-querylaag met server-side membership mutations
-- `apps/web/prisma/schema.prisma` — Prisma foundation met alleen `User`, `Organization`, `OrganizationMember` en `AuditLog`
-- `apps/web/prisma/seed.ts` — idempotente demo seed voor auth/org foundation
+- `apps/web/src/app/` — layout, homepage, error/not-found, `api/health`, login, dashboard, organization shell, plus student directory/detail/create/edit routes
+- `apps/web/src/lib/` — basis `env`, `logger`, `utils`, Prisma client wrapper, auth-context helpers, RBAC helpers, organization admin logic, student read-models and student server actions
+- `apps/web/prisma/schema.prisma` — Prisma foundation with `User`, `Organization`, `OrganizationMember`, `AuditLog` and `Student` (including normalized student identity keys for per-organization uniqueness)
+- `apps/web/prisma/seed.ts` — idempotente demo seed voor auth/org/student foundation
 - `apps/web/.env.example` — voorbeeldvariabelen inclusief `DATABASE_URL` en `DIRECT_URL`
 - `apps/web/Dockerfile` — container build voor de web-app
 - `docker-compose.yml` — web + postgres voor lokale infra
+- `docs/architecture.md` — korte architectuuroverzicht van de huidige app
 
 ### Web scripts
 Vanaf repository-root:
@@ -27,6 +27,8 @@ Vanaf repository-root:
 - `npm run build:web`
 - `npm run lint:web`
 - `npm run typecheck:web`
+- `npm run test:web`
+- `npm run check:web`
 - `npm run prisma:generate --workspace @splashtrack/web`
 - `npm run prisma:validate --workspace @splashtrack/web`
 - `npm run prisma:seed --workspace @splashtrack/web`
@@ -37,12 +39,7 @@ Vanaf repository-root:
 - Health: `http://localhost:3000/api/health`
 - Postgres: `localhost:5432`
 
-## Legacy app
-De bestaande .NET oplossing en app blijven intact:
-- `SplashTrack.sln`
-- `SplashTrackWebApp/`
-
-## Oorspronkelijke projectrichting
+## Current product direction
 - Track student progress and attendance
 - Manage instructors and lesson schedules
 - Create and manage swim groups and levels

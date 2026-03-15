@@ -1,7 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
 
-import { DEMO_ORGANIZATION, DEMO_USERS, FOUNDATION_SEED_AUDIT } from '@/lib/seed-data';
+import {
+  DEMO_ORGANIZATION,
+  DEMO_STUDENTS,
+  DEMO_USERS,
+  FOUNDATION_SEED_AUDIT,
+} from '@/lib/seed-data';
+import { buildStudentIdentityKey } from '@/lib/student-identity';
 
 const prisma = new PrismaClient();
 
@@ -83,6 +89,43 @@ async function main() {
   if (!demoOwner) {
     throw new Error('Demo owner missing after seed.');
   }
+
+  await Promise.all(
+    DEMO_STUDENTS.map((student) => {
+      const dateOfBirth = new Date(`${student.dateOfBirth}T00:00:00.000Z`);
+      const identityKey = buildStudentIdentityKey({
+        firstName: student.firstName,
+        lastName: student.lastName,
+        dateOfBirth,
+      });
+
+      return prisma.student.upsert({
+        where: {
+          organizationId_identityKey: {
+            organizationId: demoOrganization.id,
+            identityKey,
+          },
+        },
+        update: {
+          firstName: student.firstName,
+          lastName: student.lastName,
+          dateOfBirth,
+          identityKey,
+          swimLevel: student.swimLevel,
+          isActive: student.isActive,
+        },
+        create: {
+          organizationId: demoOrganization.id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          dateOfBirth,
+          identityKey,
+          swimLevel: student.swimLevel,
+          isActive: student.isActive,
+        },
+      });
+    }),
+  );
 
   const existingSeedLog = await prisma.auditLog.findFirst({
     where: {

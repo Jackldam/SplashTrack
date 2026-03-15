@@ -92,8 +92,28 @@ model Organization {
   updatedAt   DateTime             @updatedAt
   members     OrganizationMember[]
   auditLogs   AuditLog[]
+  students    Student[]
 
   @@index([createdAt])
+}
+
+model Student {
+  id             String       @id @default(cuid())
+  organizationId String
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime?
+  identityKey    String
+  swimLevel      String
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, identityKey])
+  @@index([organizationId, isActive])
+  @@index([organizationId, swimLevel])
+  @@index([organizationId, lastName, firstName])
 }
 
 model OrganizationMember {
