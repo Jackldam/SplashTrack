@@ -1,0 +1,38 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file:
+      - apps/web/.env.example
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_BASE_URL: http://localhost:3000
+      DATABASE_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
+      DIRECT_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: splashtrack
+      POSTGRES_USER: splashtrack
+      POSTGRES_PASSWORD: splashtrack
+    ports:
+      - '5432:5432'
+    volumes:
+      - splashtrack-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U splashtrack -d splashtrack']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  splashtrack-postgres-data:
