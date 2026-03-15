@@ -57,6 +57,24 @@ export const DEMO_STUDENTS = [
   },
 ] as const;
 
+export const DEMO_SWIM_GROUPS = [
+  {
+    name: 'Beginners A',
+    swimLevel: 'Watergewenning',
+    isActive: true,
+  },
+  {
+    name: 'Diploma A Groep',
+    swimLevel: 'Diploma A',
+    isActive: true,
+  },
+  {
+    name: 'Gevorderden B',
+    swimLevel: 'Diploma B',
+    isActive: true,
+  },
+] as const;
+
 export const FOUNDATION_SEED_AUDIT = {
   action: 'foundation.seeded',
   entityType: 'system',
@@ -71,5 +89,6 @@ export const FOUNDATION_SEED_AUDIT = {
       swimLevel,
       isActive,
     })),
+    seededSwimGroups: DEMO_SWIM_GROUPS.map(({ name, swimLevel }) => ({ name, swimLevel })),
   },
 } as const;

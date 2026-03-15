@@ -9,6 +9,7 @@ This repo currently focuses on the modern web stack foundation. The active imple
 ## Current web foundation
 
 ### Structure
+
 - `package.json` — root npm workspace for the web app
 - `apps/web/` — Next.js app router project
 - `apps/web/src/app/` — layout, homepage, error/not-found, `api/health`, login, dashboard, organization shell, plus student directory/detail/create/edit routes
@@ -21,7 +22,9 @@ This repo currently focuses on the modern web stack foundation. The active imple
 - `docs/architecture.md` — korte architectuuroverzicht van de huidige app
 
 ### Web scripts
+
 Vanaf repository-root:
+
 - `npm install`
 - `npm run dev:web`
 - `npm run build:web`
@@ -34,12 +37,14 @@ Vanaf repository-root:
 - `npm run prisma:seed --workspace @splashtrack/web`
 
 ## Docker
+
 - `docker compose up --build`
 - Web app: `http://localhost:3000`
 - Health: `http://localhost:3000/api/health`
 - Postgres: `localhost:5432`
 
 ## Current student-management status
+
 - directory + metrics
 - student detail
 - guarded create/update flows
@@ -49,6 +54,7 @@ Vanaf repository-root:
 - audit logging on student mutations
 
 ## Current product direction
+
 - Track student progress and attendance
 - Manage instructors and lesson schedules
 - Create and manage swim groups and levels

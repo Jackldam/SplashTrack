@@ -5,6 +5,7 @@
 SplashTrack is currently a single Next.js application in `apps/web`.
 
 The repo contains:
+
 - a root npm workspace
 - one active web app: `apps/web`
 - Docker and local infra support for the web app plus Postgres
@@ -12,6 +13,7 @@ The repo contains:
 ## App stack
 
 `apps/web` uses:
+
 - Next.js App Router
 - React 19
 - TypeScript
@@ -29,6 +31,7 @@ The repo contains:
 ## Current functional slices
 
 ### 1. Platform foundation
+
 - app shell
 - global layout and error boundaries
 - health endpoint
@@ -36,11 +39,13 @@ The repo contains:
 - logger/utilities
 
 ### 2. Authentication
+
 - Better Auth route handler at `/api/auth/[...all]`
 - login flow
 - session helpers for server-side access
 
 ### 3. Authorization and organization context
+
 - auth context builder
 - capability-based guards
 - single-organization membership model
@@ -48,6 +53,7 @@ The repo contains:
 - organization admin shell with guarded membership actions and audit logging
 
 ### 4. Student management foundation
+
 - first student overview for the active organization
 - summary metrics and level spread
 - server-side student directory filtering/search within the active organization
@@ -69,6 +75,7 @@ The repo contains:
 ## Development workflow
 
 From repo root:
+
 - `npm run dev:web`
 - `npm run lint:web`
 - `npm run typecheck:web`
@@ -78,6 +85,7 @@ From repo root:
 ## Immediate next direction
 
 The current codebase is ready for the next business slice on top of the authenticated dashboard, most likely:
+
 - richer student management
 - groups/levels management
 - attendance tracking

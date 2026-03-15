@@ -53,6 +53,9 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
           <Link className="button secondary-button" href="/dashboard/students">
             Students
           </Link>
+          <Link className="button secondary-button" href="/dashboard/groups">
+            Groups
+          </Link>
           {showOrganizationAdmin ? (
             <>
               <Link className="button secondary-button" href="/dashboard/organization">
