@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SplashTrackWebApp.Areas.Identity.Data;
+using SplashTrackWebApp.Models;
 
 namespace SplashTrackWebApp.Data
 {
@@ -12,5 +13,6 @@ namespace SplashTrackWebApp.Data
         {
         }
 
+        public DbSet<Student> Students { get; set; }
     }
 }

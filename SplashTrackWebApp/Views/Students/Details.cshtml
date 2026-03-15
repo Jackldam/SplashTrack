@@ -1,0 +1,49 @@
+@model SplashTrackWebApp.Models.Student
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Student Details";
+}
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h1>@ViewData["Title"]</h1>
+            <hr />
+
+            <dl class="row">
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.StudentNumber)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.StudentNumber)</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.FirstName)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.FirstName)</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.MiddleName)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.MiddleName)</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.LastName)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.LastName)</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.DateOfBirth)</dt>
+                <dd class="col-sm-9">@Model.DateOfBirth.ToString("yyyy-MM-dd")</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.Email)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.Email)</dd>
+
+                <dt class="col-sm-3">@Html.DisplayNameFor(m => m.PhoneNumber)</dt>
+                <dd class="col-sm-9">@Html.DisplayFor(m => m.PhoneNumber)</dd>
+            </dl>
+
+            <div class="d-flex gap-2">
+                <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-warning">
+                    <i class="bi bi-pencil"></i> Edit
+                </a>
+                <a asp-action="Delete" asp-route-id="@Model.Id" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Delete
+                </a>
+                <a asp-action="Index" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
