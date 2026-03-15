@@ -16,6 +16,14 @@ export type StudentDetail = {
     name: string;
     slug: string;
   };
+  groupMemberships: Array<{
+    membershipId: string;
+    groupId: string;
+    groupName: string;
+    swimLevel: string;
+    groupIsActive: boolean;
+    enrolledAt: Date;
+  }>;
 };
 
 export async function getStudentDetail(
@@ -47,6 +55,21 @@ export async function getStudentDetail(
           slug: true,
         },
       },
+      groupMemberships: {
+        orderBy: { group: { name: 'asc' } },
+        select: {
+          id: true,
+          createdAt: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              swimLevel: true,
+              isActive: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -57,5 +80,13 @@ export async function getStudentDetail(
   return {
     ...student,
     displayName: `${student.firstName} ${student.lastName}`,
+    groupMemberships: student.groupMemberships.map((m) => ({
+      membershipId: m.id,
+      groupId: m.group.id,
+      groupName: m.group.name,
+      swimLevel: m.group.swimLevel,
+      groupIsActive: m.group.isActive,
+      enrolledAt: m.createdAt,
+    })),
   };
 }

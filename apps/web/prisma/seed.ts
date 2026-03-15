@@ -4,6 +4,7 @@ import { hashPassword } from 'better-auth/crypto';
 import {
   DEMO_ORGANIZATION,
   DEMO_STUDENTS,
+  DEMO_SWIM_GROUPS,
   DEMO_USERS,
   FOUNDATION_SEED_AUDIT,
 } from '@/lib/seed-data';
@@ -90,7 +91,7 @@ async function main() {
     throw new Error('Demo owner missing after seed.');
   }
 
-  await Promise.all(
+  const seededStudents = await Promise.all(
     DEMO_STUDENTS.map((student) => {
       const dateOfBirth = new Date(`${student.dateOfBirth}T00:00:00.000Z`);
       const identityKey = buildStudentIdentityKey({
@@ -125,6 +126,54 @@ async function main() {
         },
       });
     }),
+  );
+
+  const seededGroups = await Promise.all(
+    DEMO_SWIM_GROUPS.map((group) =>
+      prisma.swimGroup.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: demoOrganization.id,
+            name: group.name,
+          },
+        },
+        update: {
+          swimLevel: group.swimLevel,
+          isActive: group.isActive,
+        },
+        create: {
+          organizationId: demoOrganization.id,
+          name: group.name,
+          swimLevel: group.swimLevel,
+          isActive: group.isActive,
+        },
+      }),
+    ),
+  );
+
+  // Enroll active students whose swimLevel matches a group
+  await Promise.all(
+    seededStudents
+      .filter((s) => s.isActive)
+      .flatMap((student) => {
+        return seededGroups
+          .filter((group) => group.swimLevel === student.swimLevel)
+          .map((group) =>
+            prisma.groupMembership.upsert({
+              where: {
+                groupId_studentId: {
+                  groupId: group.id,
+                  studentId: student.id,
+                },
+              },
+              update: {},
+              create: {
+                groupId: group.id,
+                studentId: student.id,
+              },
+            }),
+          );
+      }),
   );
 
   const existingSeedLog = await prisma.auditLog.findFirst({

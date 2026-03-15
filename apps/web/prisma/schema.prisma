@@ -93,27 +93,58 @@ model Organization {
   members     OrganizationMember[]
   auditLogs   AuditLog[]
   students    Student[]
+  swimGroups  SwimGroup[]
 
   @@index([createdAt])
 }
 
 model Student {
-  id             String       @id @default(cuid())
-  organizationId String
-  firstName      String
-  lastName       String
-  dateOfBirth    DateTime?
-  identityKey    String
-  swimLevel      String
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id               String            @id @default(cuid())
+  organizationId   String
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime?
+  identityKey      String
+  swimLevel        String
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groupMemberships GroupMembership[]
 
   @@unique([organizationId, identityKey])
   @@index([organizationId, isActive])
   @@index([organizationId, swimLevel])
   @@index([organizationId, lastName, firstName])
+}
+
+model SwimGroup {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  swimLevel      String
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships    GroupMembership[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+model GroupMembership {
+  id        String    @id @default(cuid())
+  groupId   String
+  studentId String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  group     SwimGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, studentId])
+  @@index([groupId])
+  @@index([studentId])
 }
 
 model OrganizationMember {

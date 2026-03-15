@@ -127,6 +127,55 @@ export default async function StudentDetailPage({
       <section className="dashboard-panel">
         <div className="section-heading">
           <div>
+            <p className="eyebrow">Zwemgroepen</p>
+            <h3>Groepslidmaatschappen</h3>
+          </div>
+          <p className="section-note">
+            Groepen waaraan deze student is toegewezen binnen de huidige organization.
+          </p>
+        </div>
+
+        {student.groupMemberships.length > 0 ? (
+          <div className="table-shell" role="region" aria-label="Groepslidmaatschappen">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Groep</th>
+                  <th>Niveau</th>
+                  <th>Groep status</th>
+                  <th>Ingeschreven</th>
+                </tr>
+              </thead>
+              <tbody>
+                {student.groupMemberships.map((membership) => (
+                  <tr key={membership.membershipId}>
+                    <td>
+                      <Link className="text-link" href={`/dashboard/groups/${membership.groupId}`}>
+                        {membership.groupName}
+                      </Link>
+                    </td>
+                    <td>{membership.swimLevel}</td>
+                    <td>{membership.groupIsActive ? 'Actief' : 'Inactief'}</td>
+                    <td>{formatDateTime(membership.enrolledAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <h4>Geen groepslidmaatschappen</h4>
+            <p>
+              Deze student is nog niet aan een zwemgroep toegewezen. Wijs een groep toe via de
+              groepdetailpagina.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="dashboard-panel">
+        <div className="section-heading">
+          <div>
             <p className="eyebrow">Student activity</p>
             <h3>Recente wijzigingen</h3>
           </div>
