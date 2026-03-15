@@ -30,8 +30,11 @@ The new approach is a pragmatic middle ground that fits the current app behavior
 ## Follow-on note after this pass
 The next student-management slice landed immediately after the identity work: the student directory now supports validated server-side status filters (`all` / `active` / `inactive`) plus search across first name, last name, and swim level. That closes one of the short-term roadmap items and makes deactivation more usable in practice.
 
+## Follow-on note after the next pass
+The student detail page now includes a dedicated recent activity/history section backed by the existing audit log. It shows compact summaries for create, update, deactivate and reactivate events, plus raw metadata for debugging.
+
 ## Likely next steps
-1. Add a dedicated activity/history section or recent audit events on the student detail page.
-2. Add a real Prisma migration that backfills `identityKey` for existing student rows.
-3. Add integration tests around duplicate create/update rejection plus lifecycle mutations once DB-backed coverage exists.
+1. Add a real Prisma migration that backfills `identityKey` for existing student rows.
+2. Add integration tests around duplicate create/update rejection plus lifecycle mutations once DB-backed coverage exists.
+3. Decide and document the product policy for true delete versus deactivation-only archive semantics.
 4. Consider surfacing a more specific UI hint when a same-name student is rejected because DOB is blank on both records.

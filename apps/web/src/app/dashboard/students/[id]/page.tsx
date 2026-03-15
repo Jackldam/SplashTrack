@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { getRecentStudentAuditActivity } from '@/lib/student-audit';
 import { getStudentDetail } from '@/lib/student-detail';
 
 import { StudentLifecycleForm } from './student-lifecycle-form';
@@ -40,6 +41,8 @@ export default async function StudentDetailPage({
   if (!student) {
     notFound();
   }
+
+  const recentActivity = await getRecentStudentAuditActivity(authContext, student.id);
 
   const canEditStudent =
     authContext.membership?.role === APP_ROLES.OWNER || authContext.membership?.role === APP_ROLES.ADMIN;
@@ -116,6 +119,60 @@ export default async function StudentDetailPage({
             <StudentLifecycleForm student={student} />
           </section>
         ) : null}
+      </section>
+
+      <section className="dashboard-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Student activity</p>
+            <h3>Recente wijzigingen</h3>
+          </div>
+          <p className="section-note">
+            Gebaseerd op bestaande audit-log events voor create, update en lifecycle-mutaties van
+            deze student.
+          </p>
+        </div>
+
+        {recentActivity.length > 0 ? (
+          <div className="audit-log-list">
+            {recentActivity.map((activityItem) => (
+              <article className="audit-log-card" key={activityItem.id}>
+                <div className="audit-log-header">
+                  <div>
+                    <h4>{activityItem.actionLabel}</h4>
+                    <p>{activityItem.summary}</p>
+                  </div>
+                  <p>{formatDateTime(activityItem.createdAt)}</p>
+                </div>
+                <p>
+                  Actor: {activityItem.actorLabel} · type: {activityItem.actorType}
+                </p>
+                {activityItem.changes.length > 0 ? (
+                  <dl className="audit-log-meta-grid">
+                    {activityItem.changes.map((change) => (
+                      <div key={`${activityItem.id}-${change.label}`}>
+                        <dt>{change.label}</dt>
+                        <dd>{change.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                <details className="audit-log-details">
+                  <summary>Ruwe metadata</summary>
+                  <pre>{JSON.stringify(activityItem.rawMetadata, null, 2)}</pre>
+                </details>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <h4>Nog geen studentactiviteit</h4>
+            <p>
+              Zodra create, update of lifecycle-acties plaatsvinden, verschijnt hier een compact
+              auditspoor voor deze student.
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );

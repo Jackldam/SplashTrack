@@ -13,6 +13,7 @@ What the app actually has today in `apps/web`:
 - guarded full update flow
 - normalized per-organization student identity uniqueness
 - guarded student lifecycle toggle: deactivate/reactivate with audit logging
+- student detail activity/history section backed by recent per-student audit events
 
 What the docs previously still implied too strongly:
 - student detail was still described as intentionally read-only
@@ -40,11 +41,11 @@ The caveat is planning/documentation drift. The code moved a bit faster than the
 - Edit student flow
 - Deactivate/reactivate lifecycle action
 - Audit logging for create/update/lifecycle mutations
+- Student detail activity/history for recent create/update/lifecycle events
 - Per-organization duplicate guard via normalized identity key
 
 ### Not done yet
 - true delete flow and corresponding data-retention policy
-- archived/deactivated filtering in the UI
 - attendance/enrollment/group assignment relations
 - instructor/schedule slices
 - Prisma migration/backfill for existing `identityKey` rows in shared environments
@@ -53,12 +54,10 @@ The caveat is planning/documentation drift. The code moved a bit faster than the
 ## Recommended near-term priorities
 
 ### Milestone 1 — finish student management slice
-1. Add filtering/search to the student directory (`all`, `active`, `inactive`).
-2. Add a dedicated activity/history section or recent audit events on the student detail page.
-3. Decide product policy for deletion:
+1. Decide product policy for deletion:
    - likely keep hard delete disabled for now
    - document that deactivation is the supported archive behavior
-4. Add DB-backed tests for duplicate rejection and lifecycle mutations.
+2. Add DB-backed tests for duplicate rejection and lifecycle mutations.
 
 ### Milestone 2 — structure students into operational groups
 1. Introduce swim groups / class groups.
