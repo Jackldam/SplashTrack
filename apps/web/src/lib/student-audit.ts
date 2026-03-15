@@ -87,6 +87,7 @@ function buildUpdateChanges(metadata: unknown) {
     { key: 'firstName', label: 'Voornaam' },
     { key: 'lastName', label: 'Achternaam' },
     { key: 'dateOfBirth', label: 'Geboortedatum' },
+    { key: 'identityKey', label: 'Identity key' },
     { key: 'swimLevel', label: 'Niveau' },
     { key: 'isActive', label: 'Status actief' },
   ] as const;
@@ -129,6 +130,10 @@ export function buildStudentAuditActivityItem(log: StudentAuditLogRecord): Stude
           label: 'Startstatus',
           value: getScalarMetadataValue(log.metadata, 'isActive') === 'true' ? 'Actief' : 'Inactief',
         },
+        {
+          label: 'Delete-policy',
+          value: getScalarMetadataValue(log.metadata, 'lifecyclePolicy') ?? 'Onbekend',
+        },
       ],
       rawMetadata: log.metadata,
     };
@@ -166,7 +171,7 @@ export function buildStudentAuditActivityItem(log: StudentAuditLogRecord): Stude
       actorLabel,
       summary:
         log.action === 'student.deactivated'
-          ? 'Student is gearchiveerd via deactiveerflow.'
+          ? 'Student is gearchiveerd via deactiveerflow; hard delete blijft uitgeschakeld.'
           : 'Student is opnieuw actief gemaakt.',
       changes:
         previousIsActive || nextIsActive

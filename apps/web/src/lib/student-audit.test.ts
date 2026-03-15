@@ -19,6 +19,7 @@ test('buildStudentAuditActivityItem summarizes student update diffs', () => {
         firstName: 'Sara',
         lastName: 'Jansen',
         dateOfBirth: '2016-04-10T00:00:00.000Z',
+        identityKey: 'sara::jansen::2016-04-10',
         swimLevel: 'Bad 1',
         isActive: true,
       },
@@ -26,6 +27,7 @@ test('buildStudentAuditActivityItem summarizes student update diffs', () => {
         firstName: 'Sara',
         lastName: 'Jansen',
         dateOfBirth: '2016-04-10T00:00:00.000Z',
+        identityKey: 'sara::jansen::2016-04-10',
         swimLevel: 'Bad 2',
         isActive: false,
       },
@@ -56,11 +58,13 @@ test('buildStudentAuditActivityItem summarizes lifecycle changes', () => {
     metadata: {
       previousIsActive: true,
       nextIsActive: false,
+      lifecyclePolicy: 'deactivate',
     },
   });
 
   assert.equal(item.actionLabel, 'Gedeactiveerd');
   assert.equal(item.actorLabel, 'USER');
+  assert.match(item.summary, /hard delete blijft uitgeschakeld/i);
   assert.deepEqual(item.changes, [
     {
       label: 'Status',

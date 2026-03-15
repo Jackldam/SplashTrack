@@ -21,7 +21,7 @@ export function resolveStudentLifecycleCopy(isActive: boolean) {
       buttonLabel: 'Student deactiveren',
       pendingLabel: 'Student deactiveren...',
       helperText:
-        'De student blijft bewaard in de directory en audit-log, maar telt niet meer mee als actief.',
+        'De student blijft bewaard in de directory en audit-log, maar telt niet meer mee als actief. Duplicaatcontrole blijft ook na deactivatie gelden.',
       successMessage: 'Student is gedeactiveerd.',
       auditAction: 'student.deactivated',
       nextIsActive: false,

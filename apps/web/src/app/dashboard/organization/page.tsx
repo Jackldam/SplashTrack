@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
 import { ORGANIZATION_ADMIN_ACTIONS } from '@/lib/organization-admin-action-core';
 import { getOrganizationAdminSummary } from '@/lib/organization-admin';
@@ -126,10 +128,15 @@ export default async function OrganizationAdminPage() {
             <p className="eyebrow">Membership overview</p>
             <h3>Huidige organization members</h3>
           </div>
-          <p className="section-note">
-            OWNER/ADMIN houdt route-toegang. Role-management blijft expres server-side begrensd:
-            alleen owners mogen rollen wijzigen, admins blijven beperkt tot veilige membership-statusacties.
-          </p>
+          <div className="section-actions">
+            <p className="section-note">
+              OWNER/ADMIN houdt route-toegang. Role-management blijft expres server-side begrensd:
+              alleen owners mogen rollen wijzigen, admins blijven beperkt tot veilige membership-statusacties.
+            </p>
+            <Link className="button secondary-button" href="/dashboard/organization/users">
+              Open user admin
+            </Link>
+          </div>
         </div>
 
         <div className="table-shell" role="region" aria-label="Organization members overzicht">

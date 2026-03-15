@@ -10,9 +10,14 @@ import { parseCreateStudentFormData } from '@/lib/student-forms';
 import { prisma } from '@/lib/prisma';
 import { buildStudentIdentityKey } from '@/lib/student-identity';
 import {
+  buildStudentDuplicateConflictMessage,
+  isStudentDuplicateConflictError,
+} from '@/lib/student-duplicate-policy';
+import {
   DEFAULT_STUDENT_LIFECYCLE_ACTION_RESULT,
   resolveStudentLifecycleCopy,
 } from '@/lib/student-lifecycle';
+import { STUDENT_DELETE_POLICY } from '@/lib/student-policy';
 
 export type CreateStudentActionResult = {
   status: 'idle' | 'success' | 'error';
@@ -58,6 +63,8 @@ export async function createStudentAction(
     };
   }
 
+  const identityKey = buildStudentIdentityKey(parsed.data);
+
   try {
     const student = await prisma.$transaction(async (tx) => {
       const createdStudent = await tx.student.create({
@@ -66,7 +73,7 @@ export async function createStudentAction(
           firstName: parsed.data.firstName,
           lastName: parsed.data.lastName,
           dateOfBirth: parsed.data.dateOfBirth,
-          identityKey: buildStudentIdentityKey(parsed.data),
+          identityKey,
           swimLevel: parsed.data.swimLevel,
           isActive: parsed.data.isActive,
         },
@@ -91,8 +98,13 @@ export async function createStudentAction(
             studentId: createdStudent.id,
             firstName: createdStudent.firstName,
             lastName: createdStudent.lastName,
+            dateOfBirth: parsed.data.dateOfBirth?.toISOString() ?? null,
+            identityKey,
             swimLevel: createdStudent.swimLevel,
             isActive: createdStudent.isActive,
+            lifecyclePolicy: STUDENT_DELETE_POLICY.archiveMode,
+            hardDeleteEnabled: STUDENT_DELETE_POLICY.hardDeleteEnabled,
+            uniquenessIncludesInactiveRecords: STUDENT_DELETE_POLICY.uniquenessIncludesInactiveRecords,
             performedByMembershipId: authContext.membership!.id,
             performedByRole: authContext.membership!.role,
           },
@@ -105,17 +117,10 @@ export async function createStudentAction(
     revalidatePath('/dashboard/students');
     revalidatePath(`/dashboard/students/${student.id}`);
   } catch (error) {
-    const isPrismaKnownError =
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002';
-
-    if (isPrismaKnownError) {
+    if (isStudentDuplicateConflictError(error)) {
       return {
         status: 'error',
-        message:
-          'Er bestaat al een student met dezelfde naam en geboortedatum binnen de huidige organization.',
+        message: buildStudentDuplicateConflictMessage(parsed.data),
       };
     }
 
@@ -165,6 +170,9 @@ export async function updateStudentAction(
     };
   }
 
+  const nextIdentityKey = buildStudentIdentityKey(parsed.data);
+  const previousIdentityKey = buildStudentIdentityKey(existingStudent);
+
   try {
     await prisma.$transaction(async (tx) => {
       const updatedStudent = await tx.student.update({
@@ -175,7 +183,7 @@ export async function updateStudentAction(
           firstName: parsed.data.firstName,
           lastName: parsed.data.lastName,
           dateOfBirth: parsed.data.dateOfBirth,
-          identityKey: buildStudentIdentityKey(parsed.data),
+          identityKey: nextIdentityKey,
           swimLevel: parsed.data.swimLevel,
           isActive: parsed.data.isActive,
         },
@@ -202,6 +210,7 @@ export async function updateStudentAction(
               firstName: existingStudent.firstName,
               lastName: existingStudent.lastName,
               dateOfBirth: existingStudent.dateOfBirth?.toISOString() ?? null,
+              identityKey: previousIdentityKey,
               swimLevel: existingStudent.swimLevel,
               isActive: existingStudent.isActive,
             },
@@ -211,7 +220,11 @@ export async function updateStudentAction(
               swimLevel: updatedStudent.swimLevel,
               isActive: updatedStudent.isActive,
               dateOfBirth: parsed.data.dateOfBirth?.toISOString() ?? null,
+              identityKey: nextIdentityKey,
             },
+            lifecyclePolicy: STUDENT_DELETE_POLICY.archiveMode,
+            hardDeleteEnabled: STUDENT_DELETE_POLICY.hardDeleteEnabled,
+            uniquenessIncludesInactiveRecords: STUDENT_DELETE_POLICY.uniquenessIncludesInactiveRecords,
             performedByMembershipId: authContext.membership!.id,
             performedByRole: authContext.membership!.role,
           },
@@ -223,17 +236,10 @@ export async function updateStudentAction(
     revalidatePath(`/dashboard/students/${studentId}`);
     revalidatePath(`/dashboard/students/${studentId}/edit`);
   } catch (error) {
-    const isPrismaKnownError =
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002';
-
-    if (isPrismaKnownError) {
+    if (isStudentDuplicateConflictError(error)) {
       return {
         status: 'error',
-        message:
-          'Er bestaat al een student met dezelfde naam en geboortedatum binnen de huidige organization.',
+        message: buildStudentDuplicateConflictMessage(parsed.data),
       };
     }
 
@@ -298,6 +304,10 @@ export async function updateStudentLifecycleAction(
             studentId: existingStudent.id,
             previousIsActive: existingStudent.isActive,
             nextIsActive: lifecycleCopy.nextIsActive,
+            identityKey: buildStudentIdentityKey(existingStudent),
+            lifecyclePolicy: STUDENT_DELETE_POLICY.archiveMode,
+            hardDeleteEnabled: STUDENT_DELETE_POLICY.hardDeleteEnabled,
+            uniquenessIncludesInactiveRecords: STUDENT_DELETE_POLICY.uniquenessIncludesInactiveRecords,
             performedByMembershipId: authContext.membership!.id,
             performedByRole: authContext.membership!.role,
           },

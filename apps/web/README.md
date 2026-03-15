@@ -33,10 +33,11 @@ Vereist voor de huidige auth foundation:
 - `GET /dashboard` is een protected shell voor ingelogde users met actieve membership
 - `GET /dashboard/organization` is een server-side afgeschermde owner/admin shell
 - `GET /dashboard/students` levert de eerste organization-gebonden student directory
-- `GET /dashboard/students/[id]` levert een read-only detailweergave per student
+- `GET /dashboard/students/[id]` levert detailweergave per student inclusief lifecycle- en auditcontext
 - `GET /dashboard/students/new` en `GET /dashboard/students/[id]/edit` bieden guarded create/update flows voor OWNER/ADMIN
 - `POST` server actions vanaf studentdetail ondersteunen deactiveren/heractiveren met audit logging
-- student uniqueness gebruikt een genormaliseerde identity key per organization: naam + geboortedatum wanneer bekend, anders naam-only fallback
+- hard delete voor studenten is in fase 1 expliciet uitgeschakeld; deactiveren/heractiveren is het ondersteunde lifecycle-pad
+- student uniqueness gebruikt een genormaliseerde identity key per organization: naam + geboortedatum wanneer bekend, anders naam-only fallback; deze guard blijft ook gelden voor inactieve records
 - `GET /forbidden` handelt insufficient access netjes af
 
 ## Seed foundation

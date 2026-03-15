@@ -54,8 +54,9 @@ The repo contains:
 - student detail page
 - guarded create/update flows for OWNER/ADMIN with audit logging
 - guarded deactivate/reactivate lifecycle action via `isActive`
-- student uniqueness is enforced per organization through a normalized identity key (name + date of birth when available, otherwise name-only fallback)
-- no attendance, enrollment, group assignment or delete policy flows yet
+- explicit phase-1 delete policy: no hard delete, only deactivate/reactivate archival semantics
+- student uniqueness is enforced per organization through a normalized identity key (name + date of birth when available, otherwise name-only fallback), and the duplicate guard also applies to inactive records
+- no attendance, enrollment or group assignment flows yet
 
 ## Architectural boundaries
 

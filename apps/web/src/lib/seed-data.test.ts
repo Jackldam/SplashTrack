@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   DEMO_ORGANIZATION,
+  DEMO_STUDENTS,
   DEMO_USERS,
   FOUNDATION_SEED_AUDIT,
 } from './seed-data';
@@ -19,11 +20,20 @@ test('seed data defines one demo organization and three distinct baseline users'
   assert.deepEqual(roles, [APP_ROLES.OWNER, APP_ROLES.ADMIN, APP_ROLES.MEMBER]);
 });
 
-test('seed audit metadata stays aligned with seeded users', () => {
+test('seed audit metadata stays aligned with seeded users and students', () => {
   assert.equal(FOUNDATION_SEED_AUDIT.entityId, DEMO_ORGANIZATION.slug);
   assert.deepEqual(
     FOUNDATION_SEED_AUDIT.metadata.seededUsers,
     DEMO_USERS.map(({ email, role }) => ({ email, role })),
+  );
+  assert.deepEqual(
+    FOUNDATION_SEED_AUDIT.metadata.seededStudents,
+    DEMO_STUDENTS.map(({ firstName, lastName, swimLevel, isActive }) => ({
+      firstName,
+      lastName,
+      swimLevel,
+      isActive,
+    })),
   );
   for (const user of DEMO_USERS) {
     assert.ok(user.password.length >= 8);

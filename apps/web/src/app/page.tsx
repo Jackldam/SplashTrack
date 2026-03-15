@@ -11,12 +11,11 @@ export default async function HomePage() {
   return (
     <main className="page-shell">
       <section className="hero-card">
-        <p className="eyebrow">Batch 6 foundation</p>
+        <p className="eyebrow">Current foundation</p>
         <h1>{appConfig.appName}</h1>
         <p>
-          Nieuwe Next.js app-root naast de legacy ASP.NET-app. Better Auth draait nu samen met een
-          minimale server-side RBAC skeleton en een kleine admin/organization foundation voor de
-          huidige single-org setup.
+          Next.js app-root met Better Auth, een minimale server-side RBAC skeleton en een kleine
+          organization/admin foundation voor de huidige single-org setup.
         </p>
         <dl className="meta-grid">
           <div>

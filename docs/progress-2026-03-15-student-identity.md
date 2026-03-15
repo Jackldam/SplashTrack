@@ -34,7 +34,12 @@ The next student-management slice landed immediately after the identity work: th
 The student detail page now includes a dedicated recent activity/history section backed by the existing audit log. It shows compact summaries for create, update, deactivate and reactivate events, plus raw metadata for debugging.
 
 ## Likely next steps
-1. Add a real Prisma migration that backfills `identityKey` for existing student rows.
-2. Add integration tests around duplicate create/update rejection plus lifecycle mutations once DB-backed coverage exists.
-3. Decide and document the product policy for true delete versus deactivation-only archive semantics.
-4. Consider surfacing a more specific UI hint when a same-name student is rejected because DOB is blank on both records.
+1. Convert the migration plan artifact into a real Prisma migration/backfill once the target shared database is available.
+2. Add DB-backed integration coverage for duplicate create/update rejection plus lifecycle mutations when CI/test infra includes a disposable Postgres database.
+3. Consider surfacing a more specific UI hint when a same-name student is rejected because DOB is blank on both records.
+
+## Update after phase-1 hardening pass
+- Delete policy is now explicit in code and docs: no hard delete in phase 1; deactivate/reactivate is the supported archive flow.
+- Duplicate conflict messaging now distinguishes the missing-DOB case and explicitly warns that inactive archived students still block reuse of the same identity key.
+- Student audit metadata now carries more context (`identityKey`, lifecycle-policy flags, richer before/after snapshots).
+- A migration-plan artifact was added at `docs/student-identity-migration-plan.sql` for shared-environment rollout.

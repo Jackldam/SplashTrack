@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
 import { getRecentStudentAuditActivity } from '@/lib/student-audit';
 import { getStudentDetail } from '@/lib/student-detail';
+import { getStudentDeletePolicySummary } from '@/lib/student-policy';
 
 import { StudentLifecycleForm } from './student-lifecycle-form';
 
@@ -43,6 +44,7 @@ export default async function StudentDetailPage({
   }
 
   const recentActivity = await getRecentStudentAuditActivity(authContext, student.id);
+  const deletePolicySummary = getStudentDeletePolicySummary();
 
   const canEditStudent =
     authContext.membership?.role === APP_ROLES.OWNER || authContext.membership?.role === APP_ROLES.ADMIN;
@@ -71,6 +73,7 @@ export default async function StudentDetailPage({
           Studentdetail binnen de huidige organization, inclusief guarded lifecycle-actie voor
           OWNER/ADMIN om een student te deactiveren of later weer te heractiveren.
         </p>
+        <p className="section-note">Delete-policy: {deletePolicySummary}</p>
 
         <dl className="meta-grid">
           <div>

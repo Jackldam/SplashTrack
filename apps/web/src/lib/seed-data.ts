@@ -26,6 +26,37 @@ export const DEMO_USERS = [
   },
 ] as const;
 
+export const DEMO_STUDENTS = [
+  {
+    firstName: 'Saar',
+    lastName: 'de Vries',
+    dateOfBirth: '2018-02-14',
+    swimLevel: 'Watergewenning',
+    isActive: true,
+  },
+  {
+    firstName: 'Milan',
+    lastName: 'Jansen',
+    dateOfBirth: '2017-06-03',
+    swimLevel: 'Diploma A',
+    isActive: true,
+  },
+  {
+    firstName: 'Nora',
+    lastName: 'Visser',
+    dateOfBirth: '2016-11-21',
+    swimLevel: 'Diploma B',
+    isActive: true,
+  },
+  {
+    firstName: 'Timo',
+    lastName: 'Bakker',
+    dateOfBirth: '2015-09-09',
+    swimLevel: 'Diploma A',
+    isActive: false,
+  },
+] as const;
+
 export const FOUNDATION_SEED_AUDIT = {
   action: 'foundation.seeded',
   entityType: 'system',
@@ -34,5 +65,11 @@ export const FOUNDATION_SEED_AUDIT = {
   metadata: {
     note: 'Idempotent Prisma foundation seed for local/demo environments only.',
     seededUsers: DEMO_USERS.map(({ email, role }) => ({ email, role })),
+    seededStudents: DEMO_STUDENTS.map(({ firstName, lastName, swimLevel, isActive }) => ({
+      firstName,
+      lastName,
+      swimLevel,
+      isActive,
+    })),
   },
 } as const;

@@ -45,11 +45,11 @@ The caveat is planning/documentation drift. The code moved a bit faster than the
 - Per-organization duplicate guard via normalized identity key
 
 ### Not done yet
-- true delete flow and corresponding data-retention policy
+- true delete flow beyond the explicit phase-1 policy of deactivate/reactivate only
 - attendance/enrollment/group assignment relations
 - instructor/schedule slices
-- Prisma migration/backfill for existing `identityKey` rows in shared environments
-- integration/E2E coverage for server actions and protected student routes
+- executed Prisma migration/backfill for existing `identityKey` rows in shared environments
+- DB-backed integration/E2E coverage for server actions and protected student routes
 
 ## Recommended near-term priorities
 

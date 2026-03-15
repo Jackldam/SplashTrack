@@ -44,6 +44,8 @@ Vanaf repository-root:
 - student detail
 - guarded create/update flows
 - deactivate/reactivate lifecycle flow via `isActive`
+- explicit phase-1 delete policy: no hard delete, archive via deactivate/reactivate
+- identity-key duplicate protection across active and inactive student records
 - audit logging on student mutations
 
 ## Current product direction
