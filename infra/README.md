@@ -3,6 +3,7 @@
 Deze map is gereserveerd voor aanvullende infra-assets rond de nieuwe web-stack.
 
 Voor deze foundation-branch staat de actieve containerconfiguratie in:
+
 - `apps/web/Dockerfile`
 - `docker-compose.yml`
 
