@@ -6,6 +6,19 @@ import type { AuthContext } from './authz';
 import { canAccessOrganizationAdmin } from './organization-admin';
 
 function createContext(role: (typeof APP_ROLES)[keyof typeof APP_ROLES]): AuthContext {
+  const organization = {
+    id: 'org-1',
+    slug: 'demo-org',
+    name: 'Demo Org',
+    parentOrganizationId: null,
+    parentOrganization: null,
+  };
+  const membership = {
+    id: 'membership-1',
+    role,
+    organization,
+  };
+
   return {
     session: {
       session: {
@@ -27,16 +40,13 @@ function createContext(role: (typeof APP_ROLES)[keyof typeof APP_ROLES]): AuthCo
         isActive: true,
       },
     },
-    membership: {
-      id: 'membership-1',
-      role,
-      organization: {
-        id: 'org-1',
-        slug: 'demo-org',
-        name: 'Demo Org',
-      },
-    },
+    membership,
+    currentMembership: membership,
+    activeOrganization: organization,
+    allMemberships: [membership],
     capabilities: collectCapabilities(role),
+    isHeadOrganization: true,
+    childOrganizations: [],
   };
 }
 
@@ -48,6 +58,10 @@ test('organization admin access is limited to owner/admin capabilities', () => {
   const noMembershipContext: AuthContext = {
     ...createContext(APP_ROLES.ADMIN),
     membership: null,
+    currentMembership: null,
+    activeOrganization: null,
+    allMemberships: [],
+    isHeadOrganization: false,
     capabilities: [CAPABILITIES.dashboardAccess],
   };
 

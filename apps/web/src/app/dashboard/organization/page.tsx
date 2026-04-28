@@ -139,6 +139,11 @@ export default async function OrganizationAdminPage() {
             <Link className="button secondary-button" href="/dashboard/organization/welcome">
               Beheer welkomstpagina
             </Link>
+            {authContext.capabilities.includes(CAPABILITIES.organizationSuborgManage) ? (
+              <Link className="button secondary-button" href="/dashboard/organization/sub-organizations">
+                Beheer sub-organizations
+              </Link>
+            ) : null}
           </div>
         </div>
 

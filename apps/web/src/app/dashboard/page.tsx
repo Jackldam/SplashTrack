@@ -34,11 +34,15 @@ function WelcomeCard({ card }: { card: WelcomePageCard }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<{ organization?: string }> }) {
+  const resolvedSearchParams = await searchParams;
   const [authContext, language] = await Promise.all([
-    requireAuthContext({
-      capability: CAPABILITIES.dashboardAccess,
-    }),
+    requireAuthContext(
+      {
+        capability: CAPABILITIES.dashboardAccess,
+      },
+      { organizationSlug: resolvedSearchParams?.organization },
+    ),
     getCurrentLanguage(),
   ]);
   const copy = dictionary[getCopyLanguage(language)];

@@ -3,18 +3,20 @@ import assert from 'node:assert/strict';
 
 import { APP_ROLES, CAPABILITIES, collectCapabilities, hasRequiredAccess } from './authz-core';
 
-test('collectCapabilities maps foundation roles to expected capabilities', () => {
-  assert.deepEqual(collectCapabilities(APP_ROLES.OWNER), [
+test('collectCapabilities maps roles and delegated overrides to expected capabilities', () => {
+  assert.ok(collectCapabilities(APP_ROLES.OWNER).includes(CAPABILITIES.organizationSuborgManage));
+  assert.ok(collectCapabilities(APP_ROLES.OWNER).includes(CAPABILITIES.organizationOwner));
+  assert.deepEqual(collectCapabilities(APP_ROLES.MEMBER), [
     CAPABILITIES.dashboardAccess,
-    CAPABILITIES.organizationAdmin,
-    CAPABILITIES.organizationOwner,
+    CAPABILITIES.studentsRead,
+    CAPABILITIES.groupsRead,
   ]);
-  assert.deepEqual(collectCapabilities(APP_ROLES.ADMIN), [
-    CAPABILITIES.dashboardAccess,
-    CAPABILITIES.organizationAdmin,
-  ]);
-  assert.deepEqual(collectCapabilities(APP_ROLES.MEMBER), [CAPABILITIES.dashboardAccess]);
   assert.deepEqual(collectCapabilities(null), []);
+  assert.ok(
+    collectCapabilities(APP_ROLES.ADMIN, [CAPABILITIES.organizationSuborgManage]).includes(
+      CAPABILITIES.organizationSuborgManage,
+    ),
+  );
 });
 
 test('hasRequiredAccess enforces both role and capability requirements', () => {
@@ -37,6 +39,10 @@ test('hasRequiredAccess enforces both role and capability requirements', () => {
   );
   assert.equal(
     hasRequiredAccess(adminContext, { capability: CAPABILITIES.organizationOwner }),
+    false,
+  );
+  assert.equal(
+    hasRequiredAccess(adminContext, { capability: CAPABILITIES.organizationSuborgManage }),
     false,
   );
 });

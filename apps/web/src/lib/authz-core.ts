@@ -12,6 +12,16 @@ export const CAPABILITIES = {
   dashboardAccess: 'dashboard:access',
   organizationAdmin: 'organization:admin',
   organizationOwner: 'organization:owner',
+  organizationSuborgCreate: 'organization:suborg:create',
+  organizationSuborgManage: 'organization:suborg:manage',
+  organizationMembersManage: 'organization:members:manage',
+  organizationMembersRole: 'organization:members:role',
+  studentsRead: 'students:read',
+  studentsWrite: 'students:write',
+  groupsRead: 'groups:read',
+  groupsWrite: 'groups:write',
+  welcomeManage: 'welcome:manage',
+  translationsManage: 'translations:manage',
 } as const;
 
 export type AppCapability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -23,22 +33,38 @@ export type AccessRequirement = {
   roles?: AppRole[];
 };
 
+export const ALL_CAPABILITIES = Object.values(CAPABILITIES);
+
 const roleCapabilities: Record<AppRole, AppCapability[]> = {
-  [APP_ROLES.OWNER]: [
+  [APP_ROLES.OWNER]: ALL_CAPABILITIES,
+  [APP_ROLES.ADMIN]: [
     CAPABILITIES.dashboardAccess,
     CAPABILITIES.organizationAdmin,
-    CAPABILITIES.organizationOwner,
+    CAPABILITIES.organizationMembersManage,
+    CAPABILITIES.studentsRead,
+    CAPABILITIES.studentsWrite,
+    CAPABILITIES.groupsRead,
+    CAPABILITIES.groupsWrite,
+    CAPABILITIES.welcomeManage,
+    CAPABILITIES.translationsManage,
   ],
-  [APP_ROLES.ADMIN]: [CAPABILITIES.dashboardAccess, CAPABILITIES.organizationAdmin],
-  [APP_ROLES.MEMBER]: [CAPABILITIES.dashboardAccess],
+  [APP_ROLES.MEMBER]: [
+    CAPABILITIES.dashboardAccess,
+    CAPABILITIES.studentsRead,
+    CAPABILITIES.groupsRead,
+  ],
 };
 
-export function collectCapabilities(role: AppRole | null) {
+export function isAppCapability(value: string): value is AppCapability {
+  return (ALL_CAPABILITIES as string[]).includes(value);
+}
+
+export function collectCapabilities(role: AppRole | null, overrides: AppCapability[] = []) {
   if (!role) {
     return [] as AppCapability[];
   }
 
-  return roleCapabilities[role];
+  return [...new Set([...roleCapabilities[role], ...overrides])];
 }
 
 export function resolveAllowedCapabilities(requirement: AccessRequirement) {

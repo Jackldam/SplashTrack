@@ -16,6 +16,8 @@ const coreRoutes = [
   { name: 'organization', path: '/dashboard/organization', auth: true },
   { name: 'organization-users', path: '/dashboard/organization/users', auth: true },
   { name: 'organization-welcome', path: '/dashboard/organization/welcome', auth: true },
+  { name: 'organization-suborgs', path: '/dashboard/organization/sub-organizations', auth: true },
+  { name: 'organization-suborgs-new', path: '/dashboard/organization/sub-organizations/new', auth: true },
   { name: 'translations', path: '/dashboard/translations', auth: true },
 ];
 

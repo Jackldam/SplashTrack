@@ -2,14 +2,18 @@ import Link from 'next/link';
 
 import { SignOutButton } from '@/app/dashboard/sign-out-button';
 import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { selectActiveOrganizationAction } from '@/lib/organization-selection-actions';
 import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
 import { canAccessOrganizationAdmin } from '@/lib/organization-admin';
 
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const [authContext, language] = await Promise.all([
-    requireAuthContext({
-      capability: CAPABILITIES.dashboardAccess,
-    }),
+    requireAuthContext(
+      {
+        capability: CAPABILITIES.dashboardAccess,
+      },
+      { allowMissingActiveOrganization: true },
+    ),
     getCurrentLanguage(),
   ]);
   const copy = dictionary[getCopyLanguage(language)];
@@ -40,10 +44,32 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
             <dd>{authContext.membership?.organization.name ?? copy.dashboard.notLinked}</dd>
           </div>
           <div>
+            <dt>Scope</dt>
+            <dd>{authContext.isHeadOrganization ? 'Head organization' : 'Sub-organization'}</dd>
+          </div>
+          <div>
             <dt>{copy.dashboard.capabilities}</dt>
             <dd>{authContext.capabilities.join(', ')}</dd>
           </div>
         </dl>
+
+        {authContext.allMemberships.length > 1 ? (
+          <form action={selectActiveOrganizationAction} className="inline-form">
+            <label className="sr-only" htmlFor="organizationSlug">
+              Active organization
+            </label>
+            <select id="organizationSlug" name="organizationSlug" defaultValue={authContext.activeOrganization?.slug}>
+              {authContext.allMemberships.map((membership) => (
+                <option key={membership.id} value={membership.organization.slug}>
+                  {membership.organization.name} ({membership.role})
+                </option>
+              ))}
+            </select>
+            <button className="button secondary-button" type="submit">
+              Switch org
+            </button>
+          </form>
+        ) : null}
 
         <nav className="dashboard-nav" aria-label={copy.dashboard.navLabel}>
           <Link className="button secondary-button" href="/">
@@ -69,6 +95,11 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
               <Link className="button secondary-button" href="/dashboard/organization/welcome">
                 {copy.common.welcomePage}
               </Link>
+              {authContext.capabilities.includes(CAPABILITIES.organizationSuborgManage) ? (
+                <Link className="button secondary-button" href="/dashboard/organization/sub-organizations">
+                  Sub-organizations
+                </Link>
+              ) : null}
               <Link className="button secondary-button" href="/dashboard/translations">
                 Translations
               </Link>

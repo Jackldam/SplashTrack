@@ -34,6 +34,7 @@ model User {
   auditLogs           AuditLog[]                @relation("AuditLogActorUser")
   welcomePagesCreated OrganizationWelcomePage[] @relation("WelcomePageCreatedBy")
   welcomePagesUpdated OrganizationWelcomePage[] @relation("WelcomePageUpdatedBy")
+  capabilitiesGranted OrganizationMemberCapability[] @relation("CapabilityGrantedBy")
 
   @@index([createdAt])
 }
@@ -86,18 +87,22 @@ model Verification {
 }
 
 model Organization {
-  id          String                   @id @default(cuid())
-  slug        String                   @unique
-  name        String
-  isActive    Boolean                  @default(true)
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
-  members     OrganizationMember[]
-  auditLogs   AuditLog[]
-  students    Student[]
-  swimGroups  SwimGroup[]
-  welcomePage OrganizationWelcomePage?
+  id                   String                   @id @default(cuid())
+  slug                 String                   @unique
+  name                 String
+  parentOrganizationId String?
+  isActive             Boolean                  @default(true)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  parentOrganization   Organization?            @relation("OrganizationHierarchy", fields: [parentOrganizationId], references: [id], onDelete: Restrict)
+  childOrganizations   Organization[]           @relation("OrganizationHierarchy")
+  members              OrganizationMember[]
+  auditLogs            AuditLog[]
+  students             Student[]
+  swimGroups           SwimGroup[]
+  welcomePage          OrganizationWelcomePage?
 
+  @@index([parentOrganizationId])
   @@index([createdAt])
 }
 
@@ -182,10 +187,25 @@ model OrganizationMember {
   updatedAt      DateTime               @updatedAt
   organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  capabilities   OrganizationMemberCapability[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([userId])
+}
+
+model OrganizationMemberCapability {
+  id                   String             @id @default(cuid())
+  organizationMemberId String
+  capability           String
+  grantedAt            DateTime           @default(now())
+  grantedByUserId      String?
+  organizationMember   OrganizationMember @relation(fields: [organizationMemberId], references: [id], onDelete: Cascade)
+  grantedByUser        User?              @relation("CapabilityGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationMemberId, capability])
+  @@index([capability])
+  @@index([grantedByUserId])
 }
 
 model AuditLog {
