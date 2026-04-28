@@ -20,18 +20,20 @@ enum AuditActorType {
 }
 
 model User {
-  id                   String               @id @default(cuid())
-  email                String               @unique
-  emailVerified        Boolean              @default(false)
-  name                 String?
-  image                String?
-  isActive             Boolean              @default(true)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  accounts             Account[]
-  sessions             Session[]
-  organizationMembers  OrganizationMember[]
-  auditLogs            AuditLog[]           @relation("AuditLogActorUser")
+  id                  String                    @id @default(cuid())
+  email               String                    @unique
+  emailVerified       Boolean                   @default(false)
+  name                String?
+  image               String?
+  isActive            Boolean                   @default(true)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  accounts            Account[]
+  sessions            Session[]
+  organizationMembers OrganizationMember[]
+  auditLogs           AuditLog[]                @relation("AuditLogActorUser")
+  welcomePagesCreated OrganizationWelcomePage[] @relation("WelcomePageCreatedBy")
+  welcomePagesUpdated OrganizationWelcomePage[] @relation("WelcomePageUpdatedBy")
 
   @@index([createdAt])
 }
@@ -84,18 +86,41 @@ model Verification {
 }
 
 model Organization {
-  id          String               @id @default(cuid())
-  slug        String               @unique
+  id          String                   @id @default(cuid())
+  slug        String                   @unique
   name        String
-  isActive    Boolean              @default(true)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  isActive    Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
   members     OrganizationMember[]
   auditLogs   AuditLog[]
   students    Student[]
   swimGroups  SwimGroup[]
+  welcomePage OrganizationWelcomePage?
 
   @@index([createdAt])
+}
+
+model OrganizationWelcomePage {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  title          String
+  subtitle       String?
+  body           String
+  ctaLabel       String?
+  ctaHref        String?
+  cards          Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdById    String?
+  updatedById    String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User?        @relation("WelcomePageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?        @relation("WelcomePageUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, updatedAt])
+  @@index([createdById])
+  @@index([updatedById])
 }
 
 model Student {

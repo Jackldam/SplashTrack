@@ -136,6 +136,9 @@ export default async function OrganizationAdminPage() {
             <Link className="button secondary-button" href="/dashboard/organization/users">
               Open user admin
             </Link>
+            <Link className="button secondary-button" href="/dashboard/organization/welcome">
+              Beheer welkomstpagina
+            </Link>
           </div>
         </div>
 
@@ -169,15 +172,15 @@ export default async function OrganizationAdminPage() {
 
                 return (
                   <tr key={member.id}>
-                    <td>{member.user.name ?? 'Onbekend'}</td>
-                    <td>{member.user.email}</td>
-                    <td>{member.role}</td>
-                    <td>{member.user.isActive ? 'Actief' : 'Inactief'}</td>
-                    <td>
+                    <td data-label="Naam">{member.user.name ?? 'Onbekend'}</td>
+                    <td data-label="Email">{member.user.email}</td>
+                    <td data-label="Rol">{member.role}</td>
+                    <td data-label="User status">{member.user.isActive ? 'Actief' : 'Inactief'}</td>
+                    <td data-label="Membership">
                       {member.isActive ? 'Actief' : 'Inactief'}
                       {member.user.emailVerified ? ' · verified' : ' · unverified'}
                     </td>
-                    <td>
+                    <td data-label="Role management">
                       {member.availableActions.canManageRoles ? (
                         <MembershipRoleForm
                           membershipId={member.id}
@@ -192,7 +195,7 @@ export default async function OrganizationAdminPage() {
                         </span>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Membership actie">
                       {actionLabel && actionId ? (
                         <MembershipActionForm
                           membershipId={member.id}
@@ -208,7 +211,7 @@ export default async function OrganizationAdminPage() {
                         <span className="section-note">Geen veilige actie beschikbaar</span>
                       )}
                     </td>
-                    <td>{formatDateTime(member.createdAt)}</td>
+                    <td data-label="Sinds">{formatDateTime(member.createdAt)}</td>
                   </tr>
                 );
               })}

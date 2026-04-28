@@ -1,9 +1,21 @@
 import { z } from 'zod';
 
+const trustedOriginsSchema = z
+  .string()
+  .optional()
+  .transform((value) =>
+    value
+      ?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? [],
+  )
+  .pipe(z.array(z.string().url()));
+
 const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   APP_BASE_URL: z.string().url().default('http://localhost:3000'),
+  AUTH_TRUSTED_ORIGINS: trustedOriginsSchema,
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default('SplashTrack'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   DATABASE_URL: z.string().min(1).default('postgresql://splashtrack:splashtrack@postgres:5432/splashtrack'),
@@ -18,6 +30,7 @@ const parsedBaseEnv = baseEnvSchema.safeParse({
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
   APP_BASE_URL: process.env.APP_BASE_URL,
+  AUTH_TRUSTED_ORIGINS: process.env.AUTH_TRUSTED_ORIGINS,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
   LOG_LEVEL: process.env.LOG_LEVEL,
   DATABASE_URL: process.env.DATABASE_URL,
@@ -28,11 +41,16 @@ if (!parsedBaseEnv.success) {
   throw new Error(`Invalid environment configuration: ${parsedBaseEnv.error.message}`);
 }
 
+const defaultTrustedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
 export const appConfig = {
   nodeEnv: parsedBaseEnv.data.NODE_ENV,
   port: parsedBaseEnv.data.PORT,
   appName: parsedBaseEnv.data.NEXT_PUBLIC_APP_NAME,
   appBaseUrl: parsedBaseEnv.data.APP_BASE_URL,
+  authTrustedOrigins: Array.from(
+    new Set([parsedBaseEnv.data.APP_BASE_URL, ...defaultTrustedOrigins, ...parsedBaseEnv.data.AUTH_TRUSTED_ORIGINS]),
+  ),
   logLevel: parsedBaseEnv.data.LOG_LEVEL,
   databaseUrl: parsedBaseEnv.data.DATABASE_URL,
   directUrl: parsedBaseEnv.data.DIRECT_URL,

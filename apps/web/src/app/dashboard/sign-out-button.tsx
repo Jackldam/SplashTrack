@@ -5,7 +5,12 @@ import { useState } from 'react';
 
 import { authClient } from '@/lib/auth-client';
 
-export function SignOutButton() {
+type SignOutButtonProps = {
+  label: string;
+  pendingLabel: string;
+};
+
+export function SignOutButton({ label, pendingLabel }: SignOutButtonProps) {
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
 
@@ -29,7 +34,7 @@ export function SignOutButton() {
 
   return (
     <button className="button" disabled={isPending} onClick={handleSignOut} type="button">
-      {isPending ? 'Bezig...' : 'Sign out'}
+      {isPending ? pendingLabel : label}
     </button>
   );
 }

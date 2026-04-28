@@ -149,14 +149,14 @@ export default async function StudentDetailPage({
               <tbody>
                 {student.groupMemberships.map((membership) => (
                   <tr key={membership.membershipId}>
-                    <td>
+                    <td data-label="Groep">
                       <Link className="text-link" href={`/dashboard/groups/${membership.groupId}`}>
                         {membership.groupName}
                       </Link>
                     </td>
-                    <td>{membership.swimLevel}</td>
-                    <td>{membership.groupIsActive ? 'Actief' : 'Inactief'}</td>
-                    <td>{formatDateTime(membership.enrolledAt)}</td>
+                    <td data-label="Niveau">{membership.swimLevel}</td>
+                    <td data-label="Groep status">{membership.groupIsActive ? 'Actief' : 'Inactief'}</td>
+                    <td data-label="Ingeschreven">{formatDateTime(membership.enrolledAt)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -15,6 +15,7 @@
     "lint:web": "npm run lint --workspace @splashtrack/web",
     "typecheck:web": "npm run typecheck --workspace @splashtrack/web",
     "test:web": "npm run test --workspace @splashtrack/web",
-    "check:web": "npm run check --workspace @splashtrack/web"
+    "check:web": "npm run check --workspace @splashtrack/web",
+    "e2e:web": "npm run e2e --workspace @splashtrack/web"
   }
 }

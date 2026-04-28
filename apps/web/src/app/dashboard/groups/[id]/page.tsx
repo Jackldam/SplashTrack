@@ -123,16 +123,16 @@ export default async function GroupDetailPage({
               <tbody>
                 {group.members.map((member) => (
                   <tr key={member.membershipId}>
-                    <td>
+                    <td data-label="Naam">
                       <Link className="text-link" href={`/dashboard/students/${member.studentId}`}>
                         {member.displayName}
                       </Link>
                     </td>
-                    <td>{member.swimLevel}</td>
-                    <td>{member.isActive ? 'Actief' : 'Inactief'}</td>
-                    <td>{formatDateTime(member.enrolledAt)}</td>
+                    <td data-label="Niveau">{member.swimLevel}</td>
+                    <td data-label="Student status">{member.isActive ? 'Actief' : 'Inactief'}</td>
+                    <td data-label="Ingeschreven">{formatDateTime(member.enrolledAt)}</td>
                     {canManageGroup ? (
-                      <td>
+                      <td data-label="Actie">
                         <RemoveStudentForm
                           groupId={group.id}
                           studentId={member.studentId}

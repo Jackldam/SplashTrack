@@ -6,11 +6,21 @@ import { useState } from 'react';
 
 import { authClient } from '@/lib/auth-client';
 
+type LoginFormCopy = {
+  email: string;
+  password: string;
+  submit: string;
+  pending: string;
+  backHome: string;
+  failed: string;
+};
+
 type LoginFormProps = {
+  copy: LoginFormCopy;
   redirectTo?: string;
 };
 
-export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
+export function LoginForm({ copy, redirectTo = '/dashboard' }: LoginFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +41,7 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
     setIsPending(false);
 
     if (result.error) {
-      setErrorMessage(result.error.message ?? 'Inloggen is niet gelukt.');
+      setErrorMessage(result.error.message ?? copy.failed);
       return;
     }
 
@@ -42,7 +52,7 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
   return (
     <form className="auth-form" onSubmit={handleSubmit}>
       <label className="field">
-        <span>E-mail</span>
+        <span>{copy.email}</span>
         <input
           autoComplete="email"
           name="email"
@@ -54,7 +64,7 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
       </label>
 
       <label className="field">
-        <span>Wachtwoord</span>
+        <span>{copy.password}</span>
         <input
           autoComplete="current-password"
           minLength={8}
@@ -69,11 +79,11 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
       {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
 
       <button className="button" disabled={isPending} type="submit">
-        {isPending ? 'Bezig...' : 'Inloggen'}
+        {isPending ? copy.pending : copy.submit}
       </button>
 
       <Link className="text-link" href="/">
-        Terug naar home
+        {copy.backHome}
       </Link>
     </form>
   );

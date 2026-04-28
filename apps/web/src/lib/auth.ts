@@ -11,6 +11,7 @@ export function getAuth() {
   return betterAuth({
     appName: appConfig.appName,
     baseURL: appConfig.appBaseUrl,
+    trustedOrigins: appConfig.authTrustedOrigins,
     secret: betterAuthSecret,
     database: prismaAdapter(prisma, {
       provider: 'postgresql',

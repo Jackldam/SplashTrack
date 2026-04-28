@@ -1,0 +1,416 @@
+{
+  "languages": [
+    "nl",
+    "en"
+  ],
+  "entries": {
+    "active": {
+      "nl": "Actief",
+      "en": "Active"
+    },
+    "inactive": {
+      "nl": "Inactief",
+      "en": "Inactive"
+    },
+    "unknown": {
+      "nl": "Onbekend",
+      "en": "Unknown"
+    },
+    "saveChanges": {
+      "nl": "Wijzigingen opslaan",
+      "en": "Save changes"
+    },
+    "saving": {
+      "nl": "Opslaan...",
+      "en": "Saving..."
+    },
+    "backToOverview": {
+      "nl": "Terug naar overzicht",
+      "en": "Back to overview"
+    },
+    "backToGroup": {
+      "nl": "Terug naar groep",
+      "en": "Back to group"
+    },
+    "backToStudents": {
+      "nl": "Terug naar studenten",
+      "en": "Back to students"
+    },
+    "backToUsers": {
+      "nl": "Terug naar users",
+      "en": "Back to users"
+    },
+    "createStudent": {
+      "nl": "Student aanmaken",
+      "en": "Create student"
+    },
+    "createGroup": {
+      "nl": "Groep aanmaken",
+      "en": "Create group"
+    },
+    "createUser": {
+      "nl": "User aanmaken",
+      "en": "Create user"
+    },
+    "firstName": {
+      "nl": "Voornaam",
+      "en": "First name"
+    },
+    "lastName": {
+      "nl": "Achternaam",
+      "en": "Last name"
+    },
+    "birthDate": {
+      "nl": "Geboortedatum",
+      "en": "Date of birth"
+    },
+    "level": {
+      "nl": "Niveau",
+      "en": "Level"
+    },
+    "status": {
+      "nl": "Status",
+      "en": "Status"
+    },
+    "name": {
+      "nl": "Naam",
+      "en": "Name"
+    },
+    "email": {
+      "nl": "Email",
+      "en": "Email"
+    },
+    "role": {
+      "nl": "Rol",
+      "en": "Role"
+    },
+    "action": {
+      "nl": "Actie",
+      "en": "Action"
+    },
+    "since": {
+      "nl": "Sinds",
+      "en": "Since"
+    },
+    "created": {
+      "nl": "Aangemaakt",
+      "en": "Created"
+    },
+    "updated": {
+      "nl": "Laatst gewijzigd",
+      "en": "Last updated"
+    },
+    "organization": {
+      "nl": "Organization",
+      "en": "Organization"
+    },
+    "studentDirectory": {
+      "nl": "Student directory",
+      "en": "Student directory"
+    },
+    "currentStudents": {
+      "nl": "Huidige studenten",
+      "en": "Current students"
+    },
+    "noStudentsFound": {
+      "nl": "Geen studenten gevonden",
+      "en": "No students found"
+    },
+    "groups": {
+      "nl": "Zwemgroepen",
+      "en": "Swim groups"
+    },
+    "groupManagement": {
+      "nl": "Groepsbeheer",
+      "en": "Group management"
+    },
+    "allGroups": {
+      "nl": "Alle groepen",
+      "en": "All groups"
+    },
+    "groupName": {
+      "nl": "Groepsnaam",
+      "en": "Group name"
+    },
+    "groupDetail": {
+      "nl": "Groepdetail",
+      "en": "Group detail"
+    },
+    "groupEdit": {
+      "nl": "Groep bewerken",
+      "en": "Edit group"
+    },
+    "newGroup": {
+      "nl": "Nieuwe zwemgroep",
+      "en": "New swim group"
+    },
+    "participants": {
+      "nl": "Deelnemers",
+      "en": "Participants"
+    },
+    "enrollStudent": {
+      "nl": "Student inschrijven",
+      "en": "Enroll student"
+    },
+    "unenroll": {
+      "nl": "Uitschrijven",
+      "en": "Unenroll"
+    },
+    "userAdmin": {
+      "nl": "User admin",
+      "en": "User admin"
+    },
+    "organizationUsers": {
+      "nl": "Organization users",
+      "en": "Organization users"
+    },
+    "newUser": {
+      "nl": "Nieuwe user",
+      "en": "New user"
+    },
+    "password": {
+      "nl": "Wachtwoord",
+      "en": "Password"
+    },
+    "newPassword": {
+      "nl": "Nieuw wachtwoord",
+      "en": "New password"
+    },
+    "verification": {
+      "nl": "Verificatie",
+      "en": "Verification"
+    },
+    "edit": {
+      "nl": "Bewerken",
+      "en": "Edit"
+    },
+    "rawMetadata": {
+      "nl": "Ruwe metadata",
+      "en": "Raw metadata"
+    },
+    "studentCreatePage": {
+      "nl": "Nieuwe student",
+      "en": "New student"
+    },
+    "studentEditPage": {
+      "nl": "Student edit",
+      "en": "Student edit"
+    },
+    "studentDetailPage": {
+      "nl": "Student detail",
+      "en": "Student detail"
+    },
+    "levelSpread": {
+      "nl": "Level spread",
+      "en": "Level spread"
+    },
+    "activeStudentsPerLevel": {
+      "nl": "Actieve studenten per niveau",
+      "en": "Active students per level"
+    },
+    "directory": {
+      "nl": "Directory",
+      "en": "Directory"
+    },
+    "allStatuses": {
+      "nl": "Alle statussen",
+      "en": "All statuses"
+    },
+    "total": {
+      "nl": "Totaal",
+      "en": "Total"
+    },
+    "searchExample": {
+      "nl": "Bijv. Mila, De Vries of Diploma A",
+      "en": "E.g. Mila, De Vries or Diploma A"
+    },
+    "applyFilters": {
+      "nl": "Filters toepassen",
+      "en": "Apply filters"
+    },
+    "resetFilters": {
+      "nl": "Reset filters",
+      "en": "Reset filters"
+    },
+    "noActiveStudentData": {
+      "nl": "Nog geen actieve studentdata",
+      "en": "No active student data yet"
+    },
+    "noGroupMemberships": {
+      "nl": "Geen groepslidmaatschappen",
+      "en": "No group memberships"
+    },
+    "recentChanges": {
+      "nl": "Recente wijzigingen",
+      "en": "Recent changes"
+    },
+    "studentActivity": {
+      "nl": "Student activity",
+      "en": "Student activity"
+    },
+    "noStudentActivity": {
+      "nl": "Nog geen studentactiviteit",
+      "en": "No student activity yet"
+    },
+    "groupMemberships": {
+      "nl": "Groepslidmaatschappen",
+      "en": "Group memberships"
+    },
+    "groupStatus": {
+      "nl": "Groep status",
+      "en": "Group status"
+    },
+    "enrolled": {
+      "nl": "Ingeschreven",
+      "en": "Enrolled"
+    },
+    "studentStatus": {
+      "nl": "Student status",
+      "en": "Student status"
+    },
+    "noParticipants": {
+      "nl": "Geen deelnemers",
+      "en": "No participants"
+    },
+    "enrollment": {
+      "nl": "Inschrijving",
+      "en": "Enrollment"
+    },
+    "addStudentToGroup": {
+      "nl": "Student toevoegen aan groep",
+      "en": "Add student to group"
+    },
+    "allActiveStudentsAlreadyEnrolled": {
+      "nl": "Alle actieve studenten zijn al ingeschreven in deze groep.",
+      "en": "All active students are already enrolled in this group."
+    },
+    "selectStudent": {
+      "nl": "— Selecteer een student —",
+      "en": "— Select a student —"
+    },
+    "totalGroups": {
+      "nl": "Totaal groepen",
+      "en": "Total groups"
+    },
+    "activeParticipants": {
+      "nl": "Actieve deelnemers",
+      "en": "Active participants"
+    },
+    "noSwimGroups": {
+      "nl": "Nog geen zwemgroepen",
+      "en": "No swim groups yet"
+    },
+    "userEdit": {
+      "nl": "User edit",
+      "en": "User edit"
+    },
+    "userCreate": {
+      "nl": "User create",
+      "en": "User create"
+    },
+    "userStatus": {
+      "nl": "User status",
+      "en": "User status"
+    },
+    "membership": {
+      "nl": "Membership",
+      "en": "Membership"
+    },
+    "membershipOverview": {
+      "nl": "Membership overview",
+      "en": "Membership overview"
+    },
+    "currentOrganizationMembers": {
+      "nl": "Huidige organization members",
+      "en": "Current organization members"
+    },
+    "membershipAction": {
+      "nl": "Membership actie",
+      "en": "Membership action"
+    },
+    "roleManagement": {
+      "nl": "Role management",
+      "en": "Role management"
+    },
+    "activateMembership": {
+      "nl": "Activeer membership",
+      "en": "Activate membership"
+    },
+    "deactivateMembership": {
+      "nl": "Deactiveer membership",
+      "en": "Deactivate membership"
+    },
+    "noSafeAction": {
+      "nl": "Geen veilige actie beschikbaar",
+      "en": "No safe action available"
+    },
+    "auditLogBase": {
+      "nl": "Audit log basis",
+      "en": "Audit log foundation"
+    },
+    "recentOrganizationEvents": {
+      "nl": "Recente organization events",
+      "en": "Recent organization events"
+    },
+    "noAuditEvents": {
+      "nl": "Nog geen audit events",
+      "en": "No audit events yet"
+    },
+    "target": {
+      "nl": "Target",
+      "en": "Target"
+    },
+    "roleChange": {
+      "nl": "Rolwijziging",
+      "en": "Role change"
+    },
+    "statusChange": {
+      "nl": "Statuswijziging",
+      "en": "Status change"
+    },
+    "performedAs": {
+      "nl": "Uitgevoerd als",
+      "en": "Performed as"
+    },
+    "emptyPassword": {
+      "nl": "Leeg laten om niet te wijzigen",
+      "en": "Leave empty to keep unchanged"
+    },
+    "pageNotFoundBody": {
+      "nl": "De gevraagde route bestaat nog niet in deze nieuwe frontend foundation.",
+      "en": "The requested route does not exist yet in this new frontend foundation."
+    },
+    "forbiddenBody": {
+      "nl": "Je account heeft onvoldoende rechten voor deze route.",
+      "en": "Your account does not have enough permissions for this route."
+    },
+    "goDashboard": {
+      "nl": "Naar dashboard",
+      "en": "Go to dashboard"
+    },
+    "somethingWentWrongEyebrow": {
+      "nl": "Something went wrong",
+      "en": "Something went wrong"
+    },
+    "errorBody": {
+      "nl": "Probeer het opnieuw. Als dit blijft gebeuren, controleer dan de logs.",
+      "en": "Try again. If this keeps happening, check the logs."
+    },
+    "notFoundTitle": {
+      "nl": "Pagina niet gevonden",
+      "en": "Page not found"
+    },
+    "forbiddenTitle": {
+      "nl": "Toegang geweigerd",
+      "en": "Access denied"
+    },
+    "errorTitle": {
+      "nl": "Er is een fout opgetreden.",
+      "en": "Something went wrong."
+    },
+    "tryAgain": {
+      "nl": "Opnieuw proberen",
+      "en": "Try again"
+    }
+  }
+}

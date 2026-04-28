@@ -89,17 +89,17 @@ export default async function GroupsPage() {
               <tbody>
                 {summary.groups.map((group) => (
                   <tr key={group.id}>
-                    <td>
+                    <td data-label="Naam">
                       <Link className="text-link" href={`/dashboard/groups/${group.id}`}>
                         {group.name}
                       </Link>
                     </td>
-                    <td>{group.swimLevel}</td>
-                    <td>{group.memberCount}</td>
-                    <td>{group.isActive ? 'Actief' : 'Inactief'}</td>
-                    <td>{formatDate(group.createdAt)}</td>
+                    <td data-label="Niveau">{group.swimLevel}</td>
+                    <td data-label="Actieve deelnemers">{group.memberCount}</td>
+                    <td data-label="Status">{group.isActive ? 'Actief' : 'Inactief'}</td>
+                    <td data-label="Aangemaakt">{formatDate(group.createdAt)}</td>
                     {canManageGroups ? (
-                      <td>
+                      <td data-label="Actie">
                         <Link
                           className="text-link"
                           href={`/dashboard/groups/${group.id}/edit`}

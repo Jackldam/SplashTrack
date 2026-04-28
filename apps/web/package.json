@@ -11,10 +11,12 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "prisma:generate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma generate",
-    "prisma:validate": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma validate",
-    "prisma:seed": "DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed",
-    "postinstall": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:seed": "prisma db seed",
+    "postinstall": "prisma generate",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.5.5",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.0",
+    "@playwright/test": "^1.59.1",
     "@types/node": "22.13.14",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",

@@ -65,14 +65,14 @@ export default async function OrganizationUsersPage() {
             <tbody>
               {summary.users.map((user) => (
                 <tr key={user.membershipId}>
-                  <td>{user.name ?? 'Onbekend'}</td>
-                  <td>{user.email}</td>
-                  <td>{user.role}</td>
-                  <td>{user.userIsActive ? 'Actief' : 'Inactief'}</td>
-                  <td>{user.membershipIsActive ? 'Actief' : 'Inactief'}</td>
-                  <td>{user.emailVerified ? 'Verified' : 'Unverified'}</td>
-                  <td>{formatDateTime(user.createdAt)}</td>
-                  <td>
+                  <td data-label="Naam">{user.name ?? 'Onbekend'}</td>
+                  <td data-label="Email">{user.email}</td>
+                  <td data-label="Rol">{user.role}</td>
+                  <td data-label="User">{user.userIsActive ? 'Actief' : 'Inactief'}</td>
+                  <td data-label="Membership">{user.membershipIsActive ? 'Actief' : 'Inactief'}</td>
+                  <td data-label="Verificatie">{user.emailVerified ? 'Verified' : 'Unverified'}</td>
+                  <td data-label="Sinds">{formatDateTime(user.createdAt)}</td>
+                  <td data-label="Actie">
                     <Link className="text-link" href={`/dashboard/organization/users/${user.membershipId}/edit`}>
                       Bewerken
                     </Link>

@@ -214,15 +214,15 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
               <tbody>
                 {summary.students.map((student) => (
                   <tr key={student.id}>
-                    <td>
+                    <td data-label="Naam">
                       <Link className="text-link" href={`/dashboard/students/${student.id}`}>
                         {student.displayName}
                       </Link>
                     </td>
-                    <td>{formatDate(student.dateOfBirth)}</td>
-                    <td>{student.swimLevel}</td>
-                    <td>{student.isActive ? 'Actief' : 'Inactief'}</td>
-                    <td>{formatDate(student.createdAt)}</td>
+                    <td data-label="Geboortedatum">{formatDate(student.dateOfBirth)}</td>
+                    <td data-label="Niveau">{student.swimLevel}</td>
+                    <td data-label="Status">{student.isActive ? 'Actief' : 'Inactief'}</td>
+                    <td data-label="Sinds">{formatDate(student.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

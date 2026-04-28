@@ -287,6 +287,9 @@ node_modules/
 .npm/
 .next/
 out/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/e2e/.tmp/
 apps/web/.env.local
 apps/web/.env*.local
 *.tsbuildinfo
