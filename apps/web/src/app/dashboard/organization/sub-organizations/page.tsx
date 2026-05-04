@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getSubOrganizationList } from '@/lib/sub-organization-admin';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getSubOrganizationList } from '@/features/organizations/sub-admin';
 
 export default async function SubOrganizationsPage() {
   const authContext = await requireAuthContext({ capability: CAPABILITIES.organizationSuborgManage });

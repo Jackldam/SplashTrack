@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { toggleSwimGroupLifecycleAction } from '@/lib/swim-group-actions';
+import { toggleSwimGroupLifecycleAction } from '@/features/swimming-groups/actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

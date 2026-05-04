@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getStudentDeletePolicySummary } from '@/lib/student-policy';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getStudentDeletePolicySummary } from '@/features/students/policy';
 
 import { StudentCreateForm } from './student-create-form';
 

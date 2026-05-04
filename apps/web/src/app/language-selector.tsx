@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { languageCookieName, type Language } from '@/lib/i18n-shared';
+import { languageCookieName, type Language } from '@/shared/i18n-shared';
 
 const languageLabels: Record<string, string> = {
   nl: 'Nederlands',

@@ -4,9 +4,9 @@ import { AuditActorType } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 
 import { initialWelcomePageActionResult, type WelcomePageActionResult } from '@/app/dashboard/organization/welcome/form-state';
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { buildWelcomePageContentFromFormData } from '@/lib/welcome-page';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { prisma } from '@/shared/prisma';
+import { buildWelcomePageContentFromFormData } from '@/features/welcome-page';
 
 export async function saveWelcomePage(
   _previousState: WelcomePageActionResult = initialWelcomePageActionResult,

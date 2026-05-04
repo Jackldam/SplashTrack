@@ -1,10 +1,10 @@
 import Link from 'next/link';
 
 import { SignOutButton } from '@/app/dashboard/sign-out-button';
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { selectActiveOrganizationAction } from '@/lib/organization-selection-actions';
-import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
-import { canAccessOrganizationAdmin } from '@/lib/organization-admin';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { selectActiveOrganizationAction } from '@/features/organizations/selection-actions';
+import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/shared/i18n';
+import { canAccessOrganizationAdmin } from '@/features/organizations/admin';
 
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const [authContext, language] = await Promise.all([

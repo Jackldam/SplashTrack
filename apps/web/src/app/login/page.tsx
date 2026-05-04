@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 
 import { LoginForm } from '@/app/login/login-form';
-import { getAuthSession } from '@/lib/auth-session';
-import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
+import { getAuthSession } from '@/auth/session';
+import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/shared/i18n';
 
 type LoginPageProps = {
   searchParams?: Promise<{

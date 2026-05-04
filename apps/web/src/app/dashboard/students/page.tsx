@@ -1,12 +1,12 @@
 import Link from 'next/link';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
 import {
   buildStudentDirectoryStatusLabel,
   parseStudentDirectoryQuery,
   type StudentDirectoryStatusFilter,
-} from '@/lib/student-directory-filters';
-import { getStudentDirectorySummary } from '@/lib/student-directory';
+} from '@/features/students/directory-filters';
+import { getStudentDirectorySummary } from '@/features/students/directory';
 
 function formatDate(value: Date | null) {
   if (!value) {

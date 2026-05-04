@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { createOrganizationUserAction } from '@/lib/user-admin-actions';
+import { createOrganizationUserAction } from '@/features/user-admin-actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

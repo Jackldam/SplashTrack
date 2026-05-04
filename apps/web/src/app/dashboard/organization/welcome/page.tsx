@@ -1,6 +1,6 @@
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { resolveWelcomePageContent } from '@/lib/welcome-page';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { prisma } from '@/shared/prisma';
+import { resolveWelcomePageContent } from '@/features/welcome-page';
 
 import { WelcomePageEditor } from './welcome-page-editor';
 

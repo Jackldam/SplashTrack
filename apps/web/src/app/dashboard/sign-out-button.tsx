@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { authClient } from '@/lib/auth-client';
+import { authClient } from '@/auth/client';
 
 type SignOutButtonProps = {
   label: string;

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getStudentDetail } from '@/lib/student-detail';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getStudentDetail } from '@/features/students/detail';
 
 import { StudentEditForm } from './student-edit-form';
 

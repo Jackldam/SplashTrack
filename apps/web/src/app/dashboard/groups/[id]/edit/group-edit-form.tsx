@@ -2,8 +2,8 @@
 
 import { useActionState } from 'react';
 
-import { updateSwimGroupAction } from '@/lib/swim-group-actions';
-import type { SwimGroupDetail } from '@/lib/swim-group-admin';
+import { updateSwimGroupAction } from '@/features/swimming-groups/actions';
+import type { SwimGroupDetail } from '@/features/swimming-groups/admin';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

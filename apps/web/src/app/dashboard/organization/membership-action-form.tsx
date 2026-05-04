@@ -2,12 +2,12 @@
 
 import { useActionState, useEffect, useMemo, useState } from 'react';
 
-import { executeOrganizationMembershipAction } from '@/lib/organization-admin-actions';
+import { executeOrganizationMembershipAction } from '@/features/organizations/admin-actions';
 import {
   DEFAULT_ORGANIZATION_ADMIN_ACTION_RESULT,
   ORGANIZATION_ADMIN_ACTIONS,
   type OrganizationAdminActionResult,
-} from '@/lib/organization-admin-action-core';
+} from '@/features/organizations/admin-action-core';
 
 type MembershipActionFormProps = {
   membershipId: string;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { readTranslationStore } from '@/lib/translation-store';
+import { readTranslationStore } from '@/shared/translation-store';
 
 export async function GET() {
   const store = await readTranslationStore();

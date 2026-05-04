@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getSubOrganizationUsers } from '@/lib/sub-organization-admin';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getSubOrganizationUsers } from '@/features/organizations/sub-admin';
 import { SubOrganizationMemberForm } from '../../sub-organization-forms';
 
 export default async function SubOrganizationUsersPage({ params }: { params: Promise<{ organizationId: string }> }) {

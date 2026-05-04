@@ -5,7 +5,7 @@ import { useActionState } from 'react';
 
 import { resetWelcomePage, saveWelcomePage } from '@/app/dashboard/organization/welcome/actions';
 import { initialWelcomePageActionResult } from '@/app/dashboard/organization/welcome/form-state';
-import { MAX_WELCOME_CARDS, type WelcomePageContent } from '@/lib/welcome-page';
+import { MAX_WELCOME_CARDS, type WelcomePageContent } from '@/features/welcome-page';
 
 function StatusMessage({ state }: { state: typeof initialWelcomePageActionResult }) {
   if (state.status === 'idle') {

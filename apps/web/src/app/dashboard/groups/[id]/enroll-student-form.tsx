@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { enrollStudentAction } from '@/lib/swim-group-actions';
+import { enrollStudentAction } from '@/features/swimming-groups/actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

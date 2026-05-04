@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getOrganizationUserDetail } from '@/lib/user-admin';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getOrganizationUserDetail } from '@/features/user-admin';
 
 import { UserEditForm } from './user-edit-form';
 

@@ -1,0 +1,201 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for production deployment'
+        required: true
+        type: string
+
+env:
+  NODE_ENV: production
+  NEXT_PUBLIC_APP_URL: ${{ secrets.PRD_APP_URL || 'https://splashtrack.local' }}
+  DATABASE_URL: ${{ secrets.PRD_DATABASE_URL }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --include=dev
+
+      - name: Lint
+        run: npm run lint:web
+
+      - name: Typecheck
+        run: npm run typecheck:web
+
+      - name: Run all tests
+        run: npm run test:web
+
+      - name: Run e2e tests
+        run: npm run e2e:web
+
+      - name: Build
+        run: npm run build:web
+
+      - name: Store build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: apps/web/.next/
+          retention-days: 7
+
+  request-approval:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.PRD_APP_URL }}
+    steps:
+      - name: Verify deployment criteria
+        run: |
+          echo "✅ All validation checks passed"
+          echo "⚠️ This is a PRODUCTION deployment"
+          echo ""
+          echo "Version: ${{ github.event.inputs.version }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo ""
+          echo "Deployment requires explicit manual approval"
+          echo "Ensure you have:"
+          echo "  - Reviewed all changes since last production release"
+          echo "  - Validated in UAT environment"
+          echo "  - Have rollback plan ready"
+          echo "  - Backup of current production state"
+
+  backup:
+    needs: request-approval
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Create production backup
+        run: |
+          echo "Creating backup of current production state..."
+          # TODO: Implement backup strategy
+          # Examples:
+          # - Database backup
+          # - File system snapshot
+          # - Container image tagging
+          echo "Backup creation would occur here"
+
+      - name: Archive backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: prd-backup-${{ github.event.inputs.version }}
+          path: backups/
+          retention-days: 30
+
+  deploy:
+    needs: [request-approval, backup]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.PRD_APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: apps/web/.next/
+
+      - name: Deploy to Production
+        run: |
+          echo "🚀 DEPLOYING TO PRODUCTION"
+          echo "Version: ${{ github.event.inputs.version }}"
+          # TODO: Add actual production deployment logic
+          # Examples:
+          # - Blue-green deployment
+          # - Canary release
+          # - Rolling update
+          # - Cloud platform deploy (Vercel, AWS, Kubernetes, etc.)
+          echo "Production deployment would occur here"
+
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # TODO: Add production health checks
+          # curl -f https://splashtrack.local/api/health || exit 1
+          # curl -f https://splashtrack.local/api/version || exit 1
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying production deployment..."
+          # TODO: Add deployment verification
+          # - Check version endpoint
+          # - Validate critical flows
+          # - Check error rates
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ PRODUCTION DEPLOYMENT SUCCESSFUL"
+          echo "Version: ${{ github.event.inputs.version }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "❌ PRODUCTION DEPLOYMENT FAILED"
+          echo "Initiating rollback..."
+          # TODO: Implement automatic rollback
+          # - Revert to previous version
+          # - Restore from backup
+          # - Notify team immediately
+          echo "Rollback would occur here"
+
+      - name: Notify team
+        if: always()
+        run: |
+          echo "Production deployment status: ${{ job.status }}"
+          # TODO: Send notifications to team
+          # - Slack
+          # - Email
+          # - PagerDuty
+          # - Datadog
+
+  tag-release:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release tag
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
+          # git push origin v${{ github.event.inputs.version }}
+          echo "✅ Release tag created: v${{ github.event.inputs.version }}"
+
+      - name: Create GitHub release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          release_name: Release ${{ github.event.inputs.version }}
+          body: |
+            # Production Release v${{ github.event.inputs.version }}
+            
+            **Deployment Reason:** ${{ github.event.inputs.reason }}
+            
+            **Deployed at:** ${{ github.event.repository.html_url }}/releases/tag/v${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false

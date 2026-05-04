@@ -1,8 +1,8 @@
 import Link from 'next/link';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { ORGANIZATION_ADMIN_ACTIONS } from '@/lib/organization-admin-action-core';
-import { getOrganizationAdminSummary } from '@/lib/organization-admin';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { ORGANIZATION_ADMIN_ACTIONS } from '@/features/organizations/admin-action-core';
+import { getOrganizationAdminSummary } from '@/features/organizations/admin';
 
 import { MembershipActionForm, MembershipRoleForm } from './membership-action-form';
 

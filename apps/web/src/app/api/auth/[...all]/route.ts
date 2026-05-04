@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { toNextJsHandler } from 'better-auth/next-js';
 
-import { getAuth } from '@/lib/auth';
+import { getAuth } from '@/auth/auth';
 
 export async function GET(request: NextRequest) {
   return toNextJsHandler(getAuth()).GET(request);

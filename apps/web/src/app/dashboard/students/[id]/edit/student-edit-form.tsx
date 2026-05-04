@@ -2,8 +2,8 @@
 
 import { useActionState } from 'react';
 
-import { updateStudentAction } from '@/lib/student-actions';
-import type { StudentDetail } from '@/lib/student-detail';
+import { updateStudentAction } from '@/features/students/actions';
+import type { StudentDetail } from '@/features/students/detail';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 import { LanguageSelector } from '@/app/language-selector';
-import { appConfig } from '@/lib/env';
-import { dictionary, getAvailableLanguages, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
+import { appConfig } from '@/shared/env';
+import { dictionary, getAvailableLanguages, getCopyLanguage, getCurrentLanguage } from '@/shared/i18n';
 
 export const metadata: Metadata = {
   title: appConfig.appName,

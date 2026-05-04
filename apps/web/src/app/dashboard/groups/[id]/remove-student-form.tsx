@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { removeStudentFromGroupAction } from '@/lib/swim-group-actions';
+import { removeStudentFromGroupAction } from '@/features/swimming-groups/actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

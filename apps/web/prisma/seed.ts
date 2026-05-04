@@ -7,8 +7,8 @@ import {
   DEMO_SWIM_GROUPS,
   DEMO_USERS,
   FOUNDATION_SEED_AUDIT,
-} from '@/lib/seed-data';
-import { buildStudentIdentityKey } from '@/lib/student-identity';
+} from '@/shared/seed-data';
+import { buildStudentIdentityKey } from '@/features/students/identity';
 
 const prisma = new PrismaClient();
 

@@ -6,7 +6,7 @@ import {
   createSubOrganizationAction,
   updateSubOrganizationAction,
   upsertSubOrganizationMemberAction,
-} from '@/lib/sub-organization-admin-actions';
+} from '@/features/organizations/sub-admin-actions';
 const DELEGABLE_CAPABILITIES = [
   'dashboard:access',
   'organization:admin',

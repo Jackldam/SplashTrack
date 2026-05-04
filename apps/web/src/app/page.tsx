@@ -1,9 +1,9 @@
 import Link from 'next/link';
 
-import { CAPABILITIES, getAuthContext } from '@/lib/authz';
-import { appConfig } from '@/lib/env';
-import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
-import { getBaseUrl } from '@/lib/utils';
+import { CAPABILITIES, getAuthContext } from '@/rbac/index';
+import { appConfig } from '@/shared/env';
+import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/shared/i18n';
+import { getBaseUrl } from '@/shared/utils';
 
 export default async function HomePage() {
   const [authContext, language] = await Promise.all([getAuthContext(), getCurrentLanguage()]);

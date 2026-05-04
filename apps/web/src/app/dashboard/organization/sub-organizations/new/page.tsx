@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
 import { SubOrganizationCreateForm } from '../sub-organization-forms';
 
 export default async function NewSubOrganizationPage() {

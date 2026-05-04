@@ -2,8 +2,8 @@
 
 import { useActionState } from 'react';
 
-import type { OrganizationUserDetail } from '@/lib/user-admin';
-import { updateOrganizationUserAction } from '@/lib/user-admin-actions';
+import type { OrganizationUserDetail } from '@/features/user-admin';
+import { updateOrganizationUserAction } from '@/features/user-admin-actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

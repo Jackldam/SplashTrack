@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
 
 import { UserCreateForm } from './user-create-form';
 

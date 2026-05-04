@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { createStudentAction } from '@/lib/student-actions';
+import { createStudentAction } from '@/features/students/actions';
 
 const INITIAL_ACTION_STATE = { status: 'idle' as const, message: '' };
 

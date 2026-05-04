@@ -4,7 +4,7 @@ import { type ChangeEvent, useActionState, useEffect, useMemo, useState } from '
 
 import { addLanguage, saveTranslations } from '@/app/dashboard/translations/actions';
 import { initialTranslationFormState } from '@/app/dashboard/translations/form-state';
-import type { TranslationStore } from '@/lib/translation-store';
+import type { TranslationStore } from '@/shared/translation-store';
 
 function fieldName(key: string, language: string) {
   return `entry:${encodeURIComponent(key)}:${encodeURIComponent(language)}`;

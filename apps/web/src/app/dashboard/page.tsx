@@ -1,10 +1,10 @@
 import Link from 'next/link';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/lib/i18n';
-import { canAccessOrganizationAdmin } from '@/lib/organization-admin';
-import { prisma } from '@/lib/prisma';
-import { resolveWelcomePageContent, type WelcomePageCard } from '@/lib/welcome-page';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { dictionary, getCopyLanguage, getCurrentLanguage } from '@/shared/i18n';
+import { canAccessOrganizationAdmin } from '@/features/organizations/admin';
+import { prisma } from '@/shared/prisma';
+import { resolveWelcomePageContent, type WelcomePageCard } from '@/features/welcome-page';
 
 function WelcomeLink({ className, href, children }: { className: string; href: string; children: React.ReactNode }) {
   const isExternal = href.startsWith('https://');

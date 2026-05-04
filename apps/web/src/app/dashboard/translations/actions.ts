@@ -11,7 +11,7 @@ import {
   readTranslationStore,
   writeCustomTranslationStore,
   type TranslationStore,
-} from '@/lib/translation-store';
+} from '@/shared/translation-store';
 
 function decodeStructuredFieldName(key: string, language: string) {
   return `entry:${encodeURIComponent(key)}:${encodeURIComponent(language)}`;

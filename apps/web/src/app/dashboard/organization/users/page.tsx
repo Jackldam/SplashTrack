@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getOrganizationUsers } from '@/lib/user-admin';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getOrganizationUsers } from '@/features/user-admin';
 
 function formatDateTime(value: Date) {
   return new Intl.DateTimeFormat('nl-NL', {

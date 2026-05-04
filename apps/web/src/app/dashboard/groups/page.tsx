@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getSwimGroupSummary } from '@/lib/swim-group-admin';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getSwimGroupSummary } from '@/features/swimming-groups/admin';
 
 function formatDate(value: Date) {
   return new Intl.DateTimeFormat('nl-NL', {

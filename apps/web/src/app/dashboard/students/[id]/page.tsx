@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getRecentStudentAuditActivity } from '@/lib/student-audit';
-import { getStudentDetail } from '@/lib/student-detail';
-import { getStudentDeletePolicySummary } from '@/lib/student-policy';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getRecentStudentAuditActivity } from '@/audit/student';
+import { getStudentDetail } from '@/features/students/detail';
+import { getStudentDeletePolicySummary } from '@/features/students/policy';
 
 import { StudentLifecycleForm } from './student-lifecycle-form';
 

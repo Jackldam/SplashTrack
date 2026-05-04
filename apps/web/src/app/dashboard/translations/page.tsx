@@ -1,5 +1,5 @@
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { readTranslationStore } from '@/lib/translation-store';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { readTranslationStore } from '@/shared/translation-store';
 import { TranslationEditor } from './translation-editor';
 
 export default async function TranslationManagementPage() {

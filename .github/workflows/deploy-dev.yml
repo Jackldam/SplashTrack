@@ -1,0 +1,70 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  NODE_ENV: development
+  NEXT_PUBLIC_APP_URL: ${{ secrets.DEV_APP_URL || 'http://localhost:3000' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --include=dev
+
+      - name: Lint
+        run: npm run lint:web
+
+      - name: Typecheck
+        run: npm run typecheck:web
+
+      - name: Run tests
+        run: npm run test:web
+
+      - name: Build
+        run: npm run build:web
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to DEV
+        run: |
+          echo "Deploying to development environment..."
+          # TODO: Add actual deployment logic
+          # Examples:
+          # - Push to dev server via SSH
+          # - Deploy to cloud platform (Vercel, AWS, etc.)
+          # - Use deployment tool (Docker, PM2, etc.)
+          echo "DEV deployment would occur here"
+
+      - name: Health check
+        run: |
+          echo "Running health check..."
+          # TODO: Add health check curl or similar
+          # curl http://localhost:3000/api/health
+
+      - name: Notify on success
+        if: success()
+        run: echo "✅ Dev deployment successful"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Dev deployment failed"

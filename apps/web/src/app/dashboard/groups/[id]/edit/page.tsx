@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getSwimGroupDetail } from '@/lib/swim-group-admin';
+import { APP_ROLES, CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getSwimGroupDetail } from '@/features/swimming-groups/admin';
 
 import { GroupEditForm } from './group-edit-form';
 

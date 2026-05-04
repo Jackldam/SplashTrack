@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
-import { selectActiveOrganizationAction } from '@/lib/organization-selection-actions';
-import { getAuthContext } from '@/lib/authz';
+import { selectActiveOrganizationAction } from '@/features/organizations/selection-actions';
+import { getAuthContext } from '@/rbac/index';
 
 export default async function OrganizationSelectPage() {
   const authContext = await getAuthContext({ allowMissingActiveOrganization: true });

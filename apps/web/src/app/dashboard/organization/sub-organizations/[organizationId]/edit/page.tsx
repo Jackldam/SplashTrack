@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { CAPABILITIES, requireAuthContext } from '@/lib/authz';
-import { getSubOrganizationDetail } from '@/lib/sub-organization-admin';
+import { CAPABILITIES, requireAuthContext } from '@/rbac/index';
+import { getSubOrganizationDetail } from '@/features/organizations/sub-admin';
 import { SubOrganizationEditForm } from '../../sub-organization-forms';
 
 export default async function EditSubOrganizationPage({ params }: { params: Promise<{ organizationId: string }> }) {

@@ -6,7 +6,7 @@ import test, { after, before, beforeEach } from 'node:test';
 
 type ActionsModule = typeof import('./actions');
 type FormStateModule = typeof import('./form-state');
-type StoreModule = typeof import('../../../lib/translation-store');
+type StoreModule = typeof import('@/shared/translation-store');
 
 let originalCwd: string;
 let tempDir: string;
@@ -20,7 +20,7 @@ before(async () => {
   process.chdir(tempDir);
   actions = await import('./actions');
   formState = await import('./form-state');
-  store = await import('../../../lib/translation-store');
+  store = await import('@/shared/translation-store');
 });
 
 beforeEach(async () => {
