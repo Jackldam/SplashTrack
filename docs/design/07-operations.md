@@ -62,12 +62,12 @@ enough to be readable by non-engineers.
 
 | | Policy |
 |---|---|
-| Database | **Per instance:** automated daily full + continuous WAL archiving. RPO ≤ 24 h, target ≤ 15 min via WAL |
+| Database | **The operator's responsibility.** We ship `backup` and `restore` commands in the image and document a recommended policy: daily full + WAL archiving, RPO ≤ 24 h |
 | Object storage | Versioned, replicated |
 | Retention of backups | 30 days rolling, plus one monthly for 12 months |
 | Encryption | Backups encrypted at rest with keys separate from the database host; special-category columns remain independently encrypted (D-013) |
-| Access | Restore requires two-person authorisation and is audited |
-| **Restore drill** | **Quarterly, into an isolated environment, timed, documented, rotating across instances** so every instance is exercised over time. A backup that has never been restored is a hypothesis |
+| Access | The operator's own control. We provide the audit event, not the policy |
+| **Restore drill** | Documented as a quarterly operator duty. A self-hoster who has never restored has no backups — the documentation must say exactly that, and the shipped `restore` command must make the drill cheap |
 | RTO | ≤ 4 hours |
 
 **Backups contain personal data and are therefore in scope for GDPR.** Two

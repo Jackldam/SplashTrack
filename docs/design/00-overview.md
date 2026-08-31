@@ -20,7 +20,7 @@
 | 10 | GDPR / privacy model | `02-security-privacy.md` §5 |
 | 11 | Trust boundaries | `02-security-privacy.md` §6 |
 | 12 | Security architecture | `02-security-privacy.md` §1–4 |
-| 13 | Deployment / isolation architecture | `03-deployment-model.md` §1 |
+| 13 | Distribution / isolation architecture | `03-deployment-model.md` §1 |
 | 14 | Theming architecture | `03-deployment-model.md` §4 |
 | 15 | Public website architecture | `03-deployment-model.md` §5 |
 | 16 | Information architecture | `04-ux.md` §1 |
@@ -39,8 +39,9 @@
 | 29 | Scalability risks | `07-operations.md` §4 |
 | 30 | Open architecture decisions | `08-open-decisions.md` |
 
-Revision: `11-revision-single-tenant.md` records the move from a multi-tenant
-to a single-tenant design (2026-08-31) and what it changed.
+Revisions: `11-revision-single-tenant.md` (multi-tenant → single-tenant) and
+`12-revision-open-source.md` (single-tenant → open-source self-hosted). Both
+dated 2026-08-31; the second supersedes the operational half of the first.
 
 Cross-cutting: `09-decision-register.md` lists every **Decision / Reason /
 Trade-off** in one table. `10-findings.md` lists gaps, inconsistencies,
@@ -51,8 +52,9 @@ the two existing repositories.
 
 ## 1. Product vision
 
-SplashTrack is a web application for organisations that teach, assess and
-certify people — deployed as **one isolated instance per organisation**
+SplashTrack is an **open-source, self-hosted** web application for organisations
+that teach, assess and certify people. It ships as a Docker image that any
+organisation downloads and runs on its own infrastructure
 (`03-deployment-model.md`) — starting with **swim schools** (the existing
 `SplashTrack` repository is explicitly *"a custom solution for swim schools"*,
 and the name, the skills/exam model and the poolside workflows all follow from
@@ -184,7 +186,7 @@ building it now.
 
 | ID | Requirement |
 |---|---|
-| R-01 | Single-tenant deployment per organisation; scripted provisioning |
+| R-01 | Ships as a self-hostable Docker image; works after one command; safe defaults; no default credentials |
 | R-02 | `Person` exists independently of `UserAccount`; a student may have no login |
 | R-03 | Authentication with MFA mandatory for privileged roles |
 | R-04 | Scoped permission authorization (org/unit/group/course/self), deny by default, server-side |
@@ -201,7 +203,7 @@ building it now.
 | R-15 | Audit logging of security- and privacy-relevant events |
 | R-16 | GDPR rights: access, rectification, erasure, export |
 | R-17 | Data retention policy with automated enforcement |
-| R-18 | DEV and UAT environments with promotable artifacts; fleet rollout automation |
+| R-18 | DEV and UAT environments; the same tag publishes the signed public image |
 | R-19 | CI blocking merges on failed tests or security checks |
 
 ### 3.2 Architecturally prepare (not built in v1)

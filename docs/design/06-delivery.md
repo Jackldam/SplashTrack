@@ -5,9 +5,9 @@
 | | DEV | UAT | PROD (per instance) |
 |---|---|---|---|
 | URL | `dev.splashtrack.sysadminheaven.com` | `uat.splashtrack.sysadminheaven.com` | TBD |
-| Purpose | Lucky develops, tests, breaks things | Jack accepts changes | One deployment per customer organisation |
+| Purpose | Lucky develops, tests, breaks things | Jack accepts changes | **Our demo/reference instance only.** Customers run their own copies we never touch |
 | Data | **Synthetic only** — seeded, never real | **Synthetic only** — production-*shaped*, not production-derived | Real personal data |
-| Deploys on | Every merge to `main` | Tagged release candidate, automatic | Tagged release, **manual approval**, rolled out in waves across the fleet |
+| Deploys on | Every merge to `main` | Tagged release candidate, automatic | Tagged release, **manual approval** — and the same tag publishes the public image |
 | Lucky access | Full lifecycle | Read-only (logs, health) | **None** |
 | Jack access | Full | Full | Full |
 | Config | Env vars per environment | Same as PROD shape | — |
@@ -36,11 +36,10 @@ by one team.
         │                              │
         │                        Jack accepts
         │                              ▼
-        └──▶ tag v1.2.0 ──────▶ fleet rollout (manual approval gate)
-                                    wave 1: internal instance
-                                    wave 2: early adopters
-                                    wave 3: remaining instances
-                                    a failed migration halts the wave
+        └──▶ tag v1.2.0 ──────▶ publish public image + release notes
+                                    ghcr.io/…/splashtrack:1.2.0
+                                    signed · SBOM · provenance
+                                    → self-hosters upgrade on their own schedule
 ```
 
 **Decision D-023 — UAT never receives a copy of production data.**
@@ -85,9 +84,12 @@ Accepted; a hotfix path that bypasses tests is how outages get worse.
 
 ### 2.2 Secrets and cloud access
 
-- Deploy credentials live in **GitHub Environments**, scoped **per instance**,
-  with required reviewers on UAT and every production instance. One instance's
-  credentials never grant access to another (D-029).
+- Deploy credentials live in **GitHub Environments** for our own dev/demo
+  instances only. We hold no credentials to any customer deployment (D-012
+  final).
+- The **release workflow** — which signs and publishes the public image — is the
+  most security-critical automation in the repository. It runs only from a tag
+  on `main`, and no contributor (including Lucky) may modify `.github/` (F-18).
 - Prefer **OIDC federation** over long-lived cloud keys.
 - PROD secrets are never readable by CI jobs triggered from a fork or from a
   pull request — only from a tag build on `main`.
@@ -123,7 +125,7 @@ end-to-end", never "Attendance backend".
 
 ### 3.3 Pull requests
 
-Required in the PR body: linked issue; what changed and why; security impact;
+Required in the PR body: linked issue; what changed and why; security impact; **upgrade impact for self-hosters** (breaking change? migration duration? operator action needed?);
 **privacy impact** (does this touch personal data? retention? erasure?);
 migration impact; test evidence; screenshots for UI changes.
 
@@ -153,7 +155,7 @@ because there is no principal.
 | **Local / DEV** | Full lifecycle: edit code, create branches, write and run tests, build containers, run migrations, deploy to DEV, read DEV logs, analyse failures, work issues, open PRs, update docs |
 | **GitHub** | Create branches, push, open/update PRs, comment, triage issues, apply labels. **Cannot** approve PRs, merge, push to `main`, change branch protection, edit workflow permissions, or manage secrets |
 | **UAT** | Read-only: health endpoints, logs (which contain no PII by design). No deploy, no database access |
-| **PROD (any instance)** | **Nothing.** No credentials exist for any customer instance. Not restricted — absent |
+| **PROD / customer instances** | **Nothing, and nothing exists to have.** No customer deployment is reachable by anyone here (D-012 final) |
 | **Secrets** | None. DEV uses generated throwaway values; UAT/PROD secrets live in GitHub Environments Lucky cannot read |
 | **Real personal data** | Never. DEV and UAT contain synthetic data only (D-023) |
 

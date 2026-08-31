@@ -283,12 +283,17 @@ authorising route, and deleted on erasure. Finding **F-04**.
 
 ### 5.1 Roles under the GDPR
 
-- Each **organisation** is the *controller* for the personal data it manages.
-- **SplashTrack (the operator)** is the *processor*, and the controller only
-  for platform-level data (organisation records, platform admin accounts).
-- This split must be reflected in a **Data Processing Agreement** per
-  organisation. That is a document, not code — but the product must not
-  contradict it. Finding **F-05**.
+- Each **organisation** is both the *controller* and the *operator* of its own
+  deployment. It runs the software on its own infrastructure.
+- **We are neither controller nor processor.** We publish software; we never
+  touch anyone's data. No data processing agreement exists between us
+  (F-05, closed).
+- The organisation still needs its own privacy notice, and its own agreements
+  with *its* sub-processors (hosting provider, email relay). The documentation
+  should say so without pretending to be legal advice.
+- **Consequence for the design:** every privacy control must work with no
+  outside help. Retention, export and erasure are features the organisation
+  operates itself, not services we perform for them.
 
 ### 5.2 Data minimisation by default
 

@@ -39,13 +39,12 @@ the field most likely to be added casually.
 route, never a public bucket path; suppressed in `SHARED_DEVICE` sessions for
 non-assigned groups; deleted on erasure.
 
-### F-05 — No Data Processing Agreement is mentioned
-**Severity: medium (legal, not technical).** Each organisation is the
-controller and SplashTrack the processor. That relationship legally requires a
-DPA. Code cannot supply one, but the product must not contradict it — and
-onboarding an organisation without one is a compliance gap.
-**Response.** Flagged as a launch prerequisite. The organisation lifecycle
-(`PENDING → ACTIVE`) is the natural place to require it before activation.
+### F-05 — **(Closed)** No Data Processing Agreement is mentioned
+Self-hosting removes the processor relationship: the organisation is both
+controller and operator, and we never touch their data. No DPA is needed
+between us. The organisation still needs its own privacy notice and, where it
+uses sub-processors (hosting, email), its own agreements — which the
+documentation should point out without pretending to be legal advice.
 
 ### F-06 — Retention and erasure conflict was unresolved
 **Severity: high.** Exam results are retained ~10 years; a data subject may
@@ -105,52 +104,78 @@ from the template rather than evolving the prototype.
 |---|---|---|
 | **Scope escape on a list query** (instructor sees students outside their groups) | High | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). *This replaces cross-tenant read as the top internal risk* |
 | Public page leaks person data | High | D-017 — no code path exists |
-| **Fleet-wide credential or image compromise** | High | Per-instance secrets, no shared control plane (D-029), signed images, protected environments |
+| **Release-pipeline or dependency compromise** | High | F-18 — pinned deps, audit gate, signed images, SBOM, provenance, tag-only release workflow |
 | Stored XSS via CMS content | High | Closed token set (D-016); server-side sanitisation on save *and* render; no arbitrary HTML/JS |
 | Shared tablet left unlocked | High | `SHARED_DEVICE` mode (D-009) |
 | Health data in a backup leak | High | Column encryption (D-013) + encrypted backups |
 | Org admin bulk-exports and leaves | Medium | Step-up, rate limit, high-severity audit event visible to the org |
-| Operator with fleet deploy rights | Medium-high | F-14 — per-instance credentials, required reviewers, audited deploys |
+| Operator runs an unpatched version | High | F-17 — advisories, in-app version warning, never-stranded upgrade path |
 | Prompt injection via GitHub issue text | Medium | D-025; human-reviewed PR is the only output channel |
 | Raw SQL bypassing reach filtering | Medium | Lint flag on `$queryRaw`/`$executeRaw`, explicit reviewer sign-off |
 | Third-party font/CDN leaking visitor IPs | Low-medium | Self-hosted curated fonts only |
 | User enumeration on public forms | Low-medium | Uniform responses, rate limits, writes go to `Inquiry` not `Person` |
 
-### F-13 — Fleet operations are now the dominant risk and were not in the brief
-**Severity: high (operational).** Single-tenancy converts a data-isolation
-problem into an operations problem. 100 customers means 100 databases, 100
-backup schedules, 100 migration targets and 100 TLS certificates. Done
-manually this fails at roughly the fifth customer.
-**Response.** Scripted provisioning (D-028), a machine-readable fleet manifest,
-waved rollouts with halt-on-failure, bounded version skew, per-instance
-monitoring and rotating restore drills. **This work must exist before the
-second customer, not after.**
+### F-13 — **(Revised)** We cannot patch what we do not operate
+**Severity: high, and unfixable by design.** Self-hosting means a vulnerable
+instance stays vulnerable until its operator upgrades. We have no fleet to
+patch — that was the point — but the residual risk is real and lands on
+schools with limited IT capacity.
+**Response.** Everything we can control, we do: safe defaults, no default
+credentials, automatic migrations, one-command upgrades, plain-language release
+notes, published security advisories, and an in-app warning when the running
+version has a known advisory (D-034). Beyond that it is the operator's duty,
+and the documentation must say so plainly rather than implying we have their
+back.
 
-### F-14 — The fleet operator is the new most-dangerous principal
-**Severity: medium-high.** With no platform super administrator inside the
-application, the concentrated power moved to whoever can deploy. That principal
-can reach every customer's instance.
-**Response.** Per-instance deploy credentials in separate GitHub Environments
-with required reviewers; no single credential that opens the whole fleet; every
-deploy audited; no standing database access — access is provisioned per
-incident and revoked after.
+### F-14 — **(Closed)** Fleet-operator threat model
+No principal has access to any customer instance, because no such access
+exists. Closed by D-012 (final).
 
-### F-15 — Scope filtering has the same failure mode tenancy did
-**Severity: high.** A missed `where` on a list query silently returns more than
-it should. This is the identical bug class as a missed tenant predicate, simply
-scoped to units and groups instead of organisations. Deleting the tenancy tests
-without replacing them would be a regression in assurance, not a simplification.
-**Response.** D-031 (reach as a required repository argument) and D-032
-(mandatory scope-escape tests per module).
+### F-16 — **(Closed)** Per-customer cost floor
+Hosting cost is the organisation's own. Closed. It reappears only if a hosted
+offering is ever added (OD-14).
 
-### F-16 — Per-customer cost floor was not considered
-**Severity: medium (commercial).** A dedicated database, storage bucket,
-certificate and monitoring per organisation sets a hard marginal cost per
-customer that shared hosting would not have. This constrains pricing and makes
-very small organisations potentially unprofitable.
-**Response.** Flagged for Jack as a commercial decision, not a technical one —
-see OD-11. Technically mitigable by co-locating several small instances on
-shared infrastructure while keeping databases and processes separate.
+### F-17 — Outdated self-hosted instances are the biggest residual risk
+**Severity: high.** The realistic failure is not a clever attack; it is a swim
+school running version 1.0 three years later, unpatched, on a server nobody
+maintains, holding children's health data.
+**Response.** The version check with advisory warning (D-034); an upgrade path
+that never strands a skipped version; migrations that survive long gaps; and
+documentation that treats upgrading as a routine operational duty rather than a
+project. Consider an explicit end-of-life policy per major version.
+
+### F-18 — Supply-chain compromise now ships to every operator
+**Severity: high.** A malicious dependency or a compromised release pipeline
+propagates to every organisation that pulls the image, and they trust it
+because it is the official artifact.
+**Response.** Pinned dependencies and lockfile; Dependabot with a blocking
+audit gate; multi-stage builds with a minimal final layer; signed images with
+provenance attestation; published SBOM; releases built only from a tag on
+`main` by a workflow no contributor — including Lucky — can modify.
+
+### F-19 — A public repository makes leaked secrets permanent
+**Severity: medium-high.** In a private repo a committed secret is a rotation
+task. In a public one it is scraped within minutes and lives in forks and
+mirrors forever.
+**Response.** Secret scanning with push protection enabled before the repo goes
+public; no real credentials in seeds, fixtures, examples or documentation; the
+image generates its own secrets on first run so no example value is ever
+plausible as a real one.
+
+### F-20 — Public issues will contain other people's personal data
+**Severity: medium.** Self-hosters debugging a problem paste logs, screenshots
+and database rows. Those will contain student names.
+**Response.** Issue templates warn explicitly and ask for redaction;
+maintainers redact on sight; the application's own logs are PII-free by design
+(`07-operations.md` §1.1), which makes an accidental paste far less damaging.
+
+### F-21 — "Open source" is not yet a licence decision
+**Severity: medium (commercial).** The brief says fully open source so any
+party can download and use it. That is a direction, not a licence. Permissive
+(MIT/Apache-2.0) allows a competitor to run a paid hosted SplashTrack;
+copyleft (AGPL-3.0) requires them to publish modifications.
+**Response.** Flagged as OD-13 — a commercial decision, not a technical one,
+and expensive to change after third-party contributions arrive.
 
 ## Scalability problems
 

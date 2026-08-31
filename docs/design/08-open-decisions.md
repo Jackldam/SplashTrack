@@ -31,7 +31,14 @@ workflow and designing for an imagined one.
 
 ---
 
-### OD-3 — Hosting target, and **who operates a customer's instance**.
+### OD-3 — **(Resolved)** Hosting: the organisation self-hosts.
+
+Answered by Jack: SplashTrack ships as an open-source Docker container that each
+organisation runs on its own infrastructure. We host only a demo/reference
+instance. What remains open is whether a *hosted* offering is ever added — see
+OD-14.
+
+<details><summary>Superseded analysis</summary>
 
 **Why it matters.** Single-tenancy makes this decision much larger than it was.
 It now determines the provisioning script, per-instance cost, backup tooling,
@@ -47,8 +54,7 @@ certificate automation and the whole fleet model.
    ability to upgrade them, and support becomes much harder.
 **Cost of delay.** **High, and higher than before** — it blocks the provisioning
 script (D-028), which now blocks UAT.
-**My recommendation:** you host, one small VPS per instance, co-locating early
-customers on shared hardware with strictly separate databases and processes.
+</details>
 Revisit when a customer contractually demands dedicated hardware.
 
 ---
@@ -138,7 +144,12 @@ concept after ten modules use it is painful.
 
 ---
 
-### OD-11 — Per-customer cost floor and minimum viable price.
+### OD-11 — **(Closed)** Per-customer cost floor.
+
+Hosting cost is the organisation's own; there is no floor on our side. Reopens
+only with a hosted offering (OD-14).
+
+<details><summary>Superseded</summary>
 
 **Why it matters.** A dedicated database, storage, certificate, backup schedule
 and monitoring per organisation creates a hard marginal cost per customer that
@@ -149,8 +160,7 @@ unprofitable to serve.
 shape in OD-3 can be chosen to fit it.
 **Cost of delay.** Medium. It does not block v1 development, but it does shape
 the hosting decision, and reversing hosting later is expensive.
-**My assumption if unanswered:** co-locate small instances on shared hardware
-to keep the floor low, while preserving separate databases and processes.
+</details>
 
 ---
 
@@ -167,3 +177,52 @@ awkward later.
 **My recommendation:** treat certificates as portable signed artefacts from the
 start (they are already immutable, numbered records — D-007). That covers the
 transfer case without any cross-instance data path.
+
+---
+
+### OD-13 — Which open-source licence?
+
+**Why it matters.** "Fully open source" is a direction, not a licence, and the
+choice is effectively irreversible once third-party contributions arrive.
+**Options.**
+- **AGPL-3.0** — anyone running a modified SplashTrack as a network service must
+  publish their modifications. Protects against a competitor building a closed
+  paid hosted version on your work. Some organisations' policies forbid AGPL.
+- **Apache-2.0** — maximum adoption, explicit patent grant. Anyone may run a
+  paid hosted SplashTrack without giving anything back.
+- **MIT** — simplest, same trade-off as Apache without the patent clause.
+**Also needed:** DCO or CLA for contributions, and a decision on trademark use
+of the name.
+**Cost of delay.** High and rising — relicensing after external contributions
+requires every contributor's agreement.
+**My recommendation: AGPL-3.0 + DCO.** It matches the intent (any party may
+download and use it), keeps improvements flowing back, and preserves the option
+of selling a hosted version yourself later. If broad enterprise adoption matters
+more than reciprocity, Apache-2.0 instead — but decide deliberately.
+
+---
+
+### OD-14 — Will there ever be a hosted "SplashTrack Cloud"?
+
+**Why it matters.** Not for v1, and the architecture supports it trivially — a
+hosted offering is just us being the operator of some instances. But it
+reintroduces the processor role, DPAs, fleet operations (F-13/F-14) and the
+per-customer cost floor (F-16), all of which we just deleted. Knowing whether
+it is on the roadmap affects the licence choice (OD-13) above all.
+**Cost of delay.** Low technically, high commercially.
+**My recommendation:** decide the licence as if the answer is yes, build as if
+the answer is no.
+
+---
+
+### OD-15 — Minimum supported operator skill level.
+
+**Why it matters.** It sets the bar for the install experience. "Comfortable
+with Docker Compose on a VPS" and "a swim school volunteer with a Synology NAS"
+are very different products — the second needs a one-click package, a
+reverse-proxy story and far more documentation.
+**Cost of delay.** Medium. It shapes documentation and packaging, not the
+architecture.
+**My assumption if unanswered:** an IT-literate operator comfortable with Docker
+Compose, TLS and backups.
+

@@ -1,150 +1,130 @@
-# 03 — Deployment Model, Theming & Public Website
+# 03 — Distribution Model, Theming & Public Website
 
-> **Revised.** This document replaces the earlier multi-tenant design. See
-> `11-revision-single-tenant.md` for what changed and why.
+> **Revised twice.** Multi-tenant → single-tenant → **self-hosted open source**.
+> See `11-revision-single-tenant.md` and `12-revision-open-source.md`.
 
-## 1. Deployment model — one instance per organisation
+## 1. Distribution model — open-source, self-hosted container
 
-**Decision D-012 (revised) — SplashTrack is a single-tenant application. Every
-organisation runs its own isolated deployment: its own application instance,
-its own database, its own storage, its own domain.**
+**Decision D-012 (final) — SplashTrack is an open-source application shipped as
+a Docker image. Each organisation downloads it and runs it on infrastructure it
+owns and controls. We operate nothing.**
 
 ```text
-zwemschool-a.nl        →  instance A  →  database A  →  storage A
-zwemschool-b.nl        →  instance B  →  database B  →  storage B
-zwemvereniging-c.nl    →  instance C  →  database C  →  storage C
-
-              no shared runtime · no shared database
-              no shared cache   · no shared storage
+  we publish            they run
+  ──────────            ────────
+  ghcr.io/…/splashtrack:1.4.0  ──▶  organisation's own server
+  docker-compose.yml           ──▶  their Docker + their Postgres
+  documentation                ──▶  their domain, their TLS, their backups
+  source code (public repo)    ──▶  auditable, forkable, self-supportable
 ```
 
-**Reason.** Isolation by deployment is categorically stronger than isolation by
-query predicate. A row-level tenancy bug is a class of vulnerability that
-cannot exist here — there is no other organisation's data in the process, in
-the database, or in the cache to leak. Given that the data includes health
-information about minors, removing an entire vulnerability class outweighs the
-efficiency of shared hosting. It also deletes a large amount of code: no
-scoping extension, no `organizationId` on ~20 tables, no composite tenant
-foreign keys, no cross-tenant test suite, no tenant cache keys. A direct win
-against the brief's *"minimale hoeveelheid code"*.
+**Reason.** The organisation is then the sole controller *and* the operator of
+its own data. There is no processor relationship, no data processing agreement,
+no third party holding health data about children, and no cross-customer path
+of any kind. Open source additionally makes the security and privacy claims in
+this design **verifiable** rather than asserted — which is worth more to a
+school board than any certification we could buy.
 
-**Trade-off.** Operational multiplicity: N instances to deploy, migrate, back
-up, monitor, patch and pay for. Fleet management becomes the dominant
-operational concern and must be automated from day one, not later (§3, finding
-**F-13**). A dedicated database per customer also sets a cost floor, and
-therefore a minimum viable price per organisation.
+**Trade-off.** We lose all operational control. We cannot patch a vulnerable
+instance, cannot see that one is failing, and cannot guarantee anyone runs a
+current version. Our influence is limited to what we ship: safe defaults, easy
+upgrades, honest release notes and a loud version check. Support becomes
+documentation and issue triage rather than intervention. Finding **F-13
+(revised)**.
 
-### 1.1 What this deletes from the design
+### 1.1 What this deletes — again
 
-| Removed | Why it is now unnecessary |
+| Removed | Why |
 |---|---|
-| `forOrganization()` scoping extension | Nothing to scope — the database holds one organisation |
-| `organizationId` on every org-scoped table | Constant value; dead weight |
-| Composite tenant foreign keys (D-006) | No cross-tenant write is representable |
-| Cross-tenant isolation test suite | The attack has no target |
-| Tenant-keyed public page cache (FM-6) | One instance, one cache |
-| Cross-organisation `Person` (D-004) and its reachability guard (F-01) | A person exists in exactly one instance |
-| Subdomain tenant resolution (D-015) | Each instance has its own domain |
-| "Platform Support cannot read tenant PII" (D-011) | No tenant data exists platform-side at all |
+| Fleet manifest, waved rollouts, version-skew monitoring | We have no fleet |
+| Provisioning script for customer instances (D-028) | The operator runs `docker compose up`; first-run setup happens in-app |
+| Per-instance deploy credentials and GitHub Environments per customer | We deploy nothing but our own dev/demo |
+| Fleet-operator threat model (F-14) | No principal has access to any customer instance |
+| Per-customer cost floor (F-16) | Hosting cost is the organisation's, not ours |
+| Data processing agreement per customer (F-05) | We never process their data |
 
-**This is the largest simplification in the design.** Roughly a third of the
-security architecture existed to defend a boundary that no longer exists.
+Combined with the single-tenant revision, **the entire operational half of the
+original design is gone.** What remains is a product and a release process.
 
-### 1.2 What remains of `Organization`
+### 1.2 What the artifact must be
 
-`Organization` survives as an **enforced singleton** — one row per instance,
-using the template's existing `PlatformBootstrap`/`PlatformSettings` pattern.
-It holds name, contact details, branding, policies and retention settings. It
-is configuration, not a tenant discriminator.
+**Decision D-033 — One application image, plus a reference `docker-compose.yml`
+that includes PostgreSQL.**
+**Reason.** "Complete application" must mean *works after one command*, or
+self-hosting fails for exactly the small organisations that most need it.
+Bundling Postgres *inside* the app image would be an anti-pattern (no clean
+upgrades, no backup story, data trapped in a container), so the image stays
+app-only and the compose file supplies the database, a volume and sane
+defaults.
+**Trade-off.** Two containers rather than one; operators wanting a managed
+database point `DATABASE_URL` elsewhere. Acceptable and expected.
 
-**Decision D-027 — Keep `Organization` as an enforced singleton rather than
-dissolving it into a settings table.**
-**Reason.** Domain objects legitimately reference "the organisation": a
-certificate is issued by one, an audit event names one, an export is labelled
-with one. A named entity keeps those references honest and keeps consolidation
-possible later without a schema rewrite.
-**Trade-off.** A foreign key that always points at the same row — mild
-redundancy accepted for referential clarity.
+Non-negotiable properties of the image:
 
-### 1.3 Structure *inside* an instance
+- **No default credentials, ever.** Secrets are generated on first run and
+  written to the data volume; the app refuses to start with a placeholder value.
+- **First-run setup wizard in-app** — create the first administrator, force MFA
+  enrolment, set organisation name and branding. Replaces D-028's script.
+- **Migrations run automatically on start**, forward-only, logged, and safe to
+  interrupt.
+- **All configuration via environment variables**, documented in one place. No
+  configuration file editing required for a standard install.
+- **Runs as non-root**, read-only root filesystem, no build tools in the final
+  layer, multi-stage build, pinned base image, published SBOM.
+- **Health and readiness endpoints** so an operator's own monitoring works.
+- **Backup and restore commands shipped with the image**, because a self-hoster
+  who cannot restore has no backups (§2).
 
-Isolation between organisations is now a deployment property. Structure *within*
-an organisation becomes the interesting problem, and it is real: a swim school
-with three pools needs an instructor at location A to be unable to browse
-location B's students.
+### 1.3 Structure inside an instance
 
-`OrganizationUnit` (inherited, ADR-021) provides a hierarchy with reach:
-
-```text
-Zwemschool Noord              (root)
- ├─ Locatie Zuidbad
- │   ├─ Groep A1
- │   └─ Groep A2
- ├─ Locatie Noorderpark
- └─ Afdeling Wedstrijdzwemmen
-```
-
-This tree is the primary scoping axis of the revised authorization model
-(`02-security-privacy.md` §2).
+Unchanged from the single-tenant revision. `Organization` is an enforced
+singleton (D-027); `OrganizationUnit` provides the internal hierarchy that the
+scoped authorization model (`02-security-privacy.md` §2) walks.
 
 ---
 
-## 2. Provisioning a new organisation
+## 2. Release and upgrade model
 
-Because every customer is a deployment, onboarding must be a **scripted,
-repeatable operation** rather than a manual checklist. This is the biggest new
-requirement created by single-tenancy.
-
-```text
-provision <org-slug> <domain>
-  ├─ create database + credentials
-  ├─ create storage bucket + credentials
-  ├─ register DNS + issue TLS certificate
-  ├─ deploy the current released image (identical artifact fleet-wide)
-  ├─ run migrations
-  ├─ seed permission catalogue, starter roles, default skill catalogue
-  ├─ first-run bootstrap → create first administrator, force MFA enrolment
-  ├─ register in the fleet manifest
-  └─ enable monitoring + backup schedule
-```
-
-**Decision D-028 — Provisioning is code in the repository, not a runbook.**
-**Reason.** A manual procedure drifts immediately, and drift across instances
-is precisely what makes fleet upgrades dangerous. Scripted provisioning also
-makes DEV and UAT genuinely production-shaped, because the same script builds
-them.
-**Trade-off.** Upfront investment before the first customer. Accepted — the
-alternative is paying it repeatedly and inconsistently.
-
-The template's `PlatformBootstrap` (enforced singleton recording the one-time
-first-run setup) is exactly the right primitive and is reused unchanged.
-
----
-
-## 3. Fleet management
+This replaces fleet management entirely. Our obligations shift from *operating*
+to *shipping responsibly*.
 
 | Concern | Approach |
 |---|---|
-| **Inventory** | A machine-readable fleet manifest in the ops repository: instance → domain → version → database → backup schedule → contact. Source of truth for every fleet operation |
-| **Upgrades** | The same image rolls out in waves: internal → early adopters → the rest. Never all at once |
-| **Version skew** | Explicitly allowed and bounded — at most one minor version behind. The manifest reports drift; exceeding the bound raises an alert |
-| **Migrations** | Run per instance during rollout, with the populated-database CI job as the safety net. A failure halts the wave |
-| **Backups** | Per instance (`07-operations.md` §2). Restore drills rotate across instances so all get exercised over time |
-| **Monitoring** | Per-instance health plus a fleet dashboard: which instances are down, behind, erroring, or near storage limits |
-| **Secrets** | Per instance, never shared. One instance's credentials must not reach another |
-| **Cost** | Tracked per instance — it is the unit economics of the product |
+| **Versioning** | Semantic versioning, strictly. Operators upgrade on their own schedule and must be able to trust the contract |
+| **Upgrade path** | Any version upgrades to any later version within a major. Migrations are forward-only, idempotent, and tested against a populated database in CI |
+| **Skipped versions** | Explicitly supported — a self-hoster who upgrades once a year must not be stranded. Migration chains are never squashed within a major version |
+| **Release notes** | Every release states: security fixes, breaking changes, migration duration risk, and required operator action. Written for an IT generalist, not for us |
+| **Security advisories** | GitHub Security Advisories + a published `SECURITY.md` with a disclosure address and response commitment |
+| **Version check** | The app checks for newer releases and **warns the administrator in-app when running a version with a known advisory**. Opt-out, no personal data sent, documented exactly (§2.1) |
+| **Backups** | We ship the commands and document the policy; executing it is the operator's duty (`07-operations.md` §2) |
+| **Support** | GitHub issues, documentation, and the source itself. No SLA is promised |
 
-**Decision D-029 — No shared control plane in v1.**
-**Reason.** A central service able to reach every instance would reintroduce
-exactly the cross-organisation attack surface single-tenancy just removed, and
-would hold credentials to every customer's data. Fleet operations run from CI
-against the manifest, with per-instance deploy credentials in GitHub
-Environments.
-**Trade-off.** No live cross-instance view inside the product; fleet visibility
-comes from monitoring and CI. Revisit only on measured need — and if it ever
-happens it should be read-only telemetry, never data access.
+### 2.1 Telemetry — the honest position
+
+**Decision D-034 — No telemetry. The only outbound call is an opt-out version
+check that sends nothing but the version it is checking.**
+**Reason.** A privacy-first product that phones home about a school's usage
+would be self-contradicting, and the code is public so any such call would be
+found and resented. The version check earns its exception because unpatched
+self-hosted instances are the single biggest residual security risk (F-17), and
+it can be implemented as a plain fetch of a static advisories file — no
+identifiers, no counters, no server-side logging we control.
+**Trade-off.** We learn nothing about adoption, usage or which features matter.
+Accepted; that information is not ours.
 
 ---
+
+## 3. Open-source considerations
+
+| Concern | Position |
+|---|---|
+| **Licence** | To be chosen — see OD-13. The choice materially affects whether a competitor may run SplashTrack as a paid hosted service |
+| **Security by design, not obscurity** | The source is public, so every control in this design must hold against an attacker who has read it. Nothing here relies on secrecy — which was already true, and is now enforced |
+| **Supply chain** | Pinned dependencies, lockfile, Dependabot, `npm audit` gate, signed images, published SBOM, provenance attestation. A compromised dependency now ships to every self-hoster (F-18) |
+| **Secrets** | No secret may ever be committed. Push protection and secret scanning are mandatory, and a leaked secret in history is permanent in a public repo |
+| **Contributions** | `CONTRIBUTING.md`, DCO or CLA (OD-13), and a rule that security-relevant changes require maintainer review regardless of author |
+| **Issue hygiene** | Public issues may contain a self-hoster's logs or screenshots. The template must warn against pasting personal data, and maintainers redact |
+| **Documentation is a feature** | For a self-hosted product, install and upgrade documentation is as load-bearing as the code. It ships in the repo and is versioned with it |
 
 ## 4. Theming architecture
 
