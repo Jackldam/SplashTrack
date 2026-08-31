@@ -1,0 +1,132 @@
+# 08 — Open Architecture Decisions
+
+These are the decisions this design deliberately does **not** make, because they
+need input that is not available to me. Each is blocking or shaping in a way
+that gets more expensive the later it is answered. Ordered by cost of delay.
+
+---
+
+### OD-1 — Does the existing SplashTrack prototype have real users or real data?
+
+**Why it matters.** D-001 discards the prototype's schema and migration
+history. That is free if the prototype was never used, and a data-migration
+project if a swim school is depending on it today.
+**Needed.** A yes/no, plus — if yes — how many organisations, how many people,
+and whether they can tolerate a cutover.
+**Cost of delay.** High. It changes whether v1 needs an import path at all.
+**My assumption if unanswered:** no production users; no import path built.
+
+---
+
+### OD-2 — Who is the first real customer, and are they a swim school?
+
+**Why it matters.** The domain model is shaped around swim education (skills,
+levels, diplomas, poolside sign-off). If the first customer is, say, a sailing
+school or a first-aid trainer, the model still fits — but the *vocabulary* and
+the default skill catalogue do not, and terminology is far cheaper to decide
+before the UI exists.
+**Needed.** One named organisation and their actual process, ideally observed.
+**Cost of delay.** High — this is the difference between designing for a real
+workflow and designing for an imagined one.
+
+---
+
+### OD-3 — Hosting target for UAT and PROD.
+
+**Why it matters.** It determines the deployment mechanism, the OIDC
+federation setup, backup tooling, object storage, TLS and wildcard DNS
+management. The subdomain tenancy decision (D-015) needs wildcard DNS and a
+wildcard certificate on day one.
+**Options.** A single VPS with Docker Compose (simplest, matches the template's
+stated infrastructure); a managed container platform; a Kubernetes cluster
+(explicitly discouraged — no demonstrated need).
+**Cost of delay.** Medium — but it blocks setting up UAT, which blocks
+acceptance testing.
+**My recommendation:** one VPS per environment with Docker Compose plus managed
+Postgres backups. It matches the template, it is cheap, and it is the KISS
+answer at this scale.
+
+---
+
+### OD-4 — Are payments and invoicing in scope within 12 months?
+
+**Why it matters.** Not for v1 — it is deferred either way. But if the answer is
+"yes, next year", then `Enrolment` must keep a clean seam and never grow a
+payment-status field, and the retention model must anticipate financial records
+(7-year fiscal retention in NL, which conflicts differently with erasure than
+diplomas do).
+**Cost of delay.** Medium. Cheap to prepare, expensive to retrofit.
+
+---
+
+### OD-5 — Guardian portal: v2 or never?
+
+**Why it matters.** `PersonRelationship` is built in v1 regardless (it is
+needed for consent on behalf of minors — F-02). But if guardians get their own
+login, the authorization model needs a "reach" concept for *"my child's data
+only"*, which is a genuinely different scoping axis from organisation
+membership.
+**Cost of delay.** Medium.
+**My recommendation:** design the relationship table now (already decided), and
+defer the portal until a customer asks. Do not build the scoping axis
+speculatively.
+
+---
+
+### OD-6 — Session timeout values for shared devices.
+
+**Why it matters.** D-009 introduces `SHARED_DEVICE` mode but the concrete
+numbers are a usability/security trade-off only the operator can make. Too
+short and instructors re-authenticate mid-lesson with wet hands; too long and a
+stolen tablet is an open door.
+**Proposed defaults.** Idle 30 min (instructor), 15 min (admin), absolute 12 h.
+**Cost of delay.** Low — configurable, decidable during UAT with real
+instructors.
+
+---
+
+### OD-7 — Encryption key management for special-category columns.
+
+**Why it matters.** D-013 encrypts medical/pastoral notes at column level. That
+creates a key that must be stored outside the database, rotated, escrowed, and
+available during restore. A lost key means permanently unreadable health data;
+a key stored next to the data provides no protection.
+**Options.** Cloud KMS (best, ties to OD-3); environment-injected key with
+documented rotation and escrow (workable); no column encryption (rejected —
+D-013 stands).
+**Cost of delay.** Medium — it blocks implementing the students module's notes.
+
+---
+
+### OD-8 — Per-organisation identity providers (SSO).
+
+**Why it matters.** The template has Microsoft Entra sign-in at the platform
+level. An organisation wanting *its own* tenant SSO is a different feature with
+real complexity (per-tenant IdP config, JIT provisioning, role mapping).
+**Cost of delay.** Low. Explicitly deferred; the architecture does not need to
+prepare for it beyond keeping authentication behind Better Auth.
+
+---
+
+### OD-9 — Is the public website expected to replace an existing site?
+
+**Why it matters.** D-017 deliberately constrains the CMS. If a prospective
+customer's current site has features outside that scope (a webshop, a booking
+funnel, a blog with categories and authors), that gap should be known now
+rather than discovered during UAT.
+**Cost of delay.** Low-medium.
+
+---
+
+### OD-10 — Terminology and language of the domain model.
+
+**Why it matters.** Code in English, UI in Dutch is the default assumption
+(the template ships NL + EN, NL default). But domain terms — *diploma*,
+*afzwemmen*, *baan*, *lesuur*, *proefzwemmen* — often have no good English
+equivalent, and a bad translation in the schema haunts the codebase forever.
+**My recommendation:** English for generic concepts (`Skill`, `Group`,
+`Enrolment`), and keep Dutch domain terms untranslated where translation loses
+meaning. Decide the glossary once, in a `docs/glossary.md`, before the first
+domain module is written.
+**Cost of delay.** Low individually, high cumulatively — renaming a schema
+concept after ten modules use it is painful.
