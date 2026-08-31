@@ -277,7 +277,7 @@ a replayed offline queue all collapse to the same row.
 |---|---|---|---|
 | `ExamSession` | courseLevelId, locationId, scheduledAt, status | N `ExamCandidate`, N `ExamAssessor` | |
 | `ExamCandidate` | examSessionId, studentProfileId, status | 0..1 `ExamResult` | |
-| `ExamAssessor` | examSessionId, personId, role, validUntil | | Supports the **external examiner** case without membership. If they record results themselves they get an individual, expiring, minimally scoped account — never a shared login (D-052) |
+| `ExamAssessor` | examSessionId, personId, role | | Records **who assessed** this session — an attribution fact, not an access grant. Access comes from an `EXAM_SESSION`-scoped role assignment (D-054). Supports the external examiner with no membership (D-052) |
 | `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, remarks? | 0..1 `Certificate` | Append-only; a correction is a new row referencing the superseded one |
 | `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | A diploma is a legal-ish artefact: issue and revoke, never delete |
 

@@ -145,6 +145,7 @@ of:
 | `UNIT` | One `OrganizationUnit` **and its descendants** | "Planner for Locatie Zuidbad" |
 | `GROUP` | One specific group | "Instructor of Groep A1" |
 | `COURSE` | One course across groups | "Examiner for Diploma B" |
+| `EXAM_SESSION` | **One single exam session** | "External examiner, Saturday 14 March" |
 | `SELF` | The holder's own records | Every authenticated person, implicitly |
 | `RELATED` | Persons the holder is related to | Guardian → their children (v2 portal, table exists in v1) |
 
@@ -161,9 +162,33 @@ requirePermission(session, 'attendance.record', { group: groupId })
 ```
 
 Resolution: does the caller hold *any* grant whose permission includes
-`attendance.record` **and** whose scope covers the referenced resource? Scope
-coverage walks the unit tree upward — a grant on `Locatie Zuidbad` covers
-`Groep A1` beneath it.
+`attendance.record` **and** whose scope covers the referenced resource?
+
+Coverage is defined per scope type, once, and nowhere else:
+
+| Scope type | Covers |
+|---|---|
+| `ORGANIZATION` | Every resource in the installation |
+| `UNIT` | The unit **and all its descendants**, and every group, session, student and exam session beneath them |
+| `GROUP` | That group, its scheduled sessions, and the students in it *for the period of their membership* |
+| `COURSE` | That course, its levels, its enrolments, and **all** its exam sessions |
+| `EXAM_SESSION` | **That one exam session only** — its candidates and their results. Nothing else, not the course, not the students' other records |
+| `SELF` | Records whose subject is the holder |
+| `RELATED` | Records whose subject is a person the holder has an active relationship with (P-04) |
+
+Only `UNIT` walks a tree. Every other scope covers exactly what it names.
+
+**Decision D-054 — `EXAM_SESSION` is a first-class scope type; there is no
+"scope-like" access that lives outside the enum.**
+**Reason.** An external examiner attends one session. `COURSE` scope would grant
+them every exam session of that course, past and future, which over-grants on
+exactly the records that matter most — a child's diploma outcome. Rather than
+inventing a special case for examiners, the scope enum gains one member and the
+general mechanism handles it. Every grant in the system is then expressible as
+`(permission, scopeType, scopeId)` with no exceptions.
+**Trade-off.** One more scope type to implement and test, and `ExamAssessor`
+(`01-domain-model.md` §3.5) becomes a projection of a role assignment rather
+than an independent access mechanism — it records *who assessed*, not *who may*.
 
 **Decision D-030 — Authorization is always resource-referenced; a bare
 permission check is not sufficient.**
@@ -207,7 +232,8 @@ highest-risk code path in the application.
 | Location Manager | `UNIT` | Everything within one location and below |
 | Planner | `UNIT` or `ORGANIZATION` | Schedules, groups, locations, instructor assignment |
 | Instructor | `GROUP` (one per group taught) | Attendance, skill sign-off, read student basics |
-| Examiner | `COURSE` or a single exam session, **always time-bounded** | Exam results only. May be an external person with no membership (D-052) |
+| Internal examiner | `COURSE`, time-bounded | Assesses any exam session of that course |
+| External examiner | `EXAM_SESSION`, always with an expiry | One session only. A `Person` with no membership (D-052) |
 | Member Administrator | `UNIT` or `ORGANIZATION` | People, **memberships** and student administration, enrolments — three distinct concepts (`01-domain-model.md` §3.1) |
 | Content Editor | `ORGANIZATION` | Public pages and branding. **No person data** |
 | Read-only Viewer | `UNIT` | Oversight and reporting |

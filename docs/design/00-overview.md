@@ -203,7 +203,7 @@ not need rework when the feature arrives — not that it is built now.
 | ID | Requirement |
 |---|---|
 | R-13 | Authentication with MFA mandatory for administrator roles |
-| R-14 | Scoped permission authorization (`ORGANIZATION` / `UNIT` / `GROUP` / `COURSE` / `SELF` / `RELATED`), deny by default, enforced server-side |
+| R-14 | Scoped permission authorization (`ORGANIZATION` / `UNIT` / `GROUP` / `COURSE` / `EXAM_SESSION` / `SELF` / `RELATED`), deny by default, enforced server-side (`02-security-privacy.md` §2.1–2.2) |
 | R-15 | **Configurable OAuth 2.0 / OIDC identity providers** (Microsoft Entra, Google, Keycloak, Okta, generic), administered in-app (D-035) |
 | R-16 | **First-run setup wizard** — organisation, first administrator, forced MFA, optional restore (D-039) |
 | R-17 | **In-app configuration** — a database-backed settings registry; at most five environment variables; no container restart for a runtime setting (D-036, D-037, D-038) |
@@ -217,7 +217,7 @@ not need rework when the feature arrives — not that it is built now.
 | R-25 | Data retention policy with automated, dry-runnable enforcement |
 | R-26 | Public surface cannot enumerate or expose any person, student, member, group or other private record (§3.4) |
 | R-27 | DEV and UAT environments; the same tag publishes the public image |
-| R-28 | CI blocking merges on failed tests, security checks, or a broken restore-from-any-release matrix |
+| R-28 | CI blocking merges on failed tests, security checks, or a broken **restore-from-every-supported-release** matrix — every release at or above `minimumRestorableVersion` (D-047, D-048) |
 | R-29 | *Conditional on OD-1:* one-time import path from the existing prototype |
 
 ### 3.2 Architecturally prepare — not built in v1
@@ -282,7 +282,7 @@ responsible for). *We cannot and do not offer an infrastructure SLA.*
 | Accessibility | WCAG 2.2 AA, including against configured brand colours | axe in E2E; contrast validated at save time |
 | Browser support | Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari first-class | Playwright matrix |
 | Localisation | NL default, EN available; no hardcoded UI strings | Lint rule + missing-key check |
-| Restore from any supported release | Succeeds and migrates forward | Restore matrix job (D-047) |
+| Restore from every supported release (≥ `minimumRestorableVersion`) | Succeeds and migrates forward | Restore matrix job (D-047, D-048) |
 | Dependency risk | No known high/critical CVEs at merge | `npm audit` + Dependabot gate |
 | Secret exposure | Zero secrets in the repository | Secret scanning + push protection |
 | Resource footprint | Runs within 1 vCPU / 1 GB RAM for a small organisation | Documented and measured on the reference deployment |
@@ -317,7 +317,7 @@ to achieve them**:
 | Goal | Recommended target | What we ship to make it achievable |
 |---|---|---|
 | Availability | 99.5% monthly | Stateless app, health and readiness endpoints, fast start, no manual migration step |
-| RPO | ≤ 24 h, ≤ 15 min with WAL archiving | Scheduled encrypted backups; backup-age warning on the dashboard (D-041) |
+| RPO | **≤ the configured backup interval; ≤ 24 h with the shipped default** | Scheduled encrypted backups; backup-age warning on the dashboard (D-041). *Sub-hour RPO requires Postgres WAL archiving / PITR, which the operator configures at database level — we neither ship nor test it, and therefore do not claim it* |
 | RTO | ≤ 4 h | One-command redeploy; restore in the setup wizard; documented drill |
 | Verified recoverability | Quarterly restore drill | Shipped `restore` command; documentation stating a never-tested backup is a hypothesis |
 
@@ -377,11 +377,13 @@ afternoon and is not a member of the organisation.
 they log in or record results themselves, they receive an individual,
 time-bounded, minimally scoped account — never a shared or generic one.**
 
-Concretely: their own `UserAccount`, a `COURSE`- or exam-session-scoped role
-carrying only `exams.assess` and `exams.results.record`, a mandatory expiry date
-after which the grant lapses automatically, MFA required as for any account with
-write access to results, and every action attributed to them by name in the audit
-trail.
+Concretely: their own `UserAccount`, and a role assignment scoped to
+`EXAM_SESSION` — a first-class scope type (D-054), not a special case — carrying
+only `exams.assess` and `exams.results.record`. The grant has a mandatory expiry
+after which it lapses automatically, MFA is required as for any account that can
+write results, and every action is attributed to them by name in the audit
+trail. An *internal* examiner may instead hold `COURSE` scope; the difference is
+deliberate and visible in the role catalogue (`02-security-privacy.md` §2.4).
 
 **Reason.** A shared "examiner" login destroys attribution on exactly the records
 that most need it — a child's diploma outcome. A full membership over-grants for

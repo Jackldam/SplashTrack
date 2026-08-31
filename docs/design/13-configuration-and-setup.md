@@ -73,21 +73,41 @@ The honest position is that **not everything can be in the database**, and
 pretending otherwise produces a chicken-and-egg failure. Three layers, and the
 first is kept deliberately tiny.
 
-### 3.1 Layer 1 — Bootstrap (environment variables, restart required)
+### 3.1 Layer 1 — Bootstrap (environment, restart required)
 
-Only what is needed to reach the database and serve a request at all:
+**Application-owned bootstrap variables** — the values the application must know
+*before* it can read its own database, or that select where its own state lives:
 
 ```text
 DATABASE_URL      where the database is
 APP_URL           the public origin (also the WebAuthn relying-party origin)
 SECRET_KEY        master key for encrypting secrets at rest (§5)
 DATA_DIR          uploads/assets path (optional, sane default)
-PORT              optional
+PORT              listen port (optional, sane default)
 ```
 
-**That is the entire environment-variable surface.** Anything else being an env
-var is a design failure to be fixed, not documented. This list is short enough
-to print in the README and never revisit.
+Separately, and **not** application-owned: standard runtime and platform
+variables an operator may need (`TZ`, `NODE_ENV`, proxy settings, a custom CA
+bundle, container resource limits). We document them where relevant but do not
+own or invent them.
+
+**Decision D-037 (revised) — Environment holds only what must be known before
+the database is readable, or what selects where state lives. Everything else
+belongs in the settings registry. Adding a variable requires an ADR stating why
+it cannot live in the database.**
+
+**Reason.** A hard numeric cap would be an arbitrary architectural rule that
+could later block genuinely necessary pre-database or platform configuration —
+a TLS trust store, a proxy, a read-only-filesystem path. The *criterion* is what
+matters, not the count: if a value can be read from the database, it must be. A
+self-hoster should still never have to grep a two-hundred-entry `.env.template`
+to find why email is failing.
+
+**Trade-off.** The rule requires judgement rather than counting, so it needs the
+ADR gate to stay honest. Settings that conventionally live in environment
+variables (SMTP host, log level) move into the database and therefore cannot be
+changed while it is unreachable — acceptable, because if the database is down,
+those are not the settings being fixed.
 
 ### 3.2 Layer 2 — Runtime settings (database, in-app, live)
 
@@ -182,33 +202,92 @@ encryption); both are answered by one key and one documented rotation path.
 
 ---
 
-## 6. First-run setup
+## 6. Start-up, setup, restore and migration — one sequence
+
+This is the **authoritative boot sequence**. Chapter 14 describes backup and
+restore mechanics; where the two appear to differ, this section defines the
+order.
+
+**Decision D-055 — The container never migrates a database whose purpose is not
+yet known. State is detected first; migration is a consequence of that state,
+never the first action.**
 
 ```text
-container starts → migrations run → no PlatformBootstrap row exists
-   → every request redirects to /setup
-   → wizard:
-        1. Organisation name, locale, timezone
-        2. First administrator account (email, password or passkey)
-        3. MFA enrolment — forced, not offered
-        4. Email settings (optional, with a test-send button)
-        5. Done → bootstrap row written, /setup permanently disabled
+container start
+  │
+  ├─ database reachable?            no → fail fast, clear error, do not retry blindly
+  │
+  ├─ inspect schema state
+  │
+  ├── EMPTY  (no tables at all)
+  │     → SETUP MODE. No migrations are run yet.
+  │       Every request redirects to /setup. The wizard asks the one question
+  │       only the operator can answer:
+  │
+  │         ┌─ New installation
+  │         │    → run migrations  → seed catalogue + starter roles
+  │         │    → create first administrator, force MFA
+  │         │    → write bootstrap record → serving
+  │         │
+  │         └─ Restore from backup
+  │              → decrypt + verify archive (nothing written until this passes)
+  │              → restore dump: old schema + old data + _prisma_migrations
+  │              → run forward migrations from that point (D-046)
+  │              → verify against manifest → serving with the original accounts
+  │
+  ├── PARTIAL  (tables exist, no bootstrap record)
+  │     → setup was interrupted. Resume SETUP MODE; do not migrate silently.
+  │
+  ├── EXISTING  (tables + bootstrap record, schema older than app)
+  │     → take automatic pre-migration backup (D-044)
+  │     → run forward migrations → serving
+  │
+  ├── CURRENT  (schema matches app)
+  │     → serving
+  │
+  └── AHEAD  (schema newer than app)
+        → REFUSE TO START. Name the image version required (D-043).
+```
+
+**Reason.** An empty database is ambiguous: it is either a fresh installation or
+the first minute of a restore. Migrating it immediately resolves that ambiguity
+in the wrong direction — the operator then has a fully migrated empty schema and
+a backup that no longer restores cleanly into it. Detecting state first makes the
+two paths explicit and keeps restore a normal operation rather than a rescue.
+
+**Trade-off.** The entrypoint cannot be a naive `migrate deploy && start`; it
+carries a small state machine, and that state machine is security- and
+data-critical code. It is therefore covered by its own test matrix, one case per
+state above.
+
+### 6.1 The setup wizard
+
+Reachable **only** in `SETUP MODE` (states EMPTY and PARTIAL), so it cannot be
+re-opened once an administrator exists:
+
+```text
+0. New installation, or restore from backup?
+1. Organisation name, locale, timezone
+2. First administrator account (email, password or passkey)
+3. MFA enrolment — forced, not offered
+4. Recovery token shown once, with a required "I have stored this" step (D-040)
+5. Email settings (optional, with a test-send button)
+6. Done → bootstrap record written, /setup permanently closed
 ```
 
 `PlatformBootstrap` is the template's existing enforced-singleton first-run
-record; this reuses it unchanged. The wizard is reachable **only** while that
-row is absent, so it cannot be re-opened by an attacker later.
+record, reused unchanged.
 
 **Decision D-039 — The setup wizard is the only unauthenticated administrative
 surface, and it self-destructs.**
 **Reason.** First-run configuration is the one moment where no account can exist
 yet. Bounding that window to "before the first administrator exists" removes the
-standing unauthenticated admin surface that Vaultwarden's `ADMIN_TOKEN` model
-keeps open permanently.
+standing unauthenticated admin surface that a permanent admin-token model keeps
+open forever.
 **Trade-off.** A race exists between container start and the operator reaching
 `/setup` — whoever arrives first becomes administrator. Mitigated by printing a
-one-time setup token to the container logs that the wizard requires. The
-operator can read their own logs; a stranger on the internet cannot.
+one-time setup token to the container logs, which the wizard requires: the
+operator can read their own logs, a stranger on the internet cannot.
 
 ---
 

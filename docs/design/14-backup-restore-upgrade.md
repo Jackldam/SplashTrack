@@ -20,7 +20,7 @@ image from the inside. Any design claiming otherwise is lying. So the split is:
 |---|---|---|
 | **Backup** | Admin UI, on a running instance | Reading is safe |
 | **Restore** | **Setup wizard**, on a fresh/empty instance | Cannot overwrite a database in use |
-| **Migrate** | Automatically on container start | Deterministic, forward-only |
+| **Migrate** | Automatically on start, **once the database state is known** (§6 of `13-…`) | Deterministic, forward-only; never on an ambiguous empty database |
 | **Update** | One command by the operator; the app detects, warns and prepares | A container cannot pull its own image |
 
 This matches what Jack asked for — restore *is* in the setup page — and it is
@@ -166,23 +166,25 @@ migration runner then does exactly what it does on any ordinary upgrade — ther
 is no special restore-migration path to keep correct, which is precisely why it
 can be relied on.
 
-**Trade-off.** The restore step must run before the application's normal
-start-up migration, so the setup wizard controls the sequence rather than the
-container entrypoint. A restore therefore happens in a distinct start-up mode,
-and the entrypoint must not blindly migrate an empty database before the wizard
-has had its say.
+**Trade-off.** The restore step must run before any migration, so the entrypoint
+cannot be a naive `migrate deploy && start`. It carries the small state machine
+in `13-configuration-and-setup.md` §6 (D-055), which is itself data-critical code
+and is covered by a test matrix with one case per state.
 
 ### 4.3.1 What this obliges us to do — the actual cost
 
 The promise is easy to state and easy to break silently. Three commitments make
 it real:
 
-**Decision D-047 — CI tests restore from *every* supported release into `HEAD`,
-not just from the previous one.**
+**Decision D-047 — CI tests restore from **every supported release** into
+`HEAD` — that is, every release at or above `minimumRestorableVersion` (D-048),
+not merely the previous one.**
 
-A matrix job: for each released version, restore a stored seeded backup of that
-version into the current build, apply migrations, and assert the schema and a
-set of domain invariants. A migration that breaks restoring from v1.3 fails the
+A matrix job: for each such version, restore a stored seeded backup of it into
+the current build, apply migrations, and assert the schema and a set of domain
+invariants. Releases below the floor are not tested because they are not
+supported — the floor is the honest boundary of the promise, and the restore
+path refuses them with a message naming the intermediate version required. A migration that breaks restoring from v1.3 fails the
 build on the day it is written — not two years later on a stranger's server.
 
 **Reason.** "Skipped versions are supported" is worthless as a sentence in a
@@ -254,8 +256,15 @@ and host access, not a button in a browser.
 
 ## 5. Migration
 
-Migrations run **automatically on container start**, forward-only, before the
-application accepts traffic. The operator never runs a migration command.
+Migrations run **automatically on container start for an already-initialised
+installation**, forward-only, before the application accepts traffic. The
+operator never runs a migration command.
+
+They do **not** run on an empty or partially-initialised database: that state is
+ambiguous (fresh install or the first minute of a restore) and is resolved by the
+setup wizard first. The authoritative boot sequence is
+`13-configuration-and-setup.md` §6 (D-055); this section describes only what
+happens once the state is known.
 
 **Decision D-044 — An automatic pre-migration backup is taken whenever a start
 would apply migrations, retained for a configurable number of upgrades.**

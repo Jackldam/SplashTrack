@@ -69,7 +69,7 @@ enough to be readable by non-engineers.
 
 | | Policy |
 |---|---|
-| Database | **The operator's responsibility.** We ship `backup` and `restore` commands in the image and document a recommended policy: daily full + WAL archiving, RPO ≤ 24 h |
+| Database | **The operator's responsibility.** We ship `backup` and `restore` commands plus a scheduler. Shipped and tested recovery path: **scheduled encrypted logical backups, RPO ≤ the configured interval (default daily)**. WAL archiving / point-in-time recovery is a Postgres-level option the operator may add for a lower RPO; it is documented as such and is **not** part of the tested path |
 | Object storage | Versioned, replicated |
 | Retention of backups | 30 days rolling, plus one monthly for 12 months |
 | Encryption | Backups encrypted at rest with keys separate from the database host; special-category columns remain independently encrypted (D-013) |

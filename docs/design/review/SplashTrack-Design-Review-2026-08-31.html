@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>SplashTrack — Design Review (rev. 2)</title>
+  <title>SplashTrack — Design Review (rev. 3)</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -137,12 +137,16 @@ h2.done::after{content:"✓";color:var(--ok);font-size:.8em;margin-left:.5em}
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">SplashTrack — Design Review (rev. 2)</h1>
+<h1 class="title">SplashTrack — Design Review (rev. 3)</h1>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
 <li><a href="#splashtrack--design--architecture" id="toc-splashtrack--design--architecture">SplashTrack — Design &amp;
-Architecture</a></li>
+Architecture</a>
+<ul>
+<li><a href="#wat-er-veranderde-in-rev-3-je-vijf-correcties" id="toc-wat-er-veranderde-in-rev-3-je-vijf-correcties">Wat er veranderde
+in rev. 3 (je vijf correcties)</a></li>
+</ul></li>
 <li><a href="#splashtrack--product-vision-requirements--scope" id="toc-splashtrack--product-vision-requirements--scope">SplashTrack —
 Product Vision, Requirements &amp; Scope</a>
 <ul>
@@ -311,8 +315,8 @@ layers</a></li>
 <li><a href="#4-applying-changes-without-a-restart" id="toc-4-applying-changes-without-a-restart">4. Applying changes
 without a restart</a></li>
 <li><a href="#5-secrets-in-the-database" id="toc-5-secrets-in-the-database">5. Secrets in the database</a></li>
-<li><a href="#6-first-run-setup" id="toc-6-first-run-setup">6. First-run
-setup</a></li>
+<li><a href="#6-start-up-setup-restore-and-migration--one-sequence" id="toc-6-start-up-setup-restore-and-migration--one-sequence">6.
+Start-up, setup, restore and migration — one sequence</a></li>
 <li><a href="#7-break-glass-locked-out-of-your-own-instance" id="toc-7-break-glass-locked-out-of-your-own-instance">7. Break-glass:
 locked out of your own instance</a></li>
 <li><a href="#8-diagnostics-page" id="toc-8-diagnostics-page">8.
@@ -336,24 +340,74 @@ the settings registry</a></li>
 </nav>
 <h1 id="splashtrack--design--architecture">SplashTrack — Design &amp;
 Architecture</h1>
-<p><strong>Versie:</strong> 2026-08-31 (rev. 2, na Jacks review van
-hoofdstuk 00) <strong>Status:</strong> hoofdstukken 00–10, 13, 14 zijn
-<strong>geconsolideerd en leidend</strong>.</p>
+<p><strong>Versie:</strong> 2026-08-31 (rev. 3) <strong>Status:</strong>
+hoofdstukken 00–10, 13 en 14 zijn <strong>geconsolideerd en
+leidend</strong>. <strong>Branch:</strong>
+<code>design/architecture-phase</code> · PR #14</p>
 <blockquote>
-<p><strong>Eén architectuur, geen gelaagde revisies.</strong> Alle
-multi-tenant- en platformaannames zijn uit de actieve hoofdstukken
-verwijderd. Hoofdstuk 11 en 12 zijn <strong>historie, geen
-implementatiebron</strong> — ze leggen alleen vast hoe het ontwerp hier
-kwam. Spreken ze een actief hoofdstuk tegen, dan heeft het actieve
-hoofdstuk gelijk.</p>
+<p><strong>Eén architectuur, geen gelaagde revisies.</strong> Hoofdstuk
+11 en 12 zijn <strong>historie, geen implementatiebron</strong>. Spreken
+ze een actief hoofdstuk tegen, dan heeft het actieve hoofdstuk
+gelijk.</p>
 </blockquote>
 <blockquote>
-<p><strong>Reviewen:</strong> onder elke sectie staan <strong>Akkoord /
-Wijzigen / Bespreken</strong> en een commentaarveld. Alles wordt lokaal
-in je browser bewaard. Klaar of halverwege: <strong>Exporteer
-commentaar</strong> geeft je een markdown-bestand met alleen wat je
-ervan vond.</p>
+<p><strong>Reviewen.</strong> Onder elke sectie staat:</p>
+<pre><code>&gt; **REVIEW** — [ ] akkoord   [ ] wijzigen   [ ] bespreken
+&gt; commentaar:
+&gt;</code></pre>
 </blockquote>
+<h2 id="wat-er-veranderde-in-rev-3-je-vijf-correcties">Wat er veranderde
+in rev. 3 (je vijf correcties)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Correctie</th>
+<th>Verwerkt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Startup/setup/restore/migratie-volgorde consistent</td>
+<td><strong>D-055</strong> + herschreven <code>13</code> §6: expliciete
+toestandsmachine EMPTY / PARTIAL / EXISTING / CURRENT / AHEAD;
+<code>14</code> §5 verwijst er nu naar in plaats van een eigen volgorde
+te beweren</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Geen harde limiet van vijf env-vars</td>
+<td><strong>D-037 herzien</strong>: criterium in plaats van telling —
+env bevat alleen wat vóór de database bekend moet zijn of bepaalt wáár
+state staat; toevoegen vereist een ADR. Platform-variabelen
+(<code>TZ</code>, proxy, CA-bundle) expliciet als
+niet-applicatie-eigendom benoemd</td>
+</tr>
+<tr>
+<td>3</td>
+<td>R-28: restore vanaf elke <em>ondersteunde</em> release</td>
+<td>Herschreven met <code>minimumRestorableVersion</code>; ook D-047,
+<code>06</code> CI-tabel en <code>00</code> §4.1 gelijkgetrokken</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Autorisatie-inconsistentie externe examinator</td>
+<td><strong>D-054</strong>: <code>EXAM_SESSION</code> wordt een
+volwaardig scope-type; R-14 en de scope-enum bijgewerkt;
+<code>ExamAssessor</code> is nu een attributiefeit, geen
+toegangsmechanisme. Dekkingsregels per scope-type staan nu één keer in
+<code>02</code> §2.2</td>
+</tr>
+<tr>
+<td>5</td>
+<td>RPO ≤15 min alleen als WAL/PITR geleverd en getest wordt</td>
+<td>Claim verwijderd. Geleverd pad: <strong>RPO ≤ het ingestelde
+backupinterval, standaard 24 u</strong>. WAL/PITR staat als
+operator-optie, expliciet niet als getest pad</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h1 id="splashtrack--product-vision-requirements--scope">SplashTrack —
 Product Vision, Requirements &amp; Scope</h1>
@@ -765,8 +819,9 @@ optional</strong></p>
 <td>R-14</td>
 <td>Scoped permission authorization (<code>ORGANIZATION</code> /
 <code>UNIT</code> / <code>GROUP</code> / <code>COURSE</code> /
-<code>SELF</code> / <code>RELATED</code>), deny by default, enforced
-server-side</td>
+<code>EXAM_SESSION</code> / <code>SELF</code> / <code>RELATED</code>),
+deny by default, enforced server-side
+(<code>02-security-privacy.md</code> §2.1–2.2)</td>
 </tr>
 <tr>
 <td>R-15</td>
@@ -840,7 +895,9 @@ image</td>
 <tr>
 <td>R-28</td>
 <td>CI blocking merges on failed tests, security checks, or a broken
-restore-from-any-release matrix</td>
+<strong>restore-from-every-supported-release</strong> matrix — every
+release at or above <code>minimumRestorableVersion</code> (D-047,
+D-048)</td>
 </tr>
 <tr>
 <td>R-29</td>
@@ -997,9 +1054,10 @@ first-class</td>
 <td>Lint rule + missing-key check</td>
 </tr>
 <tr>
-<td>Restore from any supported release</td>
+<td>Restore from every supported release (≥
+<code>minimumRestorableVersion</code>)</td>
 <td>Succeeds and migrates forward</td>
-<td>Restore matrix job (D-047)</td>
+<td>Restore matrix job (D-047, D-048)</td>
 </tr>
 <tr>
 <td>Dependency risk</td>
@@ -1082,9 +1140,12 @@ migration step</td>
 </tr>
 <tr>
 <td>RPO</td>
-<td>≤ 24 h, ≤ 15 min with WAL archiving</td>
+<td><strong>≤ the configured backup interval; ≤ 24 h with the shipped
+default</strong></td>
 <td>Scheduled encrypted backups; backup-age warning on the dashboard
-(D-041)</td>
+(D-041). <em>Sub-hour RPO requires Postgres WAL archiving / PITR, which
+the operator configures at database level — we neither ship nor test it,
+and therefore do not claim it</em></td>
 </tr>
 <tr>
 <td>RTO</td>
@@ -1215,12 +1276,15 @@ one afternoon and is not a member of the organisation.</p>
 <code>Person</code> with no membership. If they log in or record results
 themselves, they receive an individual, time-bounded, minimally scoped
 account — never a shared or generic one.</strong></p>
-<p>Concretely: their own <code>UserAccount</code>, a
-<code>COURSE</code>- or exam-session-scoped role carrying only
-<code>exams.assess</code> and <code>exams.results.record</code>, a
-mandatory expiry date after which the grant lapses automatically, MFA
-required as for any account with write access to results, and every
-action attributed to them by name in the audit trail.</p>
+<p>Concretely: their own <code>UserAccount</code>, and a role assignment
+scoped to <code>EXAM_SESSION</code> — a first-class scope type (D-054),
+not a special case — carrying only <code>exams.assess</code> and
+<code>exams.results.record</code>. The grant has a mandatory expiry
+after which it lapses automatically, MFA is required as for any account
+that can write results, and every action is attributed to them by name
+in the audit trail. An <em>internal</em> examiner may instead hold
+<code>COURSE</code> scope; the difference is deliberate and visible in
+the role catalogue (<code>02-security-privacy.md</code> §2.4).</p>
 <p><strong>Reason.</strong> A shared &quot;examiner&quot; login destroys
 attribution on exactly the records that most need it — a child&#39;s diploma
 outcome. A full membership over-grants for someone present for one
@@ -1680,11 +1744,12 @@ offline queue all collapse to the same row.</p>
 </tr>
 <tr>
 <td><code>ExamAssessor</code></td>
-<td>examSessionId, personId, role, validUntil</td>
+<td>examSessionId, personId, role</td>
 <td></td>
-<td>Supports the <strong>external examiner</strong> case without
-membership. If they record results themselves they get an individual,
-expiring, minimally scoped account — never a shared login (D-052)</td>
+<td>Records <strong>who assessed</strong> this session — an attribution
+fact, not an access grant. Access comes from an
+<code>EXAM_SESSION</code>-scoped role assignment (D-054). Supports the
+external examiner with no membership (D-052)</td>
 </tr>
 <tr>
 <td><code>ExamResult</code></td>
@@ -2053,6 +2118,11 @@ descendants</strong></td>
 <td>&quot;Examiner for Diploma B&quot;</td>
 </tr>
 <tr>
+<td><code>EXAM_SESSION</code></td>
+<td><strong>One single exam session</strong></td>
+<td>&quot;External examiner, Saturday 14 March&quot;</td>
+</tr>
+<tr>
 <td><code>SELF</code></td>
 <td>The holder&#39;s own records</td>
 <td>Every authenticated person, implicitly</td>
@@ -2074,9 +2144,68 @@ question</h3>
 <pre class="text"><code>requirePermission(session, &#39;attendance.record&#39;, { group: groupId })</code></pre>
 <p>Resolution: does the caller hold <em>any</em> grant whose permission
 includes <code>attendance.record</code> <strong>and</strong> whose scope
-covers the referenced resource? Scope coverage walks the unit tree
-upward — a grant on <code>Locatie Zuidbad</code> covers
-<code>Groep A1</code> beneath it.</p>
+covers the referenced resource?</p>
+<p>Coverage is defined per scope type, once, and nowhere else:</p>
+<table>
+<thead>
+<tr>
+<th>Scope type</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ORGANIZATION</code></td>
+<td>Every resource in the installation</td>
+</tr>
+<tr>
+<td><code>UNIT</code></td>
+<td>The unit <strong>and all its descendants</strong>, and every group,
+session, student and exam session beneath them</td>
+</tr>
+<tr>
+<td><code>GROUP</code></td>
+<td>That group, its scheduled sessions, and the students in it <em>for
+the period of their membership</em></td>
+</tr>
+<tr>
+<td><code>COURSE</code></td>
+<td>That course, its levels, its enrolments, and <strong>all</strong>
+its exam sessions</td>
+</tr>
+<tr>
+<td><code>EXAM_SESSION</code></td>
+<td><strong>That one exam session only</strong> — its candidates and
+their results. Nothing else, not the course, not the students&#39; other
+records</td>
+</tr>
+<tr>
+<td><code>SELF</code></td>
+<td>Records whose subject is the holder</td>
+</tr>
+<tr>
+<td><code>RELATED</code></td>
+<td>Records whose subject is a person the holder has an active
+relationship with (P-04)</td>
+</tr>
+</tbody>
+</table>
+<p>Only <code>UNIT</code> walks a tree. Every other scope covers exactly
+what it names.</p>
+<p><strong>Decision D-054 — <code>EXAM_SESSION</code> is a first-class
+scope type; there is no &quot;scope-like&quot; access that lives outside the
+enum.</strong> <strong>Reason.</strong> An external examiner attends one
+session. <code>COURSE</code> scope would grant them every exam session
+of that course, past and future, which over-grants on exactly the
+records that matter most — a child&#39;s diploma outcome. Rather than
+inventing a special case for examiners, the scope enum gains one member
+and the general mechanism handles it. Every grant in the system is then
+expressible as <code>(permission, scopeType, scopeId)</code> with no
+exceptions. <strong>Trade-off.</strong> One more scope type to implement
+and test, and <code>ExamAssessor</code> (<code>01-domain-model.md</code>
+§3.5) becomes a projection of a role assignment rather than an
+independent access mechanism — it records <em>who assessed</em>, not
+<em>who may</em>.</p>
 <p><strong>Decision D-030 — Authorization is always resource-referenced;
 a bare permission check is not sufficient.</strong>
 <strong>Reason.</strong> <code>hasPermission(&#39;students.read&#39;)</code> is
@@ -2140,10 +2269,14 @@ authority that exists</td>
 <td>Attendance, skill sign-off, read student basics</td>
 </tr>
 <tr>
-<td>Examiner</td>
-<td><code>COURSE</code> or a single exam session, <strong>always
-time-bounded</strong></td>
-<td>Exam results only. May be an external person with no membership
+<td>Internal examiner</td>
+<td><code>COURSE</code>, time-bounded</td>
+<td>Assesses any exam session of that course</td>
+</tr>
+<tr>
+<td>External examiner</td>
+<td><code>EXAM_SESSION</code>, always with an expiry</td>
+<td>One session only. A <code>Person</code> with no membership
 (D-052)</td>
 </tr>
 <tr>
@@ -3558,11 +3691,13 @@ PR&#39;s migrations. Catches destructive migrations before they reach
 data</td>
 </tr>
 <tr>
-<td><strong>Restore-from-every-release matrix</strong></td>
+<td><strong>Restore-from-every-supported-release matrix</strong></td>
 <td>Yes</td>
-<td>D-047: restores a seeded backup of each supported release into
-<code>HEAD</code>, migrates forward, asserts schema + domain invariants.
-Protects the &quot;old backup into new version&quot; promise (F-25)</td>
+<td>D-047: for every release <strong>at or above
+<code>minimumRestorableVersion</code></strong> (D-048), restore a seeded
+backup of it into <code>HEAD</code>, migrate forward, assert schema +
+domain invariants. Protects the &quot;old backup into new version&quot; promise
+(F-25)</td>
 </tr>
 <tr>
 <td>E2E (Playwright)</td>
@@ -3850,9 +3985,12 @@ mechanism.</p>
 <tr>
 <td>Database</td>
 <td><strong>The operator&#39;s responsibility.</strong> We ship
-<code>backup</code> and <code>restore</code> commands in the image and
-document a recommended policy: daily full + WAL archiving, RPO ≤ 24
-h</td>
+<code>backup</code> and <code>restore</code> commands plus a scheduler.
+Shipped and tested recovery path: <strong>scheduled encrypted logical
+backups, RPO ≤ the configured interval (default daily)</strong>. WAL
+archiving / point-in-time recovery is a Postgres-level option the
+operator may add for a lower RPO; it is documented as such and is
+<strong>not</strong> part of the tested path</td>
 </tr>
 <tr>
 <td>Object storage</td>
@@ -4714,15 +4852,17 @@ small bootstrap layer</td>
 </tr>
 <tr>
 <td>D-037</td>
-<td>The environment-variable surface is capped at five keys
-(<code>DATABASE_URL</code>, <code>APP_URL</code>,
-<code>SECRET_KEY</code>, <code>DATA_DIR</code>, <code>PORT</code>)</td>
-<td>A self-hoster should never grep a 200-entry
-<code>.env.template</code> to find why email fails. A hard cap forces
-every new option into the in-app registry</td>
-<td>Conventional env-var settings (SMTP host, log level) move into the
-database and can&#39;t be changed while it is down</td>
-<td><code>13-configuration-and-setup.md</code> §3</td>
+<td><strong>(Revised)</strong> Environment holds only what must be known
+before the database is readable, or what selects where state lives;
+adding a variable requires an ADR</td>
+<td>A hard numeric cap would be an arbitrary rule that could later block
+necessary pre-database or platform configuration (TLS trust store,
+proxy, read-only paths). The criterion is what matters: if a value can
+be read from the database, it must be</td>
+<td>Requires judgement rather than counting, so the ADR gate keeps it
+honest. Conventional env settings (SMTP host, log level) move into the
+database</td>
+<td><code>13-configuration-and-setup.md</code> §3.1</td>
 </tr>
 <tr>
 <td>D-038</td>
@@ -4830,7 +4970,8 @@ the setup wizard controls the sequence via a distinct start-up mode</td>
 </tr>
 <tr>
 <td>D-047</td>
-<td>CI tests restore from <strong>every</strong> supported release into
+<td>CI tests restore from every supported release — every release at or
+above <code>minimumRestorableVersion</code> (D-048) — into
 <code>HEAD</code>, not just the previous one</td>
 <td>&quot;Skipped versions are supported&quot; is worthless as prose; it is only
 true if a machine checks it on every pull request. A migration that
@@ -4909,6 +5050,33 @@ flag forces one retention policy onto both</td>
 <td>Two lookups where a naive model has one; administrators must
 understand the distinction, so the UI hides it</td>
 <td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-054</td>
+<td><code>EXAM_SESSION</code> is a first-class scope type; no access
+mechanism lives outside the scope enum</td>
+<td>An external examiner attends one session. <code>COURSE</code> scope
+would grant every exam session of that course, past and future —
+over-granting on a child&#39;s diploma outcome. One extra enum member beats
+a special case for examiners; every grant stays expressible as
+<code>(permission, scopeType, scopeId)</code></td>
+<td>One more scope type to implement and test. <code>ExamAssessor</code>
+becomes an attribution record, not an access mechanism</td>
+<td><code>02-security-privacy.md</code> §2.1–2.2</td>
+</tr>
+<tr>
+<td>D-055</td>
+<td>The container never migrates a database whose purpose is not yet
+known; state is detected first (EMPTY / PARTIAL / EXISTING / CURRENT /
+AHEAD) and migration follows from it</td>
+<td>An empty database is ambiguous — fresh install, or the first minute
+of a restore. Migrating immediately resolves it wrongly: the operator
+gets a migrated empty schema and a backup that no longer restores
+cleanly into it</td>
+<td>The entrypoint carries a data-critical state machine instead of
+<code>migrate deploy &amp;&amp; start</code>; covered by a test matrix
+with one case per state</td>
+<td><code>13-configuration-and-setup.md</code> §6</td>
 </tr>
 </tbody>
 </table>
@@ -5700,19 +5868,39 @@ layers</h2>
 <p>The honest position is that <strong>not everything can be in the
 database</strong>, and pretending otherwise produces a chicken-and-egg
 failure. Three layers, and the first is kept deliberately tiny.</p>
-<h3 id="31-layer-1--bootstrap-environment-variables-restart-required">3.1
-Layer 1 — Bootstrap (environment variables, restart required)</h3>
-<p>Only what is needed to reach the database and serve a request at
-all:</p>
+<h3 id="31-layer-1--bootstrap-environment-restart-required">3.1 Layer 1
+— Bootstrap (environment, restart required)</h3>
+<p><strong>Application-owned bootstrap variables</strong> — the values
+the application must know <em>before</em> it can read its own database,
+or that select where its own state lives:</p>
 <pre class="text"><code>DATABASE_URL      where the database is
 APP_URL           the public origin (also the WebAuthn relying-party origin)
 SECRET_KEY        master key for encrypting secrets at rest (§5)
 DATA_DIR          uploads/assets path (optional, sane default)
-PORT              optional</code></pre>
-<p><strong>That is the entire environment-variable surface.</strong>
-Anything else being an env var is a design failure to be fixed, not
-documented. This list is short enough to print in the README and never
-revisit.</p>
+PORT              listen port (optional, sane default)</code></pre>
+<p>Separately, and <strong>not</strong> application-owned: standard
+runtime and platform variables an operator may need (<code>TZ</code>,
+<code>NODE_ENV</code>, proxy settings, a custom CA bundle, container
+resource limits). We document them where relevant but do not own or
+invent them.</p>
+<p><strong>Decision D-037 (revised) — Environment holds only what must
+be known before the database is readable, or what selects where state
+lives. Everything else belongs in the settings registry. Adding a
+variable requires an ADR stating why it cannot live in the
+database.</strong></p>
+<p><strong>Reason.</strong> A hard numeric cap would be an arbitrary
+architectural rule that could later block genuinely necessary
+pre-database or platform configuration — a TLS trust store, a proxy, a
+read-only-filesystem path. The <em>criterion</em> is what matters, not
+the count: if a value can be read from the database, it must be. A
+self-hoster should still never have to grep a two-hundred-entry
+<code>.env.template</code> to find why email is failing.</p>
+<p><strong>Trade-off.</strong> The rule requires judgement rather than
+counting, so it needs the ADR gate to stay honest. Settings that
+conventionally live in environment variables (SMTP host, log level) move
+into the database and therefore cannot be changed while it is
+unreachable — acceptable, because if the database is down, those are not
+the settings being fixed.</p>
 <h3 id="32-layer-2--runtime-settings-database-in-app-live">3.2 Layer 2 —
 Runtime settings (database, in-app, live)</h3>
 <p>Everything else. A typed registry defines each setting once:</p>
@@ -5800,40 +5988,94 @@ which ships with the image.</li>
 column encryption); both are answered by one key and one documented
 rotation path.</p>
 <hr />
-<h2 id="6-first-run-setup">6. First-run setup</h2>
-<pre class="text"><code>container starts → migrations run → no PlatformBootstrap row exists
-   → every request redirects to /setup
-   → wizard:
-        1. Organisation name, locale, timezone
-        2. First administrator account (email, password or passkey)
-        3. MFA enrolment — forced, not offered
-        4. Email settings (optional, with a test-send button)
-        5. Done → bootstrap row written, /setup permanently disabled</code></pre>
+<h2 id="6-start-up-setup-restore-and-migration--one-sequence">6.
+Start-up, setup, restore and migration — one sequence</h2>
+<p>This is the <strong>authoritative boot sequence</strong>. Chapter 14
+describes backup and restore mechanics; where the two appear to differ,
+this section defines the order.</p>
+<p><strong>Decision D-055 — The container never migrates a database
+whose purpose is not yet known. State is detected first; migration is a
+consequence of that state, never the first action.</strong></p>
+<pre class="text"><code>container start
+  │
+  ├─ database reachable?            no → fail fast, clear error, do not retry blindly
+  │
+  ├─ inspect schema state
+  │
+  ├── EMPTY  (no tables at all)
+  │     → SETUP MODE. No migrations are run yet.
+  │       Every request redirects to /setup. The wizard asks the one question
+  │       only the operator can answer:
+  │
+  │         ┌─ New installation
+  │         │    → run migrations  → seed catalogue + starter roles
+  │         │    → create first administrator, force MFA
+  │         │    → write bootstrap record → serving
+  │         │
+  │         └─ Restore from backup
+  │              → decrypt + verify archive (nothing written until this passes)
+  │              → restore dump: old schema + old data + _prisma_migrations
+  │              → run forward migrations from that point (D-046)
+  │              → verify against manifest → serving with the original accounts
+  │
+  ├── PARTIAL  (tables exist, no bootstrap record)
+  │     → setup was interrupted. Resume SETUP MODE; do not migrate silently.
+  │
+  ├── EXISTING  (tables + bootstrap record, schema older than app)
+  │     → take automatic pre-migration backup (D-044)
+  │     → run forward migrations → serving
+  │
+  ├── CURRENT  (schema matches app)
+  │     → serving
+  │
+  └── AHEAD  (schema newer than app)
+        → REFUSE TO START. Name the image version required (D-043).</code></pre>
+<p><strong>Reason.</strong> An empty database is ambiguous: it is either
+a fresh installation or the first minute of a restore. Migrating it
+immediately resolves that ambiguity in the wrong direction — the
+operator then has a fully migrated empty schema and a backup that no
+longer restores cleanly into it. Detecting state first makes the two
+paths explicit and keeps restore a normal operation rather than a
+rescue.</p>
+<p><strong>Trade-off.</strong> The entrypoint cannot be a naive
+<code>migrate deploy &amp;&amp; start</code>; it carries a small state
+machine, and that state machine is security- and data-critical code. It
+is therefore covered by its own test matrix, one case per state
+above.</p>
+<h3 id="61-the-setup-wizard">6.1 The setup wizard</h3>
+<p>Reachable <strong>only</strong> in <code>SETUP MODE</code> (states
+EMPTY and PARTIAL), so it cannot be re-opened once an administrator
+exists:</p>
+<pre class="text"><code>0. New installation, or restore from backup?
+1. Organisation name, locale, timezone
+2. First administrator account (email, password or passkey)
+3. MFA enrolment — forced, not offered
+4. Recovery token shown once, with a required &quot;I have stored this&quot; step (D-040)
+5. Email settings (optional, with a test-send button)
+6. Done → bootstrap record written, /setup permanently closed</code></pre>
 <p><code>PlatformBootstrap</code> is the template&#39;s existing
-enforced-singleton first-run record; this reuses it unchanged. The
-wizard is reachable <strong>only</strong> while that row is absent, so
-it cannot be re-opened by an attacker later.</p>
+enforced-singleton first-run record, reused unchanged.</p>
 <p><strong>Decision D-039 — The setup wizard is the only unauthenticated
 administrative surface, and it self-destructs.</strong>
 <strong>Reason.</strong> First-run configuration is the one moment where
 no account can exist yet. Bounding that window to &quot;before the first
 administrator exists&quot; removes the standing unauthenticated admin surface
-that Vaultwarden&#39;s <code>ADMIN_TOKEN</code> model keeps open
-permanently. <strong>Trade-off.</strong> A race exists between container
-start and the operator reaching <code>/setup</code> — whoever arrives
-first becomes administrator. Mitigated by printing a one-time setup
-token to the container logs that the wizard requires. The operator can
-read their own logs; a stranger on the internet cannot.</p>
+that a permanent admin-token model keeps open forever.
+<strong>Trade-off.</strong> A race exists between container start and
+the operator reaching <code>/setup</code> — whoever arrives first
+becomes administrator. Mitigated by printing a one-time setup token to
+the container logs, which the wizard requires: the operator can read
+their own logs, a stranger on the internet cannot.</p>
 <hr />
 <h2 id="7-break-glass-locked-out-of-your-own-instance">7. Break-glass:
 locked out of your own instance</h2>
 <p>A self-hosted application must have a recovery path that does
 <strong>not</strong> depend on a network-reachable secret. Ours requires
 host access, which is proof of ownership:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
+<div class="sourceCode" id="cb31"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
 <p>Every one of these writes an audit event. This replaces Vaultwarden&#39;s
 &quot;disable the admin token&quot; escape hatch with something that cannot be
 reached from the internet at all.</p>
@@ -5901,8 +6143,10 @@ claiming otherwise is lying. So the split is:</p>
 </tr>
 <tr>
 <td><strong>Migrate</strong></td>
-<td>Automatically on container start</td>
-<td>Deterministic, forward-only</td>
+<td>Automatically on start, <strong>once the database state is
+known</strong> (§6 of <code>13-…</code>)</td>
+<td>Deterministic, forward-only; never on an ambiguous empty
+database</td>
 </tr>
 <tr>
 <td><strong>Update</strong></td>
@@ -6032,23 +6276,28 @@ states</strong>, not a version string we have to trust or guess from.
 The migration runner then does exactly what it does on any ordinary
 upgrade — there is no special restore-migration path to keep correct,
 which is precisely why it can be relied on.</p>
-<p><strong>Trade-off.</strong> The restore step must run before the
-application&#39;s normal start-up migration, so the setup wizard controls
-the sequence rather than the container entrypoint. A restore therefore
-happens in a distinct start-up mode, and the entrypoint must not blindly
-migrate an empty database before the wizard has had its say.</p>
+<p><strong>Trade-off.</strong> The restore step must run before any
+migration, so the entrypoint cannot be a naive
+<code>migrate deploy &amp;&amp; start</code>. It carries the small state
+machine in <code>13-configuration-and-setup.md</code> §6 (D-055), which
+is itself data-critical code and is covered by a test matrix with one
+case per state.</p>
 <h3 id="431-what-this-obliges-us-to-do--the-actual-cost">4.3.1 What this
 obliges us to do — the actual cost</h3>
 <p>The promise is easy to state and easy to break silently. Three
 commitments make it real:</p>
-<p><strong>Decision D-047 — CI tests restore from <em>every</em>
-supported release into <code>HEAD</code>, not just from the previous
-one.</strong></p>
-<p>A matrix job: for each released version, restore a stored seeded
-backup of that version into the current build, apply migrations, and
-assert the schema and a set of domain invariants. A migration that
-breaks restoring from v1.3 fails the build on the day it is written —
-not two years later on a stranger&#39;s server.</p>
+<p><strong>Decision D-047 — CI tests restore from <strong>every
+supported release</strong> into <code>HEAD</code> — that is, every
+release at or above <code>minimumRestorableVersion</code> (D-048), not
+merely the previous one.</strong></p>
+<p>A matrix job: for each such version, restore a stored seeded backup
+of it into the current build, apply migrations, and assert the schema
+and a set of domain invariants. Releases below the floor are not tested
+because they are not supported — the floor is the honest boundary of the
+promise, and the restore path refuses them with a message naming the
+intermediate version required. A migration that breaks restoring from
+v1.3 fails the build on the day it is written — not two years later on a
+stranger&#39;s server.</p>
 <p><strong>Reason.</strong> &quot;Skipped versions are supported&quot; is
 worthless as a sentence in a document. It is only true if a machine
 checks it on every pull request. <strong>Trade-off.</strong> The matrix
@@ -6126,16 +6375,22 @@ with an error naming the exact version they need.</p>
 <em>running</em> instance</h3>
 <p>Not offered in the UI. It is available deliberately and awkwardly,
 from the host:</p>
-<div class="sourceCode" id="cb34"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
-<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
 <p>Awkwardness is the feature — this destroys live data and should
 require intent and host access, not a button in a browser.</p>
 <hr />
 <h2 id="5-migration">5. Migration</h2>
-<p>Migrations run <strong>automatically on container start</strong>,
-forward-only, before the application accepts traffic. The operator never
-runs a migration command.</p>
+<p>Migrations run <strong>automatically on container start for an
+already-initialised installation</strong>, forward-only, before the
+application accepts traffic. The operator never runs a migration
+command.</p>
+<p>They do <strong>not</strong> run on an empty or partially-initialised
+database: that state is ambiguous (fresh install or the first minute of
+a restore) and is resolved by the setup wizard first. The authoritative
+boot sequence is <code>13-configuration-and-setup.md</code> §6 (D-055);
+this section describes only what happens once the state is known.</p>
 <p><strong>Decision D-044 — An automatic pre-migration backup is taken
 whenever a start would apply migrations, retained for a configurable
 number of upgrades.</strong> <strong>Reason.</strong> The most dangerous
@@ -6193,7 +6448,7 @@ upgrade</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb35"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
 <p><strong>Decision D-045 — The application prepares and verifies
 upgrades but never performs them; the operator runs one documented
 command.</strong> <strong>Reason.</strong> It keeps the trust boundary
