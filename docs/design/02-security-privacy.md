@@ -36,13 +36,69 @@ Inherited from the template (Better Auth), unchanged:
 - Step-up re-authentication for: role changes, API credential creation, MFA
   reset, bulk export, erasure, certificate revocation.
 
-**Decision D-008 — Better Auth handles identity and sessions only; it is never
-the authorization layer.**
-**Reason.** Authorization depends on organisation scope, membership state and
-resource ownership, which are application concerns. Conflating them is how
-tenant leaks happen.
-**Trade-off.** Two systems to reason about instead of one. Accepted — the
-separation is the point.
+**Decision D-008 (reaffirmed, with the alternative examined) — Use Better Auth
+as a self-hosted library for identity and sessions; do not write our own
+authentication system. It is never the authorization layer.**
+
+**On the "third party" concern.** Better Auth is a **library**, not a service.
+It runs inside our own process, writes to our own PostgreSQL, and maps onto our
+own `UserAccount` / `Account` tables — verified in `WebAppTemplate`'s
+`src/lib/auth/auth.ts`. No request leaves the deployment, no vendor holds any
+data, and there is no account to cancel. This is categorically different from
+Auth0, Clerk or Cognito, which *are* third-party services and would be
+unacceptable for this product.
+
+**Reason for not building our own.** Authentication is a large, high-consequence
+surface with zero product differentiation. Writing it means owning, forever and
+correctly: password hashing and policy, session issuance/rotation/revocation,
+CSRF, secure-cookie semantics, TOTP enrolment and verification, WebAuthn
+registration and assertion ceremonies, OAuth 2.0 / OIDC clients with PKCE and
+issuer validation, token refresh, account linking, email verification, password
+reset tokens, brute-force throttling and step-up flows. Every one of those has
+a well-known way to get subtly wrong. In an **open-source** product the source
+is public, so an attacker reads our implementation rather than guessing at it,
+and the data at risk is health information about children. This is the clearest
+"do not roll your own" case in the entire design.
+
+**Trade-off — stated honestly.** We take a dependency on a young ecosystem
+library for a critical function. Mitigations, all real: it is MIT-licensed and
+self-hosted, so it cannot be taken away; the schema is **ours**, so the data
+survives any replacement; and all of it sits behind our own `identity` module
+boundary, so swapping the implementation is a contained refactor rather than a
+rewrite. Recorded as finding **F-22**.
+
+### 1.2.1 Identity providers are configured in the application, not in env vars
+
+**Decision D-035 — A database-backed identity-provider registry, administered
+in-app, supporting local accounts plus any OAuth 2.0 / OIDC provider.**
+
+**Reason.** A self-hosted operator (D-012 final) must be able to connect their
+own identity provider — Microsoft Entra, Google Workspace, Keycloak, Authentik,
+Okta — **without editing environment variables, rebuilding an image or
+restarting a container**. Requiring env-var configuration for something an
+administrator legitimately changes would be a usability failure for exactly the
+audience the product is built for.
+
+This is not speculative: `WebAppTemplate` already proves the pattern for one
+provider (ADR-022). The Entra configuration lives in the database with the
+client secret **encrypted at rest**, is edited through a permission-guarded
+admin screen that never returns the secret to any client, and is loaded by
+Better Auth at context init. SplashTrack generalises that from a single
+hardcoded provider to a registry of N providers, using Better Auth's
+`genericOAuth` plugin — which supports any OAuth 2.0/OIDC provider with PKCE
+and issuer validation enabled by default.
+
+Per provider the registry stores: display name, protocol, issuer/discovery URL,
+client id, encrypted client secret, scopes, claim→field mapping, whether
+just-in-time account creation is allowed, and which role a JIT-created account
+receives (**default: none**).
+
+**Trade-off.** Runtime-configurable providers mean a misconfiguration can lock
+an organisation out of its own instance. Two mandatory mitigations: local
+administrator login can never be disabled while it is the only working method,
+and a provider configuration must survive a **test connection** before it can
+be enabled. Storing secrets in the database also makes the encryption key a
+first-class operational concern — the same key management question as OD-7.
 
 ### 1.3 Session security at the poolside — a domain-specific control
 

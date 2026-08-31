@@ -177,6 +177,23 @@ copyleft (AGPL-3.0) requires them to publish modifications.
 **Response.** Flagged as OD-13 — a commercial decision, not a technical one,
 and expensive to change after third-party contributions arrive.
 
+### F-22 — Better Auth is a young dependency on a critical path
+**Severity: medium.** Authentication is the one component where a maintenance
+lapse or an unfixed vulnerability is immediately serious, and Better Auth is a
+comparatively young project.
+**Response.** Accepted deliberately, with three structural mitigations rather
+than optimism: it is MIT-licensed and self-hosted, so it cannot be withdrawn or
+paywalled; the database schema is **ours** (`UserAccount`, `Account`, `Session`
+are our tables, not a vendor's), so data survives any replacement; and every
+call site goes through our own `identity` module, so substituting the
+implementation is a contained refactor. Additionally: pin the version, watch its
+advisories explicitly, and treat an auth dependency bump as a security-reviewed
+change rather than a routine one.
+
+**The alternative was examined and rejected** — see D-008. Writing our own
+authentication would trade a bounded dependency risk for an unbounded
+implementation risk, in public source, on data about minors.
+
 ## Scalability problems
 
 Covered in full in `07-operations.md` §4. Single-tenancy changes which risks

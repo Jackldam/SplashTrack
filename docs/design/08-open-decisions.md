@@ -109,13 +109,21 @@ D-013 stands).
 
 ---
 
-### OD-8 — Per-organisation identity providers (SSO).
+### OD-8 — **(Resolved — promoted into v1)** Bring-your-own identity provider.
 
-**Why it matters.** The template has Microsoft Entra sign-in at the platform
-level. An organisation wanting *its own* tenant SSO is a different feature with
-real complexity (per-tenant IdP config, JIT provisioning, role mapping).
-**Cost of delay.** Low. Explicitly deferred; the architecture does not need to
-prepare for it beyond keeping authentication behind Better Auth.
+**Why it changed.** This was deferred under the multi-tenant assumption, where
+per-tenant IdP configuration meant N configurations in one shared application —
+genuinely complex. Self-hosting inverts that: **every deployment is exactly one
+organisation**, so "their IdP" is simply "the instance's IdP". The complexity
+evaporates, and the requirement becomes much more likely — an organisation
+running its own server very often already runs its own Entra, Google Workspace
+or Keycloak.
+**Resolution.** D-035 — a database-backed provider registry administered in-app,
+supporting local accounts plus any OAuth 2.0/OIDC provider. In v1 scope.
+**Remaining sub-question:** does JIT provisioning create a `Person` as well as a
+`UserAccount`, or only link to an existing one? **Recommendation: link only.**
+Auto-creating people from an IdP would let anyone in the corporate directory
+become a student record.
 
 ---
 
