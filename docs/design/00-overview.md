@@ -34,11 +34,12 @@
 | 24 | GitHub workflow | `06-delivery.md` §3 |
 | 25 | Lucky AI permissions & boundaries | `06-delivery.md` §4 |
 | 26 | Logging, auditing, observability | `07-operations.md` §1 |
-| 27 | Backup / restore | `07-operations.md` §2 |
+| 27 | Backup / restore | `07-operations.md` §2 · **`14-backup-restore-upgrade.md`** |
 | 28 | Failure modes | `07-operations.md` §3 |
 | 29 | Scalability risks | `07-operations.md` §4 |
 | 30 | Open architecture decisions | `08-open-decisions.md` |
 | + | Configuration, setup & administration | `13-configuration-and-setup.md` |
+| + | Backup, restore, migration & upgrade | `14-backup-restore-upgrade.md` |
 
 Revisions: `11-revision-single-tenant.md` (multi-tenant → single-tenant) and
 `12-revision-open-source.md` (single-tenant → open-source self-hosted). Both

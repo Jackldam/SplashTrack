@@ -60,6 +60,12 @@ enough to be readable by non-engineers.
 
 ## 2. Backup and restore
 
+> **See `14-backup-restore-upgrade.md`** for the full design: the encrypted
+> Recovery Kit (backup file + token), restore via the setup wizard, automatic
+> pre-migration backups, and the upgrade flow. This section states policy; that
+> document states mechanism.
+
+
 | | Policy |
 |---|---|
 | Database | **The operator's responsibility.** We ship `backup` and `restore` commands in the image and document a recommended policy: daily full + WAL archiving, RPO ≤ 24 h |

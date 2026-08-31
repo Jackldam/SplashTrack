@@ -194,6 +194,26 @@ change rather than a routine one.
 authentication would trade a bounded dependency risk for an unbounded
 implementation risk, in public source, on data about minors.
 
+### F-23 — The backup download is a complete exfiltration primitive
+**Severity: high.** One click produces a file containing every person, every
+medical note and every exam result in the organisation. It is more dangerous
+than any individual data screen, and it is easy to treat as a mundane admin
+convenience.
+**Response.** D-042 — step-up re-authentication, rate limiting, high-severity
+audit event, short-lived single-use signed link, and the archive encrypted at
+rest so the artefact is inert without the recovery token (D-040).
+
+### F-24 — Losing the recovery token makes backups permanently useless
+**Severity: high (operational).** The token is `SECRET_KEY`. Without it the
+backup cannot be decrypted and the encrypted columns inside it cannot be read.
+There is no reset — that is the point of encryption, but it is a foot-gun aimed
+directly at a volunteer administrator.
+**Response.** Shown once at setup with an explicit print step and a required
+"I have stored this" acknowledgement; re-displayable later under step-up
+authentication; surfaced in diagnostics as an acknowledged/not-acknowledged
+check; and stated plainly in the installation documentation next to the backup
+instructions rather than buried in a security appendix.
+
 ## Scalability problems
 
 Covered in full in `07-operations.md` §4. Single-tenancy changes which risks
