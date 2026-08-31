@@ -442,30 +442,36 @@ instance* holds data; this asks whether *any* digital list exists. Both can be
 
 ---
 
-### Register integrity — a note that belongs here rather than in the register
+### Register integrity — **(Resolved, 2026-09-01)**
 
-Two defects in `09-decision-register.md` are recorded here because this chapter
-is where a reader goes when a decision looks unclear, and because the register
-cannot describe its own gaps.
+Both defects previously recorded here are fixed. D-011, D-015, D-027, D-028
+and D-029 now state, in the register row itself, that the row is the
+authoritative text for a withdrawn or superseded decision (D-133); the wrong
+"Where" pointers (D-011/D-015 → `03-…` §1.1, D-027 → §1.2) are corrected. See
+`09-decision-register.md` for the fixed rows.
 
-**1. The "Where" column points at sections that do not contain the decision.**
-D-011 and D-015 point at `03-deployment-model.md` §1.1, which is a table titled
-"What this deletes — again" and mentions neither. D-027's pointer names §1.2
-and it appears in §1.3.
+Separately, the register was found to have a much larger version of the same
+problem: **D-090 through D-098 were each assigned twice**, to two unrelated
+decisions in different chapters (the assessment/fees chapter and the
+platform/backup chapters, drafted concurrently). Both sets had already been
+written into their live chapters under the same numbers. Resolved by
+renumbering the later-written side (`01-domain-model.md`'s D-095–098 →
+D-108–111; `13-…`/`14-…`'s D-090–094 → D-112–116) and updating every
+cross-reference; see `09-decision-register.md` for the reconciled set and
+`10-findings.md` for the merged review findings this closes.
 
-**2. Five decisions have no decision statement in any active chapter.** D-011,
-D-015, D-027, D-028 and D-029 exist as register rows and nothing else; their
-only full text is in chapters 11 and 12, whose banners state plainly that they
-are history and **must not be cited as a requirement**. A reader following the
-register to its source lands in a chapter that tells them not to use what they
-just found.
+### OD-17 — Is the five-value grade scale the only one a school will ever use?
 
-**Recommendation, staged for the register's owner
-(`review/staging/crosscut.md`): for a withdrawn or superseded decision, the
-register row *is* the authoritative text**, and the row should say so rather
-than pointing at a chapter. A withdrawn decision does not need a section — it
-needs to be findable, and to state what was withdrawn and why. Decisions that
-are *live* keep a chapter section, and the register keeps pointing at it. That
-resolves five rows without writing five sections for decisions nobody will
-implement.
+**Why it matters.** `GradeScale`/`GradeValue` (`15-assessment-and-fees.md`
+§2.1) is modelled as org-owned specifically so a school *could* define its own
+ordinal scale, but the only scale in scope is the five NRZ-style values
+(*onvoldoende…zeer goed*) the domain expert described. Nobody has asked
+whether that flexibility is ever used, and it is cheap to leave unused but
+not free to remove once seeded data references it.
+**Cost of delay.** Low. The model already supports either answer; this is a
+data question, not an architecture one, and it can wait until the NRZ
+catalogue itself is confirmed (F-44).
+**My recommendation:** ship the one scale, keep the table generic since it
+cost nothing, and do not ask the question until a second scale is actually
+requested.
 

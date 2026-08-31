@@ -48,6 +48,22 @@ anywhere in this design set before that revision; neither did "NRZ".
 Chapters 01–15 remain **under review**; approving chapter 00 approves nothing
 else, and the open decisions in `08-open-decisions.md` remain open.
 
+**Register reconciliation (2026-09-01).** Four review passes ran concurrently
+against this design and each numbered its own decisions and findings, staged
+in `review/staging/`. Consolidating them into `09-decision-register.md` and
+`10-findings.md` found that **D-090 through D-098 had each been assigned
+twice**, to unrelated decisions in the assessment/fees chapter and the
+platform/backup chapters, and both sides had already been written into their
+live chapters under the same numbers. This is now fixed — see
+`08-open-decisions.md`, *Register integrity* — and the register (D-001–D-138,
+with documented gaps) and findings (F-01–F-108, with documented gaps) are
+current as of this revision. The domain input in `15-assessment-and-fees.md`
+(aftesten, examengeld, contributie, wachtlijst, proeflessen, inhaallessen,
+group moves, NRZ export, poolside/papieren fallback) is fully incorporated;
+the two genuinely open questions from that input — the NRZ criterion catalogue
+contents (F-44) and whether a school will ever define its own grade scale
+(OD-17) — are data questions for Jack, not architecture.
+
 ## Document set
 
 | # | Deliverable | Where |
@@ -537,7 +553,7 @@ not currently checked by anything.
 | Migration against a populated database | Applies cleanly over existing rows | `migrate-populated` CI job | **Gated — inherited** |
 | Restore from every supported release | Succeeds and migrates forward | Restore matrix job | **Out of v1** (§3.5). Zero prior releases exist. Fixture *generation* still ships in v1.0 |
 | Dependency risk | No known high/critical CVEs at merge | `npm audit` + Dependabot | **Required addition** — no audit gate exists today |
-| Secret exposure | Zero secrets in the repository | Secret scanning + push protection | **Required addition**, and urgent: `apps/web/.env` is currently tracked in git history |
+| Secret exposure | Zero secrets in the repository | Secret scanning + push protection | **Required addition.** `apps/web/.env` (dev-local placeholder credentials) was removed from `HEAD` and `.gitignore`'d on 2026-09-01 — it is untracked from this commit forward. **Residual risk not yet resolved:** the file's content still exists in the commits between `059c99b` and `3402343` and is readable by anyone who fetches the repository's history. It has not been purged (that requires a history rewrite, out of scope for this session — see `10-findings.md` F-28-adjacent note). Rotate/replace the placeholder values before the repository goes public regardless, since a scanner will still flag the historic blob |
 | Resource footprint | Runs within 1 vCPU / 1 GB RAM for a small organisation | Measured on the reference deployment | **Not gated, and never was** — documented, not checked |
 
 ### 4.2 Per-instance capacity

@@ -32,6 +32,14 @@ Events that **must** be audited:
   that opens every backup; a request to show it again is indistinguishable from
   an exfiltration attempt until someone looks. It gets the same treatment as the
   backup download (D-042): step-up, rate limit, high-severity audit event.
+- **Backup destination or destination-credential change** — high severity,
+  notifies every `ORGANIZATION`-scoped administrator (D-103). An unaudited
+  destination change is a silent, recurring exfiltration path next to a
+  tightly-guarded download button.
+- **Break-glass CLI invocation** (lockout recovery, MFA reset, settings reset,
+  setup-token reissue) and **failed restore-token attempts** at the setup
+  endpoint (D-101) — both bypass or attack the normal authenticated surface and
+  must be visible even when no application session exists to attribute them to.
 - Authorization: every denial; every use of an instance-administrator override
   (at `warn`).
 - Personal data: read of medical/pastoral notes (D-010); create/update/delete of
@@ -145,7 +153,7 @@ Finding **F-07**.
 | FM-9 | Leaked backup | Personal data exposure **for one organisation only** | Per-instance encrypted backups + separate column encryption for health data |
 | FM-10 | Retention job deletes too much | Irreversible data loss | Dry-run and report before execution; deletions audited; restorable within backup window |
 | FM-11 | Email delivery fails | Password resets and invitations lost | Queued with retry; failures visible in admin; not on the critical path for attendance |
-| FM-12 | Certificate issued in error | Legal/reputational | Certificates are revoked and reissued, never edited; every action audited |
+| FM-12 | Award issued in error | Legal/reputational | Awards are revoked and reissued, never edited; every action audited |
 | FM-13 | Device left unlocked | Unauthorised access to student data | A short idle timeout, and an instructor role that holds **no export and no admin permission at all**. `SHARED_DEVICE` mode (D-009) is out of v1: it was opt-in by the party it restricted, and its most valuable sub-behaviour is achieved by not granting the permission in the first place (`00-overview.md` §3.5.1) |
 | FM-14 | **The application will not load at the poolside** | The instructor has no move; paper always had one | The printed class list (R-35). This is the failure the design most needs an answer to and had none: paper never has a zero-percent day, and a first-lesson failure is permanent — when paper fails the instructor blames the rain, when the app fails they go back to paper and do not return (`04-ux.md` §4.0) |
 | FM-15 | **`APP_URL` changes and every passkey stops working** | Total lockout of every account that authenticates only with a passkey | The WebAuthn RP ID is set deliberately at setup, not derived silently; changing it warns loudly and names the consequence; **every account retains a password + TOTP fallback**. Moving from `http://nas.local:3000` to a real domain is the *expected* path for this deployment, not an edge case (`04-ux.md` §4.0) |
