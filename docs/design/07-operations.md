@@ -28,6 +28,10 @@ Events that **must** be audited:
 
 - Authentication: login success/failure, MFA enrolment/reset, password reset,
   session revocation, step-up challenges.
+- **Recovery-token re-display** — high severity. The recovery token is the key
+  that opens every backup; a request to show it again is indistinguishable from
+  an exfiltration attempt until someone looks. It gets the same treatment as the
+  backup download (D-042): step-up, rate limit, high-severity audit event.
 - Authorization: every denial; every use of an instance-administrator override
   (at `warn`).
 - Personal data: read of medical/pastoral notes (D-010); create/update/delete of
@@ -53,11 +57,52 @@ enough to be readable by non-engineers.
 - `/api/health` (liveness) and `/api/ready` (readiness incl. database).
 - Metrics: request rate/latency/error by route, database pool saturation, job
   queue depth and failures, login failure rate, authorization denial rate.
-- **Alert on security signals, not just uptime:** a spike in authorization
-  denials, any `platform.super_admin` use, repeated failed logins for one
-  account, an unusual export volume.
+- **Alert on security signals, not just uptime.** The list below previously
+  included *"any `platform.super_admin` use"*. That principal was removed with
+  the platform (D-056, `00-overview.md` §5.1), so the alert could never fire —
+  it was not a stale name but a **monitoring rule that provided assurance about
+  nothing**. The rules are now bound to **permissions**, which exist and are
+  checkable, rather than to a role or namespace, which are user-definable:
+
+  | Signal | Rule |
+  |---|---|
+  | Privilege use | Any use of a permission in the high-risk set (`organization.settings.manage`, `privacy.*`, `roles.assign`, `audit.read`, the backup permissions, `students.medical.*`) — the same set that compels MFA (`02-security-privacy.md` §1.2) |
+  | Privilege change | Any grant *of* a high-risk permission, and any change to a role that carries one |
+  | Authorization | A spike in denials, at any scope |
+  | Authentication | Repeated failed logins for one account; repeated failed MFA challenges |
+  | Data movement | Unusual export volume; a backup download; a **recovery-token re-display** (§1.2) |
+
 - Tracing is deferred (D-020 rationale); request ids propagated through logs
   are sufficient for a single-service application.
+
+### 1.4 Breach response — an operational capability, not a paragraph
+
+The design previously shipped an audit trail and a metrics list and stopped.
+That is not enough for this data class. The controller must be able to assess
+and, where required, notify within 72 hours (Article 33) and notify the data
+subjects themselves for high-risk breaches (Article 34) — and this is **health
+data about children**, so the Article 34 high-risk threshold is met by default
+rather than argued about. The intended reader is a swim school with no security
+staff.
+
+A breach requires answering three questions. v1 ships the tool for each
+(**R-37**):
+
+| Question | What ships |
+|---|---|
+| *Which records did this account touch?* | A **"what did this account do" report** over the audit trail: filterable by actor and date range, exportable. This is the Article 33 assessment tool, and without it the audit trail is evidence nobody can read under time pressure |
+| *Which sessions are live, and how do I kill them all?* | An **active-session inventory** with per-session revocation and one **"revoke everything and force re-authentication"** action. "Sessions invalidate when an account is disabled" is not a containment control |
+| *Whose data was in the artefact that leaked?* | The backup manifest records **row counts per table**, not data subjects. Stated plainly as a limitation: a leaked archive must be treated as covering **every** subject in the instance at that timestamp. Restoring a backup to enumerate its subjects is itself a processing decision the operator must take deliberately |
+
+Two more pieces, both cheap and both currently absent:
+
+- **Delivery for high-severity events.** The signals in §1.3 are defined and
+  nothing carries them anywhere. v1 ships email and webhook delivery for the
+  high-severity set. An alert nobody receives is a log line.
+- **An incident checklist in the documentation**, framed as *"the deadlines that
+  apply to you"* — not as advice on whether they apply. The organisation is the
+  controller (D-064); the clock is theirs, and it starts at awareness, not at
+  certainty.
 
 ## 2. Backup and restore
 
@@ -70,7 +115,7 @@ enough to be readable by non-engineers.
 | | Policy |
 |---|---|
 | Database | **The operator's responsibility.** We ship `backup` and `restore` commands plus a scheduler. Shipped and tested recovery path: **scheduled encrypted logical backups, RPO ≤ the configured interval (default daily)**. WAL archiving / point-in-time recovery is a Postgres-level option the operator may add for a lower RPO; it is documented as such and is **not** part of the tested path |
-| Object storage | Versioned, replicated |
+| Uploaded assets | **Included in the encrypted backup archive** (`14-…` §3.1); volume-level redundancy is the operator's choice. This row previously read "object storage: versioned, replicated" — a managed-cloud assumption stated as *our* policy. The shipped artefact is one application image plus Postgres; assets live on a filesystem path. **S3 is out of v1 entirely** (`05-technical.md` §1): `blob-storage.ts` supports only `"local"`, there is no S3 client in `package.json`, and a scheduled push to a bucket would be an exfiltration channel with none of D-042's controls |
 | Retention of backups | 30 days rolling, plus one monthly for 12 months |
 | Encryption | Backups encrypted at rest with keys separate from the database host; special-category columns remain independently encrypted (D-013) |
 | Access | The operator's own control. We provide the audit event, not the policy |
@@ -94,14 +139,16 @@ Finding **F-07**.
 | FM-3 | **Scope-escape bug** (missed reach filter on a list query) | Serious — one organisation's staff see records they should not, e.g. another location's students | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). Cross-*organisation* exposure is impossible by deployment (D-012 revised) |
 | FM-4 | Destructive migration | Data loss | Migration-against-populated-database CI job; forward-only; reviewed; restore drill validated |
 | FM-5 | Brand colours break contrast | Unusable UI, accessibility failure | Contrast validated at save time, not at render |
-| FM-6 | **Fleet version skew / migration fails mid-rollout** | Some instances on the old version; one instance broken | Waves, bounded skew, halt-on-failure, per-instance restore (F-13) |
+| FM-6 | **A migration fails on an unattended upgrade** | The instance will not start; with Prisma the failed migration stays recorded and blocks every later one, so a restart does not clear it | Automatic pre-migration backup before any migration runs (D-044); the boot state machine detects a failed migration as an explicit **`FAILED`** state, refuses to continue, and names the pre-migration backup by path in the failure message (D-055, `13-…` §6). The operator restores and retries rather than debugging Prisma state at 22:00 |
 | FM-7 | Compromised org admin account | Full org data exposure | MFA mandatory; export requires step-up and is rate-limited and alerted; audit visible to the org |
 | FM-8 | Compromised Lucky / prompt injection | Malicious PR | No secrets, no PROD path, workflows outside write scope, human approval required (D-025) |
 | FM-9 | Leaked backup | Personal data exposure **for one organisation only** | Per-instance encrypted backups + separate column encryption for health data |
 | FM-10 | Retention job deletes too much | Irreversible data loss | Dry-run and report before execution; deletions audited; restorable within backup window |
 | FM-11 | Email delivery fails | Password resets and invitations lost | Queued with retry; failures visible in admin; not on the critical path for attendance |
 | FM-12 | Certificate issued in error | Legal/reputational | Certificates are revoked and reissued, never edited; every action audited |
-| FM-13 | Shared tablet left unlocked | Unauthorised access to student data | `SHARED_DEVICE` mode: short idle timeout, reduced PII, no export, no admin (D-009) |
+| FM-13 | Device left unlocked | Unauthorised access to student data | A short idle timeout, and an instructor role that holds **no export and no admin permission at all**. `SHARED_DEVICE` mode (D-009) is out of v1: it was opt-in by the party it restricted, and its most valuable sub-behaviour is achieved by not granting the permission in the first place (`00-overview.md` §3.5.1) |
+| FM-14 | **The application will not load at the poolside** | The instructor has no move; paper always had one | The printed class list (R-35). This is the failure the design most needs an answer to and had none: paper never has a zero-percent day, and a first-lesson failure is permanent — when paper fails the instructor blames the rain, when the app fails they go back to paper and do not return (`04-ux.md` §4.0) |
+| FM-15 | **`APP_URL` changes and every passkey stops working** | Total lockout of every account that authenticates only with a passkey | The WebAuthn RP ID is set deliberately at setup, not derived silently; changing it warns loudly and names the consequence; **every account retains a password + TOTP fallback**. Moving from `http://nas.local:3000` to a real domain is the *expected* path for this deployment, not an edge case (`04-ux.md` §4.0) |
 
 ## 4. Scalability risks
 
@@ -121,7 +168,8 @@ bite.
 | **Audit table growth** | Fastest-growing table; audit UI queries slow first | Time-based partitioning + retention rotation; index on (org, timestamp, actor) |
 | **Attendance table growth** | ~50,000 attendance-bearing sessions/year in a large organisation | Partition by period; aggregate + anonymise at 24 months — the retention policy doubles as a growth control |
 | **Seasonal peak** | Enrolment season and exam periods concentrate load | Stateless processes scale horizontally; no in-process state anywhere (P-08) |
-| **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. Sharding is moot: the fleet is already partitioned by organisation |
+| **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. **Sharding does not arise:** one installation holds one organisation's data, so there is nothing to partition across. (This row previously read "the fleet is already partitioned by organisation" — there is no fleet; we operate nothing, F-14 is closed) |
+| **Audit-chain contention on group writes** | The flagship path, immediately | Audit appends serialize on a Postgres advisory lock. One audit event per **group registration**, not per student — 30 attendance events plus 30 chained audit rows would contend globally against every other audit writer in the instance (`05-technical.md` §5 rule 6) |
 | **Ten years of retained exam history** | The one table that never shrinks, by legal necessity | Small rows, indexed by candidate; a diploma register is naturally append-only and read-rarely |
 | **Public site traffic spikes** | A newsletter or news item | ISR caching; the public surface has no person-table access so it cannot cascade into the portal (D-017). A spike affects one organisation only |
 | **N+1 queries in the group matrix** | The hot path, immediately | Explicit repository methods returning the full matrix in one query; a performance test on a seeded 30×40 matrix in CI |

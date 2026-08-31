@@ -1,6 +1,6 @@
 # SplashTrack — Product Vision, Requirements & Scope
 
-> **Status: authoritative.** This document and chapters 01–10, 13 and 14
+> **Status: authoritative.** This document and chapters 01–10 and 13–15
 > describe **one** architecture: an open-source, self-hosted, single-organisation
 > application. There are no multi-tenant or platform-operator assumptions left in
 > the active chapters.
@@ -29,7 +29,23 @@
   platform super administrator, database-backed runtime settings, and the
   security-first / GDPR-by-design requirements intact.
 
-Chapters 01–14 remain **under review**; approving chapter 00 approves nothing
+**Correction (2026-09-01).** The bullet above previously claimed that the
+platform-super-administrator residue was gone from the active chapters. It was
+not. The independent review found `platform.super_admin` still normative in
+`02-security-privacy.md` §1.2 (MFA mandate) and `07-operations.md` §1.3 (the
+security alert list) — an alert on a principal that cannot exist never fires and
+gives false assurance. Both are removed, and the MFA mandate and the alert list
+are now bound to **permissions** rather than to role names, because roles are
+user-definable and a role name is not a checkable predicate.
+
+**Scope correction (2026-09-01).** The v1 definition below has been re-cut. It
+is not a trim: roughly 45% of the previously specified effort went into a
+self-hosting *product* whose first and only operator for the next year is Jack,
+on his own hardware, while six capabilities he names as weekly needs were absent
+from the design entirely. See **§3.5**. The word "aftest" did not appear
+anywhere in this design set before that revision; neither did "NRZ".
+
+Chapters 01–15 remain **under review**; approving chapter 00 approves nothing
 else, and the open decisions in `08-open-decisions.md` remain open.
 
 ## Document set
@@ -57,7 +73,7 @@ else, and the open decisions in `08-open-decisions.md` remain open.
 | 19 | UI / design system | `04-ux.md` §5 |
 | 20 | High-level technical architecture | `05-technical.md` §1 |
 | 21 | Repository structure | `05-technical.md` §3 |
-| 22 | DEV/UAT/PROD model | `06-delivery.md` §1 |
+| 22 | DEV/PROD model | `06-delivery.md` §1 |
 | 23 | CI/CD strategy | `06-delivery.md` §2 |
 | 24 | GitHub workflow | `06-delivery.md` §3 |
 | 25 | Lucky AI permissions & boundaries | `06-delivery.md` §4 |
@@ -67,6 +83,7 @@ else, and the open decisions in `08-open-decisions.md` remain open.
 | 29 | Scalability | `07-operations.md` §4 |
 | 30 | Open architecture decisions | `08-open-decisions.md` |
 | + | Configuration, setup & administration | `13-configuration-and-setup.md` |
+| + | Assessment (aftesten), awards & fees | `15-assessment-and-fees.md` |
 | + | Decision register (all decisions) | `09-decision-register.md` |
 | + | Findings (gaps, risks, inconsistencies) | `10-findings.md` |
 | — | *History only:* how the design changed | `11-…`, `12-…` |
@@ -88,14 +105,28 @@ design is shaped around:
 > seconds, on a tablet, without training — and the organisation behind them
 > should get a compliant, auditable record of everything that happened.**
 
-The management depth — members, courses, exams, planning, website — exists
-because organisations need it, but it must never leak complexity into that
-operational moment.
+The management depth — members, courses, exams, planning, fees — exists because
+organisations need it, but it must never leak complexity into that operational
+moment.
 
-**Secondary thesis:** an organisation should be able to run its entire public web
-presence on SplashTrack. Not as a WordPress replacement — as a small, branded,
-content-managed site that shares identity, branding and course data with the
-portal, so "sign up for a course" is one system rather than an integration.
+**One qualification, added after the domain review.** The thesis is the design
+constraint, not the definition of success. **The incumbent is pen and paper**,
+and paper never has a zero-percent day: a wet sheet is still legible, a
+forgotten sheet is reconstructed from memory, a broken pen is replaced. The win
+actually asked for is *"stop losing the paper"* — which is satisfied by entering
+attendance from the sheet, on a phone, after the lesson. A v1 used post-hoc from
+paper is a legitimate, winning v1. The thirty-second target is kept because it
+produces a better interface regardless; it is no longer allowed to justify
+apparatus (`04-ux.md` §4.0). It also does **not** govern the aftest screen,
+where defaulting to a passing grade would make the four-eyes control ceremonial
+(`15-assessment-and-fees.md`).
+
+**Secondary thesis, reduced to what v1 ships.** The public surface is a
+**course-catalogue page, an inquiry form and the branding tokens** — enough that
+"find a course and get in touch" is one system rather than an integration. The
+general content-managed site (R-12 / D-017) is out of v1: the first school has a
+website already, and a second CMS is the least valuable week in the plan
+(§3.5).
 
 ### 1.1 Domain scope — swim education first
 
@@ -118,9 +149,16 @@ premature abstraction.
 
 ### 1.2 What SplashTrack is not
 
-- Not a general-purpose CMS. No plugins, no page builder, no theme marketplace.
+- Not a CMS at all in v1. A course-catalogue page and an inquiry form; no page
+  builder, no plugins, no theme marketplace (§3.5).
 - Not an LMS. No e-learning content, no video hosting, no SCORM.
-- Not a payment or invoicing platform in v1 (OD-4).
+- **Not an invoicing platform.** v1 tracks fees, charges, payments and a balance
+  (R-32) and stops hard at the document: **no artefact carrying an amount and
+  the organisation's details ever leaves the system in v1.** The moment it does,
+  it is arguably a *factuur* under Dutch rules and inherits sequential
+  numbering, mandatory fields, BTW treatment and a seven-year retention
+  obligation on a record the application now authored. That is a second product
+  (OD-4).
 - Not an HR system. Instructors are people with roles, not employees with payroll.
 - Not a hosted service. We publish software; we operate nothing (OD-14).
 - Not offline-first as a v1 guarantee — but attendance is designed so offline
@@ -148,9 +186,34 @@ consent records, audit events, API credentials, MFA, passkeys, Microsoft Entra
 sign-in with **its configuration stored encrypted in the database and edited
 in-app**, email templates, maintenance jobs, rate limiting, GDPR person-erasure.
 
-CI already runs format, lint, typecheck, seed smoke-test, unit and integration
-tests, Playwright E2E, container build, **and a migration-against-populated-
-database job**.
+**What its CI actually runs — corrected.** An earlier draft of this section
+claimed the template's CI "already runs format, lint, typecheck, seed smoke-test,
+unit and integration tests, Playwright E2E, container build, and a
+migration-against-populated-database job". That was checked against
+`.github/workflows/ci.yml` during review and is **false in one respect and
+misleading in another**. The workflow has **three jobs**:
+
+| Job | Contains |
+|---|---|
+| `verify` | format, lint, typecheck, seed smoke-test, Vitest, build |
+| `e2e` | Playwright |
+| `migrate-populated` | base migrations → populate rows → apply the PR's migrations |
+
+There is **no container build**, no `npm audit` gate, no CodeQL, no
+secret-scanning job, and **no axe assertion anywhere in `tests/`** — grep finds
+only prose. Of the fifteen checks this design once required, seven exist.
+`06-delivery.md` §2.1 states the corrected picture and what v1 actually ships.
+
+Worse, and worth naming here because it is the opposite of a decision this
+design makes: `deploy-uat.yml` runs `docker compose build` **on the UAT host**.
+It builds at deploy time rather than promoting an image — the direct inversion
+of D-022. That is existing behaviour to be **replaced**, not extended.
+
+The migration-against-populated-database job is nonetheless real, and it is one
+of the two best things in the template. The other is
+`tests/unit/migration-safety.test.ts`, which blocks the unsafe
+`ADD COLUMN … NOT NULL` without a default — free enforcement for exactly the
+class of migration that would strand a self-hoster mid-upgrade.
 
 **Assessment: the single most valuable asset in the project.** It answers, with
 tested code, most of the non-domain requirements — the tedious,
@@ -179,16 +242,48 @@ comment explains that a `Restrict` constraint once caused a GDPR Article 17
 erasure to roll back entirely, and why the column is now `SetNull` as defence in
 depth. That is code that has been operated, not merely written.
 
-### 2.2 `Jackldam/SplashTrack` — the domain reference
+### 2.2 The prototype — the domain reference
 
-An early prototype: 12 Prisma models, ~102 TypeScript files. Models include
-`User`, `Organization`, `OrganizationWelcomePage`, `Student`, `SwimGroup`,
-`GroupMembership`, `OrganizationMember`, `OrganizationMemberCapability`,
-`AuditLog`.
+**A fact this section previously got wrong: the prototype is not a separate
+repository.** It is in the working tree of *this* repository, at `apps/web` on
+`main` — **111 TypeScript files, 12 Prisma models, 4 migrations**
+(`20260314000000_init` … `20260428213000_add_organization_hierarchy_and_capabilities`),
+and the design branch sits on top of it. That matters: "no destructive action
+against the existing repository" (OD-1) is a constraint on the repository the v1
+build will also occupy, and the obvious move — replace `apps/web` — is exactly
+what OD-1 forbids until it closes.
+
+Models include `User`, `Organization`, `OrganizationWelcomePage`, `Student`,
+`SwimGroup`, `GroupMembership`, `OrganizationMember`,
+`OrganizationMemberCapability`, `AuditLog`.
 
 **Assessment: valuable as domain evidence, not as a foundation.** It has no
 `Person`/`UserAccount` split (which the brief explicitly requires), no branding
 system, no CMS, no API layer, and no consent or retention model.
+
+**Two shape mismatches that any import must handle explicitly** (R-29, OD-1):
+
+1. The prototype's `Organization` is **multi-row with a hierarchy**;
+   SplashTrack's is an enforced singleton (D-027). A prototype holding N
+   organisations has no single target — it becomes N installations, N imports, N
+   recovery tokens. The importer therefore takes **one prototype organisation id
+   as a required argument** and refuses to run without it. Likewise
+   `OrganizationMemberCapability` must map to role assignments explicitly, and
+   the import **refuses on any unmapped capability** rather than silently
+   dropping authority.
+2. **Consent cannot be imported.** The prototype has no consent model. Every
+   photo permission, medical note and marketing flag would arrive with no lawful
+   basis, into a system whose privacy model (D-063, D-065, F-27) rests on having
+   one. The importer writes **zero** `Consent` rows, leaves every consent-gated
+   feature off, and emits a report of what could not be carried over. That is
+   the difference between an import that improves the school's compliance
+   position and one that launders a gap.
+
+The import is also **lossy by construction**: prototype `Student` and
+`GroupMembership` carry status, not history, so each imported student starts
+with one synthetic `StudentLifecycleEvent(JOINED)` and one `MembershipPeriod`,
+marked `origin: IMPORTED_LEGACY` so nobody later reads an import artefact as
+evidence in a dispute.
 
 ### 2.3 D-001 — build from the template, port the domain as concepts
 
@@ -204,12 +299,17 @@ about the domain, and knowledge ports for free.
 
 **Trade-off.** The prototype's code and migration history are not reused.
 
-**Condition — not yet satisfied.** Whether the prototype's *migration history*
-may be discarded depends on whether it holds data that must be migrated. That is
-**OD-1, and it is blocking**: no destructive action is taken against the existing
-repository or any prototype database until Jack confirms. If real data exists, a
-one-time export/import path becomes a v1 requirement (R-20) rather than an
-assumption.
+**Condition — open, and asking the wrong question.** Whether the prototype's
+*migration history* may be discarded depends on whether it holds data that must
+be migrated. That is **OD-1, and it is still blocking**: no destructive action is
+taken against `apps/web`, its migration history, or any prototype database until
+it closes. If real data exists, a one-time export/import path becomes a v1
+requirement — **R-29**, not R-20 (R-20 is migrations and upgrades).
+
+The question as posed cannot be answered from a repository. The answerable form
+is: *is there a deployed prototype instance, and who holds its connection
+string?* If nobody can name a running instance, OD-1 closes the same day
+(`08-open-decisions.md` OD-1).
 
 ---
 
@@ -219,6 +319,19 @@ Three categories, as the brief demands. **"Prepare"** means the architecture mus
 not need rework when the feature arrives — not that it is built now.
 
 ### 3.1 Build now — v1
+
+**How to read the platform requirements below.** Several of them previously
+restated a rule that is also stated authoritatively somewhere else. That is not
+a style problem: D-037's rule was stated in three places and agreed only because
+all three happened to be edited at once, and **that exact pattern has already
+produced a real bug in this design set.** The same three-place duplication
+existed for D-047/D-048 and for D-040.
+
+So a normative rule is now stated **once**, in one section, and every other
+mention points at it and says so — the form `13-configuration-and-setup.md`
+already uses: *"The rule … is stated once, in §3.1. It is not restated here."*
+A requirement row that points rather than restates is not vague; it is the only
+version that cannot drift.
 
 **Product and domain**
 
@@ -232,55 +345,67 @@ not need rework when the feature arrives — not that it is built now.
 | R-06 | Courses, levels and enrolment |
 | R-07 | Skill catalogue, requirements per level, append-only per-student progress with instructor sign-off |
 | R-08 | Attendance registration — the flagship operational workflow |
-| R-09 | Exams: sessions, candidates, examiners (including external), results, certificates |
+| R-09 | Exams: sessions, candidates, examiners (including external), results, award records |
 | R-10 | Planning: lessons, groups, locations, instructors, resources |
 | R-11 | Branding without code changes |
-| R-12 | Public website / simple CMS, sharing branding and the public course catalogue |
+| R-12 | **Reduced (§3.5):** a public course-catalogue page, an inquiry form and the branding tokens. Not a general CMS |
+| R-30 | **Aftesten** — versioned criterion schemes, a five-point grade scale, graded per-criterion results, waivers, `PersonQualification`, and the four-eyes gate on exam candidacy (`15-assessment-and-fees.md`) |
+| R-31 | **`SESSION` participation reach** — reach follows assignment to a session and its roster, for a bounded window. Replaces the `EXAM_SESSION` scope (`02-security-privacy.md` §2.1) |
+| R-32 | **Billing-lite** — fee types, charges, payments, a balance view per payer and per student, CSV export. No document carrying an amount leaves the system (§1.2, `15-…`) |
+| R-33 | **Waiting list** — `WaitlistEntry` plus a placement action from `Inquiry` |
+| R-34 | **Group moves in both directions**, carrying a reason — moving up *and* back down |
+| R-35 | **Print fallbacks** — class list and exam candidate list, printable from the portal (`04-ux.md` §4.0) |
+| R-36 | **NRZ notification export** — candidates, date of birth, award type, date. A report, not an integration |
+| R-38 | **Make-up lessons and trial lessons: model only** — a roster that accepts a non-member, `Enrolment.status = TRIAL`, a `StudentLifecycleEvent` type. No booking flow, no entitlement counter |
 
 **Platform, security and operability — all v1, none optional**
 
 | ID | Requirement |
 |---|---|
-| R-13 | Authentication with MFA mandatory for administrator roles |
-| R-14 | Scoped permission authorization (`ORGANIZATION` / `UNIT` / `GROUP` / `COURSE` / `EXAM_SESSION` / `SELF` / `RELATED`), deny by default, enforced server-side (`02-security-privacy.md` §2.1–2.2) |
-| R-15 | **Configurable OAuth 2.0 / OIDC identity providers** (Microsoft Entra, Google, Keycloak, Okta, generic), administered in-app (D-035) |
+| R-13 | Authentication with MFA. **The mandate is bound to permissions, not to role names** — roles are user-definable, so a role name is not a checkable predicate. The permission set that compels enrolment is stated once, in `02-security-privacy.md` §1.2 |
+| R-14 | Scoped permission authorization, deny by default, enforced server-side. **The scope set is stated once, in `02-security-privacy.md` §2.1; it is not restated here.** v1 keeps `UNIT` as a flat scope (no descendant walk), removes `RELATED`, and replaces `EXAM_SESSION` with `SESSION` participation reach (R-31, §3.5) |
+| R-15 | **Out of v1 (§3.5).** Local accounts only. The IdP registry (D-035) is retained on paper and is purely additive later |
 | R-16 | **First-run setup wizard** — organisation, first administrator, forced MFA, optional restore (D-039) |
-| R-17 | **In-app configuration** — a database-backed settings registry is the home of all configuration. An application-owned environment variable is permitted **only** when its value must be known before the database can be read, or when it determines where persistent state lives; adding one requires an ADR justifying why it cannot be database-backed. **No numeric maximum is imposed.** Standard runtime/platform variables (`TZ`, `NODE_ENV`, proxy settings, custom CA/trust-store paths, container runtime settings) are not SplashTrack application configuration and are not counted. No container restart for a runtime setting (D-036, D-037, D-038) |
-| R-18 | **Encrypted backup and restore** — the Recovery Kit: encrypted archive plus a printable recovery token (D-040) |
+| R-17 | **In-app configuration.** The rule governing what may live in the environment is stated once, in `13-configuration-and-setup.md` §3.1 (D-037); it is not restated here. v1 ships a **plain settings page** for the ~15 settings that matter, not a registry with a generated UI — that satisfies D-036/D-038's actual requirement (§3.5). No container restart for a runtime setting |
+| R-18 | **Encrypted backup and restore** — the Recovery Kit. Stated once, in `14-backup-restore-upgrade.md` §2 (D-040); not restated here |
 | R-19 | **Recovery and break-glass** — host-level CLI for lockout, MFA reset, settings reset; all audited (`13-…` §7) |
-| R-20 | **Migrations and upgrades** — automatic forward-only migration on start, automatic pre-migration backup, restore-then-migrate so an old backup runs on a new version (D-043 – D-048) |
+| R-20 | **Migrations and upgrades** — automatic forward-only migration on start, automatic pre-migration backup, restore-then-migrate. Stated once, in `14-backup-restore-upgrade.md` §4 (D-043 – D-046, D-048); not restated here |
 | R-21 | **Diagnostics page** — effective configuration, value provenance, connectivity, migration state, backup age, version and advisory status; safe to paste in a public issue |
 | R-22 | **Secure release artifacts** — signed images, SBOM, provenance, pinned dependencies, tag-only release workflow (F-18) |
 | R-23 | Audit logging of security-, privacy- and domain-significant events, readable by the organisation |
 | R-24 | GDPR rights: access, rectification, erasure, export — operated by the organisation itself, which is the controller (D-064) |
-| R-25 | **Policy-driven** retention and erasure: per data class a purpose, lawful basis, trigger and expiry action (`DELETE` / `ANONYMISE` / `REVIEW`), automated and dry-runnable (D-065, D-066) |
+| R-25 | **Reduced (§3.5):** retention constants in one file, one scheduled job, and the D-014 erasure transaction. D-066's trigger rule — the end of the person's **last relationship of any kind** — is encoded as a constant, because it is correct and costs nothing. The policy *engine* (D-065's configurable table, dry-run runs, per-class confirmation) is retained on paper |
 | R-26 | Public surface cannot enumerate or expose any person, student, member, group or other private record (§3.4) |
-| R-27 | DEV and UAT environments; the same tag publishes the public image |
-| R-28 | CI blocking merges on failed tests, security checks, or a broken **restore-from-every-supported-release** matrix — every release at or above `minimumRestorableVersion` (D-047, D-048) |
-| R-29 | *Conditional on OD-1:* one-time import path from the existing prototype |
+| R-27 | **Reduced (§3.5):** DEV and PROD. UAT as a separate environment is out of v1 — one person is author, reviewer and acceptor. The same tag still publishes the public image |
+| R-28 | **Reduced (§3.5):** eight blocking CI checks — format, lint, typecheck, unit, integration, E2E, migration-against-populated-database, secret scanning. The check list is stated once, in `06-delivery.md` §2.1 |
+| R-29 | *Conditional on OD-1:* one-time import path from the prototype at `apps/web`, taking one prototype organisation id as a required argument (§2.2) |
+| R-37 | **Breach-response capability** — a "what did this account do" audit report, an active-session inventory with global revocation, notification delivery for high-severity events, and an incident checklist. For health data about children the Article 33/34 thresholds are met by default, so this is a v1 requirement for this data class (`07-operations.md` §1.4) |
 
 ### 3.2 Architecturally prepare — not built in v1
 
 | ID | Requirement | Preparation |
 |---|---|---|
-| P-01 | Public REST API for integrations | Route handlers stay thin; application services are the shared layer; `/api/v1` versioning and scoped API credentials already exist |
-| P-02 | Offline-tolerant attendance | Attendance writes are idempotent events carrying a client-generated id |
-| P-03 | Payments / invoicing | Enrolment never grows a payment-state field; a seam is kept (OD-4) |
-| P-04 | Guardian **portal** | The relationship and consent authority are built in v1 (R-04); only the login surface and its `RELATED` scope axis are deferred (OD-5) |
+| P-01 | Public REST API for integrations | Route handlers stay thin and application services are the shared layer — that is the whole preparation. **No `/api/v1` surface, no OpenAPI document and no Swagger UI ship in v1** (§3.5); scoped `ApiCredential`s are inherited and stay unused |
+| P-02 | Offline-tolerant attendance | Attendance writes are idempotent events carrying a client-generated id. **Defensible only because the print fallback (R-35) exists** — see `04-ux.md` §4.0 |
+| P-03 | Invoicing and payment collection | v1 tracks charges and payments (R-32); `Enrolment` never grows a payment-state field, and no document with an amount is emitted. Reconciliation (CAMT.053 / MT940 import with reference matching) is the first thing added after the first full billing period, not a v1 item (OD-4) |
+| P-04 | Guardian **portal** | The relationship and consent authority are built in v1 (R-04). The login surface is deferred, and **`RELATED` is removed from the scope enum entirely until the portal ships** — an unimplemented enum member that a starter role can be granted is worse than an absent one (OD-5) |
 | P-05 | Multi-language content | Content tables carry a locale discriminator from day one |
 | P-06 | Notifications beyond transactional email | Template's notification module stays in place |
 | P-07 | Reporting / analytics | Audit, attendance and progress are append-only and queryable |
 | P-08 | Larger single instances | Stateless app processes; no in-process session or cache state |
-| P-09 | Portable certificates between organisations | Certificates are immutable numbered records, signable later (OD-12) |
+| P-09 | Portable award records between organisations | Award records are immutable, numbered, revoked-and-reissued rather than edited — **D-062**, not D-007. D-007 was about erasure and is superseded; it never made a claim about immutability. Signable later (OD-12) |
 
 ### 3.3 Deliberately deferred
 
-Waiting lists; resource/inventory management; staff shift planning; financial
-administration; native mobile apps; e-learning content; SCIM provisioning; a
+Resource/inventory management; staff shift planning; invoicing and payment
+collection (P-03); native mobile apps; e-learning content; SCIM provisioning; a
 hosted "SplashTrack Cloud" (OD-14); any cross-instance data path.
 
-**Note:** configurable SSO/OIDC was previously listed here. It is **not**
-deferred — it is R-15, in v1.
+**Two notes.** Configurable SSO/OIDC was previously listed here, then promoted
+to R-15, and is now out of v1 again for a different and better reason — see
+§3.5. **Waiting lists were listed here and are now in v1 (R-33):** they were
+deferred while `EXAM_SESSION` was given its own scope type, which is the wrong
+way round. The waiting list is the front door.
 
 ### 3.4 The anonymous-access rule
 
@@ -303,6 +428,81 @@ publishing step. That friction is exactly where consent belongs.
 
 ---
 
+### 3.5 The v1 re-cut — what moved, and why
+
+**The verdict this section implements.** The design was **not over-scoped by a
+factor of two; it was mis-scoped.** Roughly 45% of the specified effort went
+into a self-hosting *product* whose first and only operator for the next year is
+Jack, on his own hardware — while six capabilities he names as weekly needs were
+absent from the documents entirely. One of those, **aftesten**, is the single
+most consequential control in the domain: the four-eyes gate deciding whether a
+child may sit an exam. The word did not appear once in this design set. Neither
+did "NRZ".
+
+This is not "ship less". It is **spend the same budget on things a swim
+instructor will touch.**
+
+**What made the re-cut possible: OD-2 is closed.** The first customer is Jack's
+own swim school and he is a practising instructor there. Previously it was
+possible that the first customer would be a stranger self-hosting, which would
+have justified the IdP registry, the diagnostics page for third-party support,
+the restore-from-every-release matrix and the full release-signing pipeline.
+We now know the first operator is the author. Every hour spent making
+self-hosting pleasant for a stranger in v1 is provably speculative in a way it
+was not a week ago.
+
+#### 3.5.1 Moved **out** of v1 — decision retained on paper, not built
+
+| Item | Reasoning |
+|---|---|
+| **R-15 / D-035** IdP registry | The first and only operator is Jack. No Entra, no Keycloak, no Okta. Purely additive later: a registry is not structural, and nothing about local accounts blocks it |
+| **D-047** restore-from-every-release CI matrix | **Zero prior releases exist**, so the matrix is green while protecting nothing. **D-048 is kept** (never squash a migration chain): it is free, and it is precisely what makes D-047 addable at v1.3. **Fixture *generation* must still ship in v1.0** — otherwise v1.0 is permanently untestable as a restore source |
+| **`UNIT` recursive tree walk** | `UNIT` survives as a **flat** scope; the descendant walk does not. One pool. A recursive walk is the highest-risk code path in the application, written for a federation that does not exist |
+| **D-009 `SHARED_DEVICE`** | Replaced by a short idle timeout and an instructor role that simply holds no export or admin permission. Its four sub-behaviours were led by the one instructors would disable first, and it was opt-in by the party it restricts |
+| **R-12 / D-017 CMS** beyond a course-catalogue page and an inquiry form | The school has a website. **D-051 is kept** and enforced as a lint rule: `(public)` never imports a person repository |
+| **D-022 / D-023 UAT as a separate environment** | One person is author, reviewer and acceptor. **D-023's rule is kept** — never copy production data into a lower environment — as free policy. D-022's image-promotion discipline is kept for DEV → PROD |
+| **D-065 / D-066 retention *engine*** | Ship retention **constants** in one file, one scheduled job, and the D-014 erasure transaction. **D-066's trigger rule is kept** as a constant: the end of the person's last relationship *of any kind*, because the most common person in the database — a child taking lessons — has no membership at all |
+| **R-17 settings registry with generated UI** | A plain settings page for the ~15 settings that matter satisfies what D-036/D-038 actually require. The metaprogramming project does not |
+| **P-01 `/api/v1` + OpenAPI + Swagger** | `05-technical.md` §4 already conceded the v1 surface was health/ready plus one worked example. Ship the thin-handler discipline; ship no versioned surface |
+| **R-28's full 15-check CI** | Eight checks: format, lint, typecheck, unit, integration, E2E, migration-against-populated-database, secret scanning. Seven of the fifteen were asserted to exist and did not (§2.1) |
+
+#### 3.5.2 Moved **into** v1 — absent today, needed weekly
+
+| Item | Requirement | Why it cannot wait |
+|---|---|---|
+| **Aftesten** — versioned criterion schemes, five-point grade scale, graded per-criterion results, waivers, `PersonQualification`, four-eyes gate | R-30 | The control that decides whether a child sits an exam, modelled nowhere. Retrofitting graded criteria under a live progress catalogue is a migration through every child's history |
+| **`SESSION` participation reach**, replacing `EXAM_SESSION` | R-31 | Aftesten by an independent assessor, a substitute instructor, a make-up lesson's receiving instructor and an external examiner are **one** problem. All four are currently impossible: the assessor is by definition not the child's instructor and therefore holds no grant covering that child |
+| **Billing-lite** — fee types, charges, payments, balance view, CSV export | R-32 | Without it the school keeps its existing system and does dual entry, which is the most common reason vertical software is abandoned |
+| **Waiting list** — `WaitlistEntry` + placement from `Inquiry` | R-33 | The front door and the pipeline |
+| **Group moves in both directions**, carrying a reason | R-34 | The data supports it; the *action* and the "back down" case do not exist |
+| **Print fallbacks** — class list, exam candidate list | R-35 | Minimum viable parity with paper, not a nice-to-have (`04-ux.md` §4.0). Also the NRZ delegate needs the candidate list *at that moment* |
+| **NRZ notification export** | R-36 | A report, not an integration |
+| **Breach-response capability** | R-37 | Health data about children: the Article 33/34 thresholds are met by default, and the design shipped an audit trail and a metrics list and stopped |
+| **Make-up and trial lessons: model only** | R-38 | The *data* change is expensive to retrofit and costs nothing now. The *workflows* are gold-plating — by the product owner's own account his school does not run them |
+
+#### 3.5.3 Estimate — both numbers, recorded
+
+| | Engineer-weeks |
+|---|---|
+| v1 **as previously specified** | ~60–75 |
+| v1 **as re-cut above** | **~18–20** |
+
+The two numbers are close in structure and far apart in value. The reduction is
+not achieved by shipping less product; it is achieved by removing a
+self-hosting product built for an operator who does not exist, and spending
+about six of the recovered weeks on assessment, fees, the waiting list and print
+— net roughly +5.5 weeks against the leanest previous proposal, for a release the
+domain expert can run his school on rather than run alongside his existing
+administration.
+
+**One residual disagreement, stated rather than smoothed.** Proefzwemmen and
+inhaallessen are, by the product owner's own words, things his school does not
+do. Being the domain expert about how Dutch swim schools work does not settle
+what belongs in *this* release. Verdict: **take the model, refuse the
+workflow** (R-38).
+
+---
+
 ## 4. Non-functional requirements
 
 **Scope note.** SplashTrack is software that organisations run themselves. We
@@ -310,21 +510,35 @@ therefore state **software targets** (what the application must achieve on a
 reference deployment) and **operator guidance** (what the organisation is
 responsible for). *We cannot and do not offer an infrastructure SLA.*
 
-### 4.1 Software targets — verified in CI on the reference deployment
+### 4.1 Software targets, and how each is checked
 
-| Area | Target | Verified by |
-|---|---|---|
-| Attendance write latency | p95 < 300 ms server-side for a group of 30 | Load test in CI against a seeded instance |
-| Group skill matrix (30 × 40) | p95 < 500 ms, no N+1 | Query-count assertion in CI |
-| Page interactive, portal on a 4G tablet | p95 < 2.5 s | Playwright trace budget |
-| Cold start to serving | < 60 s including migrations | CI container test |
-| Accessibility | WCAG 2.2 AA, including against configured brand colours | axe in E2E; contrast validated at save time |
-| Browser support | Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari first-class | Playwright matrix |
-| Localisation | NL default, EN available; no hardcoded UI strings | Lint rule + missing-key check |
-| Restore from every supported release (≥ `minimumRestorableVersion`) | Succeeds and migrates forward | Restore matrix job (D-047, D-048) |
-| Dependency risk | No known high/critical CVEs at merge | `npm audit` + Dependabot gate |
-| Secret exposure | Zero secrets in the repository | Secret scanning + push protection |
-| Resource footprint | Runs within 1 vCPU / 1 GB RAM for a small organisation | Documented and measured on the reference deployment |
+This table previously carried the header *"Software targets — verified in CI"*.
+That was false for most of its rows: the load test, the query-count assertion,
+the Playwright trace budget, the i18n missing-key check and save-time contrast
+validation appear nowhere in `06-delivery.md` §2.1, which is the authoritative
+list of what CI actually runs — and the last row contradicted the header in the
+same table. A reader came away believing performance was gated. It is not.
+
+The **Status** column is now the honest one. *Gated* means a red build.
+*Required addition* means it is a v1 work item that does not yet exist and is
+not currently checked by anything.
+
+| Area | Target | How it is checked | Status |
+|---|---|---|---|
+| Attendance write latency | p95 < 300 ms server-side for a group of 30 | Load test against a seeded instance | **Required addition.** And the target itself needs re-deriving first: audit appends take a Postgres advisory lock, so 30 attendance events plus 30 audit rows would serialize globally. See `05-technical.md` §5 rule 6 — write **one** audit event per group registration |
+| Group skill matrix (30 × 40) | p95 < 500 ms, no N+1 | Query-count assertion | **Required addition** |
+| Page interactive, portal on a 4G tablet | p95 < 2.5 s | Playwright trace budget | **Required addition** |
+| Cold start to serving | < 60 s including migrations | Container test | **Required addition** — there is no container build job today (§2.1) |
+| Accessibility | WCAG 2.2 AA, including against configured brand colours | axe in E2E; contrast validated at save time | **Required addition.** The design asserted axe was inherited; grep finds it only in prose, nowhere in `tests/` |
+| Browser support | Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari first-class | Playwright matrix | **Required addition** — E2E runs, the matrix does not |
+| Localisation | NL default, EN available; no hardcoded UI strings | Lint rule + missing-key check | **Required addition** |
+| Migration safety | No `ADD COLUMN … NOT NULL` without a default | `tests/unit/migration-safety.test.ts` | **Gated — inherited, and it works.** Adopt it, do not re-invent it |
+| Migration history is append-only | No squash, no edit of an applied migration | `tests/unit/migration-history-append-only.test.ts` against a committed lockfile | **Required addition.** D-048 is currently enforced by nothing (`06-delivery.md` §2.2) |
+| Migration against a populated database | Applies cleanly over existing rows | `migrate-populated` CI job | **Gated — inherited** |
+| Restore from every supported release | Succeeds and migrates forward | Restore matrix job | **Out of v1** (§3.5). Zero prior releases exist. Fixture *generation* still ships in v1.0 |
+| Dependency risk | No known high/critical CVEs at merge | `npm audit` + Dependabot | **Required addition** — no audit gate exists today |
+| Secret exposure | Zero secrets in the repository | Secret scanning + push protection | **Required addition**, and urgent: `apps/web/.env` is currently tracked in git history |
+| Resource footprint | Runs within 1 vCPU / 1 GB RAM for a small organisation | Measured on the reference deployment | **Not gated, and never was** — documented, not checked |
 
 ### 4.2 Per-instance capacity
 
@@ -381,7 +595,8 @@ lifecycles (`01-domain-model.md` §3.1).
 | **Planner / coordinator** | Yes | Schedules, groups, locations, instructor assignment |
 | **Member administrator** | Yes | People, memberships, enrolments |
 | **Content editor** | Yes | Public website and branding. **No access to person data** |
-| **Instance administrator** | Yes, MFA required | Full control **of this installation**: settings, identity providers, backups, roles |
+| **Instance administrator** | Yes, MFA required | Full control **of this installation**: settings, backups, roles |
+| **Qualified assessor** | Yes | Grade a child's aftest against the criterion scheme — and, by design, *not* that child's own instructor (R-30). Reaches the student through `SESSION` participation, never a standing grant |
 | **Anonymous visitor** | No | Read public pages, find courses, contact the organisation. Can reach **no** private data (D-051) |
 | **API consumer** | No — scoped credential | Integrate (P-01) |
 | **Lucky (AI dev agent)** | Not a product user | Develop in DEV only; no identity in the application at all (`06-delivery.md` §4) |
@@ -416,13 +631,21 @@ afternoon and is not a member of the organisation.
 they log in or record results themselves, they receive an individual,
 time-bounded, minimally scoped account — never a shared or generic one.**
 
-Concretely: their own `UserAccount`, and a role assignment scoped to
-`EXAM_SESSION` — a first-class scope type (D-054), not a special case — carrying
-only `exams.assess` and `exams.results.record`. The grant has a mandatory expiry
-after which it lapses automatically, MFA is required as for any account that can
-write results, and every action is attributed to them by name in the audit
-trail. An *internal* examiner may instead hold `COURSE` scope; the difference is
-deliberate and visible in the role catalogue (`02-security-privacy.md` §2.4).
+Concretely: their own `UserAccount`, and a grant that reaches only the exam
+session they are assigned to, carrying only `exams.assess` and
+`exams.results.record`. The grant lapses automatically with the session window,
+MFA is required as for any account that can write results, and every action is
+attributed to them by name in the audit trail.
+
+**How that grant is expressed changed during review.** D-052 originally rested
+on `EXAM_SESSION` as a dedicated scope type (D-054). It now rests on
+**`SESSION` participation reach** (R-31): reach follows assignment to a session
+and its roster, for a bounded window. The mechanism is stated once, in
+`02-security-privacy.md` §2.1, and is not restated here. The change removes an
+enum member and covers strictly more real cases — the independent aftest
+assessor, the substitute instructor and the receiving instructor of a make-up
+lesson were all impossible under the old model, for the same structural reason:
+none of them holds a standing grant over the child.
 
 **Reason.** A shared "examiner" login destroys attribution on exactly the records
 that most need it — a child's diploma outcome. A full membership over-grants for
