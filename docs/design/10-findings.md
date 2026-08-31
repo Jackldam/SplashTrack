@@ -77,9 +77,11 @@ retention policy.
 ### F-08 — No specified behaviour for a student who leaves and returns
 **Severity: low-medium.** Common in practice; ambiguous in the brief. Reuse the
 old `StudentProfile` (keeping history) or create a new one (clean slate)?
-**Response.** Reuse the profile and model the gap with `leftAt` / a new
-enrolment. History is the product's value; a second profile would fragment it
-and duplicate PII.
+**Response.** Reuse the profile. The gap is modelled with `MembershipPeriod`
+rows and a `StudentLifecycleEvent` (D-059), never a `leftAt` column or a second
+profile: history is the product's value, a status flag destroys the answer to
+"when were they a member?", and a second profile would fragment history and
+duplicate PII.
 
 ## Inconsistencies in the brief
 
@@ -142,6 +144,22 @@ back.
 ### F-14 — **(Closed)** Fleet-operator threat model
 No principal has access to any customer instance, because no such access
 exists. Closed by D-012 (final).
+
+### F-15 — Scope filtering has the same failure mode tenancy did
+**Severity: high — the highest-severity internal risk in the product.** The
+isolation problem did not disappear when multi-tenancy did; it moved down a
+level. An instructor must not browse another location's students, another
+group's students, or a student outside the session they are assigned to. That
+is now enforced by **scope filtering**, which has *exactly* the same failure
+mode tenant filtering had: a missed `where` clause silently returns too much.
+It fails open, it fails quietly, and no user reports it because nothing looks
+broken.
+**Response.** The tenancy tests are not simply deleted — they are **replaced**:
+reach is a required repository argument (D-031), reach may only be constructed
+by `resolveReach()` (D-030), and scope-escape tests are mandatory per module
+(D-032). The minimum content of that suite — including the **list** case,
+which is the one that must never be dropped — is specified in
+`06-delivery.md` §2.1.
 
 ### F-16 — **(Closed)** Per-customer cost floor
 Hosting cost is the organisation's own. Closed. It reappears only if a hosted
@@ -302,3 +320,461 @@ Covered in full in `07-operations.md` §4. Scale is defined **per installation**
 Neither justifies added complexity today. Knowing the answer is the deliverable
 at this stage; building it would be exactly the premature complexity the brief
 warns against.
+
+## Assessment, fees and the v1 re-cut
+
+Raised while closing the gap between the design and what the domain expert
+actually described (`15-assessment-and-fees.md`, `00-overview.md` §3.5).
+
+### F-40 — *Aftesten* — the four-eyes gate on exam entry — was absent from the design entirely
+**Severity: high.** The word *aftest* did not appear once in `docs/design/`,
+and neither did *NRZ*. The entire assessment budget went to the exam (D-052,
+D-054, D-062, `ExamAssessor`, `Certificate`, `04-ux.md` §4.4), but in the
+process actually used the exam is the formality: a child reaches it only
+because a **second, qualified instructor who is not their own** graded every
+requirement and found all of them at least *voldoende*. `ExamResult.outcome` +
+`remarks?` was the only assessment detail in the schema.
+**Response.** `15-assessment-and-fees.md` §2–§3: a versioned criterion
+catalogue, an ordinal grade scale, graded per-criterion results, recorded
+waivers, `PersonQualification`, and D-085 making the gate a domain invariant
+on `ExamCandidate → CONFIRMED` — overridable only with an explicit permission
+and a recorded reason.
+
+### F-41 — The independent assessor cannot read the student under the current authorization model
+**Severity: high.** The assessor conducting an *aftest* is by definition not
+the child's instructor and therefore holds no `GROUP` grant covering them.
+Under D-030/D-031 they cannot read the student at all, which makes D-085
+unimplementable as the security model stood. The same hole blocked a
+substitute instructor, the receiving instructor of a make-up lesson and the
+visiting delegate.
+**Response.** Resolved in `02-security-privacy.md` §2.1–2.2 as `SESSION`
+participation reach (D-068), replacing the `EXAM_SESSION` scope of D-054.
+
+### F-42 — Two criterion catalogues were being specified for the same concept
+**Severity: medium.** `Skill`/`SkillRequirement` (`01-domain-model.md` §3.3)
+is "criteria per level, assessed per student"; `SchemeCriterion` is the same
+thing with an ordinal grade instead of a four-state enum. Shipping both
+guarantees divergence — not by anyone's decision, but because a criterion gets
+added to whichever catalogue the current screen writes — after which "what
+does Diploma A require?" has two answers and two seed catalogues to maintain.
+**Response.** D-084 collapses them: `SchemeCriterion` is the single catalogue,
+`SkillProgress` is the informal per-lesson log referencing a criterion, and
+`AssessmentCriterionResult` is the formal graded observation. This **reduces**
+the `skills` module rather than doubling it.
+
+### F-43 — `Certificate` named two different things in the same domain
+**Severity: medium.** The schema's `Certificate` means "the physical proof of
+a diploma". In this domain a *certificaat* is a **different award with weaker
+requirements** — a distinct thing a child is assessed for. One word, two
+meanings, one of them already modelled.
+**Response.** D-082: rename to `Award`; `AwardType.kind ∈ {DIPLOMA,
+CERTIFICATE}` carries the distinction. A rename in a design document today;
+after the first release, a migration through every issued diploma row.
+
+### F-44 — The NRZ criteria and thresholds are unverified, and blocking
+**Severity: medium, and blocking for one deliverable.** Chapter 15 specifies
+the *shape* of the scheme catalogue. Its **contents** — the concrete NRZ
+criteria, codes and thresholds — are not confirmed, and were not verifiable in
+the sessions that produced this design.
+**Response.** No catalogue may be seeded until the criteria are confirmed with
+the domain expert. A seed containing invented swimming requirements would be
+worse than an empty one, because it would look authoritative and would be
+assessed against. `AssessmentScheme.source` and D-083's fork rule exist so
+that the provenance of whatever is eventually seeded stays visible.
+
+### F-45 — Fee tracking's first regret is reconciliation, and it is deliberately not in v1
+**Severity: medium.** What kills a tracked-billing feature is not the absence
+of a payment provider; it is someone marking 180 charges `PAID` by hand each
+quarter from a bank statement in another window. That is worse than the
+spreadsheet the school has today.
+**Response.** Named in advance rather than discovered. The specific missing
+piece is **CAMT.053 / MT940 import with reference matching** — one uploaded
+bank file, automatic matching on a structured reference in the charge, the
+remainder queued for review. No payment provider, no PSD2, no bank API,
+roughly a week. It is out of v1 and it is the **first** thing added after the
+first full billing period.
+
+### F-46 — Financial retention conflicts with person retention
+**Severity: high.** D-066 defaults person retention to 24 months after the
+last relationship ends; Dutch fiscal law wants administration kept seven
+years. Adding `Charge`/`Payment` puts both rules on the same rows.
+**Response.** D-092: register both tables in the D-014 erasure registry with
+a financial retention ground, and **pseudonymise** rather than delete on
+erasure. Without this the first erasure request either destroys the
+bookkeeping or silently skips it, and which one is not discovered until an
+accountant asks.
+
+### F-47 — Adding money raises the value of a breach without changing the controls
+**Severity: medium.** The database now holds children's health notes **and**
+who owes money. Nothing about D-040 (encrypted backups) or D-042 (the export
+as an exfiltration primitive) becomes wrong; both become more load-bearing.
+**Response.** Recorded rather than mitigated, deliberately — the correct
+controls were already chosen. This finding exists so that the change in stake
+is stated when the money tables land, rather than discovered in an incident
+report.
+
+### F-48 — "Anonymise attendance to aggregate" was not anonymisation
+**Severity: medium.** The retention default for attendance events was
+`ANONYMISE` to aggregate. Stripping the student reference does not anonymise
+here: a group holds around twelve children, `GroupMembership` is retained and
+time-bounded, and session dates are known — so a join and a counting argument
+re-identify a large share of the stripped rows. That fails the mechanical
+anonymisation test in `02-security-privacy.md`, and describing it as
+anonymisation in a privacy notice would be the false comfort D-065 exists to
+prevent.
+**Response.** D-111: delete expired attendance events. An aggregate may be
+kept because it was **computed and stored**, never because a row was
+stripped.
+
+### F-49 — Pre-migration backups had no retention policy at all
+**Severity: medium.** D-044 takes an automatic backup before every
+migration — the right behaviour — and no rule anywhere said what happens to
+it. A full copy of the database, including medical notes, therefore
+accumulated once per upgrade and outlived every rule in the retention table.
+**Response.** D-104/D-111 add it to `01-domain-model.md` §5 as a data class
+with a real trigger and cap: deleted after the next successful start, at most
+three retained, so that a bad migration discovered late is still recoverable.
+
+### F-71 — `PersonRelationship` was defined twice with different fields, and consent validity depended on the difference
+**Severity: high.** One definition carried `evidence?` and no `authority`;
+the other carried `authority` and no `evidence`, sitting as a stray row in
+prose outside any table. **Both fields are load-bearing** — D-063 requires
+`authorityEvidenceId → PersonRelationship`, F-02 requires the `authority`
+flag. An implementer picking the second definition never builds `evidence`,
+and in a custody dispute the school can show a flag saying someone was
+authorised and nothing recording how that was established — precisely the
+false comfort D-063 exists to prevent.
+**Response.** Merged into one row —
+`type, fromPersonId, toPersonId, authority, evidence, validFrom, validTo?` —
+with `evidence` **non-optional where `authority = true`**. The duplicate is
+deleted.
+
+### F-72 — The attendance entity had two names, and the aggregate boundary used the wrong one
+**Severity: medium.** D-061 makes append-only superseding *events* a
+data-integrity requirement, but the ER diagram, the §3.4 session row and the
+§4 aggregate table all still said `AttendanceRecord` — the superseded,
+mutable name, and exactly the three places a schema author copies from.
+**Response.** All occurrences renamed to `AttendanceEvent`.
+
+### F-74 — F-08's resolution contradicted D-059 in the sentence that resolved it
+**Severity: medium.** F-08's response read "model the gap with `leftAt`" —
+exactly the status column D-059 forbids, and for exactly the reason D-059
+gives: a flag silently destroys the answer to "when were they a member?".
+The text was written before D-059 existed and was never updated.
+**Response.** D-059 wins; F-08 above now reads `MembershipPeriod` +
+`StudentLifecycleEvent` and no `leftAt` appears anywhere in
+`01-domain-model.md`.
+
+### F-73 — Chapter 01 contradicted D-057 twice, in the same chapter
+**Severity: medium.** §2.3 asserted *"One table, two module owners — planning
+writes it, attendance reads it… This is the only shared table in the design
+and it is deliberate"*, and §3.4's Notes column repeated it, while D-057 four
+sections earlier says `sessions` owns `ScheduledSession`. The contradicted
+text was the part a reader trusts, because it explains itself.
+**Response.** Both rewritten to "owned by `sessions`; `planning` and
+`attendance` are both consumers". The paragraph defending the shared table as
+*deliberate* is deleted rather than softened.
+
+## Platform hardening: secrets, crypto, backup and boot
+
+Raised while specifying `13-configuration-and-setup.md` and
+`14-backup-restore-upgrade.md` in detail. Numbered F-95 onward to avoid
+colliding with the F-40s above — both sets were drafted concurrently against
+the same then-empty part of the register.
+
+### F-95 — `SECRET_KEY` had four lifecycles and does not exist in the template
+**Severity: critical.** Different sections of the design gave four mutually
+exclusive accounts of the bootstrap secret's lifecycle — operator-supplied
+env var, generated on first run, displayed by the wizard, and simultaneously
+*being* and *wrapping* the recovery token — on the key that gates every backup
+restore and every encrypted medical column. The template has no `SECRET_KEY`
+at all: at-rest encryption derives from `BETTER_AUTH_SECRET`, which also
+signs sessions and encrypts TOTP secrets, so identifying the two prints a
+session-forging key on paper, and separating them silently kills every
+restored TOTP enrolment while MFA is mandatory.
+**Response.** D-112 states the lifecycle once, in `13-…` §3.1.1: one
+bootstrap secret via `SECRET_KEY_FILE`, every other key derived by HKDF with a
+purpose label, including the Better Auth signing secret so restore reproduces
+it identically.
+
+### F-96 — The backup archive could contain its own decryption key
+**Severity: critical.** If key material lived under `DATA_DIR` and assets
+were captured as a directory tree, the archive would ship with the key that
+decrypts it — every claim that the file is "inert without the token, and
+therefore safe to store casually" would be false, with nothing in CI to
+detect it.
+**Response.** D-113: the application never writes key material to the data
+volume, the backup writer excludes the key-material path explicitly, and a CI
+test asserts no shipped fixture contains it, by key bytes and by file name.
+
+### F-97 — Restoring a `.stbak` from anywhere else is arbitrary SQL execution
+**Severity: critical.** Restore replayed a `pg_dump` produced elsewhere,
+against a database role that was conventionally the superuser, with no stated
+least-privilege role or restore allow-list anywhere in fifteen chapters. The
+attack is the documented recovery path itself: a stranger supplies a
+"known-good starter backup" whose dump contains `CREATE FUNCTION` /
+`COPY … FROM PROGRAM` / `ALTER ROLE`, and the verification step checked the
+archive was *intact*, not *benign* — both the checksum and the manifest came
+from the same attacker-supplied file.
+**Response.** D-095 makes the v1 export a structured logical export the
+application writes and reads itself, deleting the class rather than filtering
+it. D-116 makes the database role non-superuser regardless. The chapter now
+states plainly that an archive from any source other than the operator's own
+instance is untrusted input.
+
+### F-98 — Setup mode was keyed on one deletable row
+**Severity: critical.** Setup mode resumed whenever the bootstrap record was
+absent, and "New installation" then created an `ORGANIZATION`-scoped
+administrator. Any primitive that deletes one row — SQL injection, a
+compromised low-privilege credential, a botched restore, a bug in the erasure
+transaction — put a populated production database holding thousands of
+children's records into an unauthenticated administrative surface.
+**Response.** D-099: setup mode requires no bootstrap record **and** zero
+`UserAccount`, `Person` and `RoleAssignment` rows. Data with the bootstrap
+record missing is `TAMPERED` — refuse to serve, log loudly, break-glass CLI
+only.
+
+### F-99 — The setup token went to the logs the design tells operators to publish
+**Severity: critical.** The one-time setup token was printed to the container
+logs, while the design elsewhere states as an assumption that self-hosters
+debugging a problem paste logs into public issues — in a public repository.
+Variants: Portainer/Synology/Unraid log panes visible to a household;
+centralised log shipping to a third party; log rotation destroying the token
+before setup finishes.
+**Response.** D-101: write the token to `$DATA_DIR/setup-token` mode 0600 and
+print only its path; single use, ≤60-minute expiry, reissued only from the
+host; rate-limited with lockout and audited failures.
+
+### F-100 — One key, forever, printed on paper, with rotation that made things worse
+**Severity: high.** The recovery token *being* `SECRET_KEY` meant a single
+non-revocable secret protecting the backup archive, every medical column and
+every stored credential — re-displayable in the UI. Rotation was worse than
+useless: re-encryption cannot reach `.stbak` files already written, so
+afterwards the operator holds two permanently critical secrets and every
+historical archive stays unprotected by the new key. No entropy floor was
+stated, and the restore endpoint had no rate limit.
+**Response.** D-114 (two-level envelope: an Argon2id passphrase over a master
+key, per-archive data keys, rotation = re-wrap) and D-115 (≥128 bits,
+Crockford base32 with a check character, re-display audited at high severity
+and notified to all administrators, restore endpoint rate-limited and
+audited).
+
+### F-101 — The `v1:` envelope had no key id and no AAD, and GCM was assumed to stream
+**Severity: high.** Three defects with the same root — the crypto was
+described rather than specified. No key id: an interrupted rotation leaves two
+keys in one column with no discriminator, every failed decrypt
+indistinguishable from corruption. No AAD: a ciphertext blob is portable, so
+any careless write can move child A's encrypted allergy note into child B's
+row, where it decrypts and authenticates perfectly. Streaming: plain
+AES-256-GCM over a multi-gigabyte archive either buffers the whole thing or
+encrypts chunks independently, in which case truncation, reordering and
+splicing all verify, and the manifest was parsed before the archive was
+authenticated.
+**Response.** D-096 (`v1:<keyId>:<nonce>:<ct>` with AAD over
+`(table, column, pk, keyId)`), D-097 (one envelope module with a decryptor
+registry plus committed golden vectors), D-102 (framed AEAD with
+sequence-bound chunks and a final-chunk marker; manifest authenticated as its
+own message before any parsing).
+
+### F-102 — Chapter 03's "non-negotiable properties of the image" were false
+**Severity: high.** The stated list inverted chapter 13 ("all configuration
+via environment variables") and contradicted D-055/D-044 ("migrations run
+automatically on start"), and none of the six claimed image properties held
+against the actual Dockerfile: single-stage, undigested base image, dev
+dependencies and full source tree in the final layer, running as root;
+`pg_dump` absent although claimed present.
+**Response.** The list is rewritten as target properties with current status
+stated honestly. The configuration bullet now reads "bootstrap secrets only;
+all runtime configuration is database-backed" (D-036/D-037); the migration
+bullet points at D-055/D-098; D-116's non-superuser role is added alongside
+"runs as non-root".
+
+### F-103 — Scheduled remote backup was an unguarded exfiltration channel
+**Severity: high.** D-042 wraps the backup **download** button in step-up,
+rate limiting, high-severity audit and a single-use signed link — while a
+backup **destination** setting sat beside it as an ordinary text field. A
+departing administrator never touches the guarded button: pointing the
+destination at their own bucket ships a complete copy of every person, every
+medical note and every exam result, nightly. The destination did not even
+exist in the codebase (`blob-storage.ts` supports only `"local"`).
+**Response.** D-103: S3 destinations are out of v1 — mounted volume only.
+When a remote destination arrives it carries the download's controls in full,
+plus a 24-hour delay or second-administrator approval before the first backup
+reaches a new destination, shown permanently on the dashboard.
+
+### F-104 — Backup retention contradicts the erasure promise
+**Severity: high.** `02-security-privacy.md` §5.3 commits, without
+qualification, that special-category data is "hard-deleted, never
+anonymised" at 12 months, while backup retention kept rolling and
+pre-migration copies indefinitely on the same volume under the same
+never-rotated key. A parent requests erasure, the school reports the medical
+note deleted, and it is present in up to a dozen archives plus an unbounded
+snapshot set.
+**Response.** D-104: cap pre-migration backups (delete after the next
+successful start, keep at most three); require backup retention ≤ the
+shortest special-category retention or surface the mismatch as a diagnostics
+warning; publish a computed **backup horizon** the organisation can quote in
+its privacy notice, shown at the moment of erasure. §5.3's promise needs the
+qualifier "from live storage; persists in encrypted backups until they age
+out" — flagged for that chapter, not edited here.
+
+### F-105 — D-038's worked example asserted the opposite of what the template does
+**Severity: high.** The design claimed the template "already loads Entra
+configuration at auth-context init, so changing a provider rebuilds the auth
+context rather than the container". The template's own source comment says
+the opposite: configuration is read once at construction and applies only on
+the next restart, because `auth` is a module-level singleton across worker
+processes and the OAuth plugin takes a static provider array.
+**Response.** The claim is corrected, the mechanism that would actually work
+is specified (a versioned `getAuth()` against a `settings_version` counter),
+and D-106 marks the identity-provider case as **requiring a spike** before
+D-038's no-restart promise is trusted for it.
+
+### F-106 — Key rotation would silently un-enrol every administrator's second factor
+**Severity: high.** The re-encryption command could re-wrap the application's
+own envelopes but not Better Auth's internal TwoFactor secrets, which the
+template encrypts with `BETTER_AUTH_SECRET` directly — rotating the key would
+destroy every administrator's TOTP enrolment at once, while MFA is mandatory
+for administrators, locking out exactly the accounts that could fix it.
+**Response.** D-112's HKDF split brings TOTP secrets under the same root, so
+rotation covers them, and D-105 adds a restore-matrix invariant asserting an
+enrolled TOTP still verifies after a restore with the same token.
+
+### F-107 — The restore matrix was unimplementable, empty at v1.0, and omitted the case F-25 called worst
+**Severity: high.** D-047 named no fixture source, generator, key or storage,
+and at v1.0 there are zero prior releases, so the matrix would ship green
+while protecting nothing — yet fixture generation must ship in v1.0 or v1.1
+can never test restoring from it. F-25 named the encryption case "the
+nastiest" and it was the one left out of the test meant to cover it.
+**Response.** D-105: the release workflow generates a fixture (boot the
+just-built image, seed deterministically, back it up under a fixed public
+test key, upload as a GitHub Release asset) and the matrix asserts, among
+other things, every encrypted column decrypting to known plaintext and an
+enrolled TOTP still verifying.
+
+### F-108 — `zod` is not present in either repository
+**Severity: medium.** The settings-registry design ("one Zod schema per
+setting") and `05-technical.md`'s module template both assume the dependency
+is inherited. It is in neither `package.json`, and there are no imports of it
+anywhere.
+**Response.** Stated plainly in `13-…` §3.2 as a build task rather than an
+existing capability.
+
+## The v1 re-cut: mis-scope, not over-scope
+
+Raised while closing the six-capability gap named in `00-overview.md` §3.5.
+
+### F-80 — v1 was mis-scoped, not over-scoped
+**Severity: high.** About 45% of specified effort went into a self-hosting
+*product* — an identity-provider registry, a restore-from-every-release CI
+matrix, a settings registry with a generated UI, a separate UAT environment,
+a retention engine, a CMS, a versioned public API and a fifteen-check
+pipeline — for an operator who does not exist. Meanwhile six capabilities
+named as weekly needs were absent from the documents entirely, one of them
+the single most consequential control in the domain.
+**Response.** D-120. Both estimates are recorded, not just the new one
+(`00-overview.md` §3.5.3). OD-2's closure is what makes the cut safe rather
+than a gamble.
+
+### F-81 — No breach-response capability at all
+**Severity: high.** The controller must assess and notify within 72 hours
+(Article 33) and notify data subjects for high-risk breaches (Article 34).
+This is health data about children, so the Article 34 threshold is met by
+default. The design shipped an audit trail and a list of metrics and stopped.
+**Response.** D-128, R-37, `07-operations.md` §1.4. The third question — whose
+data was in a leaked artefact — is answered honestly rather than solved: the
+backup manifest holds row counts, not data subjects, so a leaked archive is
+treated as covering **every** subject in the instance at that timestamp.
+
+### F-82 — The design asserted CI capabilities that do not exist
+**Severity: high.** The design claimed the template's CI "already runs …
+container build, and a migration-against-populated-database job". The actual
+`ci.yml` has three jobs — `verify`, `e2e`, `migrate-populated` — with no
+container build, no `npm audit` gate, no CodeQL, no secret-scanning job and no
+axe assertion anywhere in `tests/`. Of fifteen required checks, seven
+existed. Compounding it, `deploy-uat.yml` builds at deploy time on the target
+host — the direct inversion of D-022.
+**Response.** Both chapters corrected in place (D-136). v1 ships eight
+blocking checks, listed in one place so the two chapters cannot drift apart
+again.
+
+### F-83 — An application that will not load has no equivalent of a wet sheet
+**Severity: high.** The design measured itself against another system; there
+is none — the incumbent is a clipboard. Paper never has a zero-percent day. An
+app that will not load shows nothing and the instructor has no move, and the
+failure is not recoverable in the usual sense: when paper fails the
+instructor blames the rain, when the app fails they go back to paper and do
+not come back.
+**Response.** D-129 — print fallbacks in the first release, and P-02's
+"prepared, not built" is now explicitly conditional on them.
+
+### F-84 — The attendance latency target was set without knowing about a lock
+**Severity: medium.** `AuditEvent` is a hash chain whose appends serialize on
+a Postgres advisory lock. Thirty attendance events plus thirty naively
+chained audit rows per group registration serialize against a lock contended
+by every other audit writer, under a p95 target written before the lock was
+known about.
+**Response.** D-126: one audit event per group registration, decided before
+the load test is written, not after it fails.
+
+### F-85 — The module-boundary lint rule does not catch the violation it exists to prevent
+**Severity: medium.** `no-restricted-imports` catches cross-module *imports*.
+The violation D-057 was written to prevent — a direct Prisma call into
+another module's table — imports nothing and passes cleanly.
+**Response.** D-125: boundaries enforced on Prisma model access, not only on
+imports.
+
+### F-86 — The WebAuthn RP-ID lockout sits on the expected deployment path
+**Severity: medium.** Starting on something like `http://nas.local:3000` and
+moving to a real domain later is the **expected** sequence for this
+deployment, not an edge case, and passkeys — the design's best wet-hands
+answer — are exactly the credential a domain change invalidates.
+**Response.** D-132: RP ID set deliberately at setup, loud warning on change,
+password + TOTP fallback retained per account.
+
+### F-87 — The skill-matrix undo boundary requires an administrator for a mis-tap
+**Severity: medium.** Two states existed: free undo before Save, and a
+permissioned `skills.revoke` with a mandatory reason after it. A
+`GROUP`-scoped instructor holds no `skills.revoke`, so a fat-fingered
+achievement on a 30×40 grid with wet hands becomes an administrator's job,
+weekly, by construction.
+**Response.** D-131 — a bounded self-correction window on the instructor's
+own sign-offs from the current session.
+
+### F-88 — The Article 15 export discloses third parties and can silently omit health data
+**Severity: medium.** Two defects in one surface: the export includes
+guardian details, instructor names and staff-authored notes with no preview
+and no redaction pass, while the erasure flow next door has a mandatory
+preview; and medical data is omitted unless the *requester* holds
+`students.medical.read`, when the entitled party in an Article 15 request is
+the **data subject**, not the operator running the export — so a member
+administrator can produce an export that looks complete and is silently
+missing the health data.
+**Response.** Reuse the erasure preview pattern for export, including what is
+disclosed about third parties, and make the export fail loudly rather than
+quietly omit (`04-ux.md` §4.6). The redaction pass and the
+retention/recipients/source annex remain to be specified in
+`02-security-privacy.md`.
+
+### F-89 — Five decisions have no statement in any active chapter
+**Severity: medium.** D-011, D-015, D-027, D-028 and D-029 existed only as
+register rows, with their full text in chapters 11 and 12 — whose banners
+forbid citing them as requirements — and three of the register's own "Where"
+pointers named the wrong section.
+**Response.** D-133: for a withdrawn or superseded decision the register row
+is the authoritative text and says so. The register's pointers are corrected
+at the same time.
+
+### F-90 — Whether a digital pupil list exists has never been checked
+**Severity: medium — and the cheapest open question in the set.** CSV import
+has been described as what makes a pilot possible at all, but the incumbent
+is pen and paper — if the school genuinely runs on paper there may be no
+digital list to import at all.
+**Response.** OD-16. A different question from OD-1: if both answers are
+"nothing", R-29 and the import path leave v1 together.
+
+### F-91 — D-048 was enforced by nothing
+**Severity: medium.** "Migration chains are never squashed within a major
+version" is the policy that keeps every self-hoster's old backup restorable,
+and it was a sentence in a document with no test behind it.
+**Response.** D-124: `tests/unit/migration-history-append-only.test.ts`.
