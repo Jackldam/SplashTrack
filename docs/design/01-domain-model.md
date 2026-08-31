@@ -50,12 +50,18 @@ people              Domain view over Person: relationships, guardians, tags
 students            StudentProfile, lifecycle, enrolment state
 groups              Group definition and membership over time
 courses             Course/programme definitions, levels, enrolment
-skills              Skill catalogue, requirements, per-student progress
+skills              Criterion catalogue and the informal per-lesson progress log
 sessions            ScheduledSession — the shared scheduling primitive
 attendance          Attendance events against a session  ← flagship
-exams               Exam sessions, candidates, assessors, results, certificates
+assessment          Award types, versioned schemes, grades, aftesten, waivers
+exams               Exam sessions, candidates, assessors, results, awards
+fees                Fee types, charges, payments, balances  ← tracking only
 planning            Schedule construction, locations, resources, assignment
 ```
+
+`assessment` and `fees` are specified in `15-assessment-and-fees.md`. `fees`
+tracks money and emits no document (D-091); it is a ledger module, not a finance
+system.
 
 ### 1.1.1 Removing what single-instance operation does not need
 
@@ -88,21 +94,22 @@ authentication, authorization, GDPR tooling, audit, branding, CMS — is not
 broken on the way out. Recorded as finding **F-26**.
 
 Deliberately **not** modules: "reporting" (a read concern satisfied by queries
-until proven otherwise), "billing" (deferred), "website" (the `pages` module
-plus theming already is the website).
+until proven otherwise), "invoicing" (`fees` tracks charges and payments and
+stops there — `15-…` §6.5), "website" (the `pages` module plus theming already
+is the website).
 
 ### 1.2 Dependency rule
 
 Modules form a directed acyclic graph. Arrows point *downward only*:
 
 ```text
-        planning        exams
+        planning        exams          fees
             \            /
-        attendance    skills
-             |          |
-          sessions   courses
-              \      /
-              groups
+        attendance   assessment
+             |           |
+          sessions     skills
+              \        /
+          groups  ·  courses
                  |
               students
                  |
@@ -116,6 +123,12 @@ explicit published interface. `attendance` may ask `groups` who is in a group;
 `groups` may never ask `attendance` anything. Where an upward signal is needed
 (e.g. "attendance was registered, update progress"), it goes through a domain
 event, not a call.
+
+`fees` sits at the top beside `exams` and depends only on `people` and
+`students`. It never calls `exams`, and `exams` never calls it: the exam-fee
+charge (D-089) is raised by a domain event published when a candidate reaches
+`CONFIRMED`. The gate that `exams` enforces before that (D-085) likewise reads
+`assessment` through its published service, never its tables.
 
 **Decision D-057 — `ScheduledSession` is owned by its own `sessions` module.**
 
@@ -203,18 +216,27 @@ Organization
   ├──< Course ──< CourseLevel
   │       └──< Enrolment >── StudentProfile
   ├──< Group ──< GroupMembership >── StudentProfile
+  │       ├──< GroupMove >── StudentProfile     (up or down, reason-carrying)
   │       └── instructor: Person (assignment, time-bounded)
-  ├──< SkillCatalogue ──< Skill ──< SkillRequirement
-  │                          └──< SkillProgress >── StudentProfile
-  ├──< ScheduledSession ──< AttendanceRecord >── StudentProfile
+  ├──< AwardType ──< AssessmentScheme ──< SchemeCriterion
+  │                                          └──< SkillProgress >── StudentProfile
+  ├──< Assessment ──< AssessmentCriterionResult >── SchemeCriterion
+  │       └──< CriterionWaiver
+  ├──< ScheduledSession ──< AttendanceEvent >── StudentProfile
   ├──< ExamSession ──< ExamCandidate >── StudentProfile
   │       ├──< ExamAssessor >── Person
-  │       └──< ExamResult ──0..1── Certificate
+  │       └──< ExamResult ──0..1── Award
+  ├──< WaitlistEntry >── Person
+  ├──< FeeType ──< Charge ──< Payment
   └──< CustomPage    (inherited CMS)
 
 Person ──1──< StudentProfile        (org-scoped)
 Person ──<   PersonRelationship >── Person   (guardian ↔ child)
+Person ──<   PersonQualification              ("bevoegd" — see `15-…` §2.1)
 ```
+
+The assessment, award and fee branches are specified in
+`15-assessment-and-fees.md`; only their attachment points appear here.
 
 ### 2.3 Why these boundaries
 
@@ -231,12 +253,13 @@ impossible to move a student between groups without re-enrolling them, or to
 run two groups of the same course. The prototype's `SwimGroup` already
 recognised this; we keep it and generalise the name.
 
-**`ScheduledSession` is the join point between planning and attendance.**
-Planning produces sessions; attendance consumes them. One table, two module
-owners — `planning` writes it, `attendance` reads it and writes
-`AttendanceRecord` against it. This is the only shared table in the design and
-it is deliberate: the alternative (attendance inventing its own session
-concept) guarantees drift.
+**`ScheduledSession` is the join point between planning and attendance.** It is
+**owned by the `sessions` module** (D-057); `planning` and `attendance` are both
+consumers of it. `planning` creates and reschedules sessions through the owning
+service; `attendance` writes `AttendanceEvent` rows against them. The alternative
+— attendance inventing its own session concept — guarantees drift, and the
+alternative D-057 rejected, "one table, two owners", guarantees an eroded
+boundary.
 
 **`SkillProgress` is an event log, not a status column.** Each sign-off is an
 immutable row: who signed, when, for which skill, at which session, with an
@@ -257,8 +280,8 @@ when a measured query is slow, not before.
 ## 3. Key entities and relations
 
 Only fields that carry architectural or privacy meaning are listed. `id`,
-`id`, `createdAt`, `updatedAt` are implied on every entity; `unitId` is implied
-on every entity that participates in unit-scoped reach.
+`createdAt` and `updatedAt` are implied on every entity; `unitId` is implied on
+every entity that participates in unit-scoped reach.
 
 ### 3.1 People — three distinct concepts
 
@@ -291,8 +314,10 @@ Every combination is valid and every one occurs in practice:
 | `Membership` | memberNumber, unitId? | 1 `Person`, N `MembershipPeriod` | **One per person, for life.** The number stays the same across gaps |
 | `MembershipPeriod` | membershipId, startedAt, endedAt?, endReason? | 1 `Membership` | Belonging is a set of intervals, not a status flag |
 | `StudentProfile` | studentNumber, unitId | 1 `Person`, N `StudentLifecycleEvent`, N `Enrolment`, N `GroupMembership` | **Persistent.** Created once, never duplicated on return |
-| `StudentLifecycleEvent` | studentProfileId, type (`JOINED`/`PAUSED`/`LEFT`/`RETURNED`), occurredAt, reason? | 1 `StudentProfile` | Append-only lifecycle history; current state is derived |
-| `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, validFrom, validTo?, evidence? | Person ↔ Person | **v1.** Records the claimed authority *and how it was established* — see D-063 |
+| `StudentLifecycleEvent` | studentProfileId, type (`JOINED`/`PAUSED`/`LEFT`/`RETURNED`/`TRIAL_ATTENDED`), occurredAt, reason? | 1 `StudentProfile` | Append-only lifecycle history; current state is derived |
+| `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, authority, evidence, validFrom, validTo? | Person ↔ Person | **v1.** `authority` records whether this relationship may consent on behalf of the subject (R-04); `evidence` records *how the claim was established* and is **non-optional where `authority = true`** (D-063). Every change audited |
+| `PersonQualification` | personId, type, validFrom, validTo? | 1 `Person` | *"Een leraar die bevoegd is"* — what makes someone eligible to conduct an *aftest* (`15-…` §2.1) |
+| `WaitlistEntry` | personId, studentProfileId?, courseId?, requestedAt, source (`INQUIRY`/`MANUAL`), status (`WAITING`/`PLACED`/`WITHDRAWN`), note? | Person, 0..1 `Inquiry` | The front door. Placement creates the `StudentProfile`/`Enrolment`; the entry is closed, not deleted |
 
 **Decision D-059 — Leaving and returning is modelled with periods and lifecycle
 events, never by creating a second profile or flipping a status.**
@@ -328,7 +353,6 @@ assignment time, not an assumption baked into the model.
 **Trade-off.** Two things to administer where a naive model has one. The UI
 offers them together when adding a person, so the cost is conceptual, not
 clerical.
-| `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, authority, validFrom, validTo? | Person ↔ Person | **v1.** `authority` records whether this relationship may consent on behalf of the subject (R-04). Every change audited |
 
 **Decision D-053 — `Membership` and `StudentProfile` are separate tables, never
 one table with a flag.**
@@ -354,26 +378,87 @@ not evidence.
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `Course` | name, description, active | N `CourseLevel`, N `Enrolment` | What is taught |
-| `CourseLevel` | name, sequence | N `SkillRequirement` | E.g. Diploma A → B → C |
-| `Enrolment` | studentProfileId, courseId, status, startedAt, endedAt? | Student ↔ Course | Status is a lifecycle, not a payment state (P-03) |
+| `CourseLevel` | name, sequence, awardTypeId? | 0..1 `AwardType` | E.g. Diploma A → B → C. `awardTypeId` says what the level prepares for; the requirements themselves live on that award's scheme (`15-…` §2.6) |
+| `Enrolment` | studentProfileId, courseId, status (incl. `TRIAL`), startedAt, endedAt? | Student ↔ Course | Status is a lifecycle, not a payment state (P-03 and D-093). `TRIAL` marks a *proefzwemmer* — a prospective pupil attending once |
 | `Group` | name, courseLevelId?, capacity?, active | N `GroupMembership`, N `ScheduledSession` | Who is taught together |
 | `GroupMembership` | studentProfileId, groupId, fromDate, toDate? | | **Time-bounded** — moving groups is a new row, not an update |
+| `GroupMove` | studentProfileId, fromGroupId?, toGroupId, direction (`UP`/`DOWN`/`LATERAL`), reason, decidedByPersonId, occurredAt | N `GroupMembership` | The *action* behind the two membership rows. Both directions are ordinary history — see D-095 |
+| `SessionRosterEntry` | sessionId, studentProfileId, source (`GROUP`/`GUEST`), reason? | 1 `ScheduledSession` | The roster of a session is derived from the group **plus** any explicitly added guests. A make-up lesson is a `GUEST` entry; nothing else about it is modelled |
 | `InstructorAssignment` | personId, groupId \| sessionId, role, fromDate, toDate? | | Instructors change; history is preserved |
 | `Location` | name, address?, capacity? | N `ScheduledSession` | Pools, halls |
 
+**Decision D-095 — Moving a child to another group is recorded as a `GroupMove`
+carrying a direction and a reason, and moving *down* is ordinary history, not a
+correction.**
+
+Progress in this domain is per individual, not per group: a faster child moves
+up mid-block, and a child who is struggling moves back down. The domain expert
+described both as normal.
+
+**Reason.** `GroupMembership` already carries the *data* — two time-bounded rows.
+What is missing is the *act*: who decided, when, and why. Without it, a move down
+is indistinguishable from an administrative error, and the screen that renders
+the child's history will present it as one. A parent reading "moved from Group 4
+to Group 3" with no reason attached draws the worst conclusion available; the
+same row with *"meer tijd nodig voor de schoolslagbeenslag"* is a teaching
+decision. Recording the direction explicitly, rather than deriving it from level
+sequence, also keeps a lateral move (a different evening, the same level) from
+being reported as a demotion.
+
+**Trade-off.** One more row per move, and a required reason on an action
+administrators would rather do in two clicks. Accepted: the reason is the entire
+value of the record.
+
+**Decision D-096 — Trial lessons, waiting lists and make-up lessons are
+*modelled*; no workflow is built for them in v1.**
+
+What exists: `Enrolment.status = TRIAL`, `StudentLifecycleEvent.TRIAL_ATTENDED`,
+`WaitlistEntry` with a placement action from an `Inquiry`, and
+`SessionRosterEntry` accepting a student who is not a member of the session's
+group. What does not exist: a trial-booking flow, a conversion funnel, a
+shortened onboarding path, a make-up entitlement counter, a "this child is owed
+two lessons" ledger, or a slot-booking screen.
+
+**Reason.** The waiting list is in daily use and gets its placement action. The
+other two the domain expert explicitly asked to *"houd rekening met"* while
+saying **his own school does not run them** — so a workflow would be built for a
+customer who does not exist, which is precisely the charge this review levelled
+at the rest of the design. The data shape, though, is genuinely expensive to
+retrofit: attendance for a child who is not in the session's group touches the
+roster, reach resolution and the attendance aggregate at once. Model now, build
+never or build on request.
+
+**Trade-off.** A school that does run trials and make-ups administers them by
+hand — a guest added to a roster, a note in the reason field. That is a worse
+experience than a designed flow and a better outcome than a designed flow nobody
+opens.
+
 ### 3.3 Skills and progress
+
+**The criterion catalogue lives in `15-assessment-and-fees.md` §2, not here.**
+An earlier draft carried `Skill` and `SkillRequirement` — "criteria per level,
+assessed per student" — alongside the versioned `SchemeCriterion` that the
+assessment model needs. They are the same concept with a different result type,
+and D-084 collapses them into one: `SchemeCriterion` is the single catalogue.
+This *removes* a table and a seed catalogue rather than adding one.
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `Skill` | code, name, description, catalogueId, sequence | N `SkillRequirement`, N `SkillProgress` | Defined by this organisation. A default catalogue ships with the seed; catalogues can be exported and imported as files |
-| `SkillRequirement` | courseLevelId, skillId, mandatory | | Defines "what does Diploma A require" |
-| `SkillProgress` | studentProfileId, skillId, state, assessedByPersonId, assessedAt, sessionId?, note? | | **Append-only**. `state` ∈ {INTRODUCED, PRACTISING, ACHIEVED, REVOKED} |
+| `SchemeCriterion` | schemeId, code, name, sequence, minimumGradeId? | 1 `AssessmentScheme` | The single criterion catalogue. Versioned and source-labelled — `15-…` §2.1, D-081, D-083 |
+| `SkillProgress` | studentProfileId, criterionId, state, assessedByPersonId, assessedAt, sessionId?, note? | 1 `SchemeCriterion` | **Append-only**, and **informal**: the per-lesson teaching log. `state` ∈ {INTRODUCED, PRACTISING, ACHIEVED, REVOKED} |
+| `AssessmentCriterionResult` | assessmentId, criterionId, gradeValueId, remark? | 1 `Assessment`, 1 `SchemeCriterion` | The **formal** graded observation, made during an *aftest* or an exam. `15-…` §2.1 |
+
+`SkillProgress` is what an instructor writes at the poolside; it decides nothing.
+`AssessmentCriterionResult` is what a qualified assessor writes during an
+*aftest*; it decides whether a child sits an exam. Keeping both, against one
+catalogue, is deliberate — the informal log is the product's daily value and the
+formal result is its evidential one.
 
 ### 3.4 Attendance
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `AttendanceRecord` | Written by `planning`, read by `attendance` |
+| `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `SessionRosterEntry`, N `AttendanceEvent` | **Owned by `sessions`** (D-057); `planning` and `attendance` are both consumers |
 | `AttendanceEvent` | sessionId, studentProfileId, state, recordedByPersonId, recordedAt, `clientEventId`, `supersedesEventId?`, note? | | **Append-only.** `state` ∈ {PRESENT, ABSENT, EXCUSED, LATE}. A correction is a *new* event pointing at the one it replaces — the superseded row is never modified. `clientEventId` is a client-generated UUID making the write idempotent (P-02) |
 | *(derived)* `AttendanceStatus` | sessionId, studentProfileId → effective state | | The current answer per student per session: the latest event not superseded by another. Materialised only if measurement demands it |
 
@@ -403,10 +488,10 @@ replayed offline queue all collapse to the same event.
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `ExamSession` | courseLevelId, locationId, scheduledAt, status | N `ExamCandidate`, N `ExamAssessor` | |
-| `ExamCandidate` | examSessionId, studentProfileId, status | **0..N** `ExamResult` | A candidate may have several results over time: an original, a correction, an appeal outcome |
+| `ExamCandidate` | examSessionId, studentProfileId, status | **0..N** `ExamResult` | A candidate may have several results over time: an original, a correction, an appeal outcome. Reaching `CONFIRMED` requires a passed independent *aftest* — D-085, `15-…` §3 |
 | `ExamAssessor` | examSessionId, personId, role | | Records **who assessed** this session — an attribution fact, not an access grant. Access comes from an `EXAM_SESSION`-scoped role assignment (D-054). Supports the external examiner with no membership (D-052) |
-| `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, `supersedesResultId?`, reason?, remarks? | 0..1 `Certificate` | **Append-only.** A correction is a new row pointing at the one it replaces. The **effective result** is the latest non-superseded row; exactly one exists per candidate at any time |
-| `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | Issued against a *specific* result. Correcting a result revokes the certificate and issues a new one — never edits it |
+| `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, `supersedesResultId?`, reason?, remarks?, assessmentId? | 0..1 `Award` | **Append-only.** A correction is a new row pointing at the one it replaces. The **effective result** is the latest non-superseded row; exactly one exists per candidate at any time. `assessmentId` points at the exam-day per-criterion detail where it was recorded |
+| `Award` | resultId, awardTypeId, number, issuedAt, revokedAt?, revokeReason? | 1 `AwardType` | The issued document. Issued against a *specific* result; correcting a result revokes the award and issues a new one — never edits it. **Renamed from `Certificate` (D-082)**, because in this domain a *certificaat* is a different kind of award, not the proof of a diploma |
 
 **Decision D-062 — A candidate has 0..N results, not 0..1.**
 **Reason.** A single-result model forces a correction to overwrite the original,
@@ -446,8 +531,10 @@ premature complexity the brief warns against.
 |---|---|---|
 | Person + account | `Person` | Its `UserAccount`, its memberships |
 | Student | `StudentProfile` | Its enrolments and group memberships |
-| Session attendance | `ScheduledSession` | All its `AttendanceRecord` rows — **one transaction per group registration** |
+| Session attendance | `ScheduledSession` | All its `AttendanceEvent` rows — **one transaction per group registration** |
+| Assessment | `Assessment` | All its `AssessmentCriterionResult` and `CriterionWaiver` rows, and the computed outcome (`15-…` §2) |
 | Exam | `ExamSession` | Candidates, assessors, results |
+| Charge | `Charge` | Its `Payment` rows and the derived balance (`15-…` §6) |
 | Organisation config | `Organization` | Branding, settings, pages |
 
 Registering attendance for a group writes all records in **one transaction**.
@@ -466,22 +553,43 @@ basis expires.
 `RetentionPolicy` the organisation confirms or changes, with `onExpiry` being
 `DELETE`, `ANONYMISE` or `REVIEW` (`02-security-privacy.md` §5.6, D-065).
 
-| Data class | Writing module | Reach | Trigger | Default retention | On expiry |
-|---|---|---|---|---|---|
-| Person identity | `identity` | Instance-wide | Last relationship of any kind ends (§5.1) | 24 months | `REVIEW` → delete |
-| Login credentials | Better Auth | Instance-wide | Account closed | Immediate | `DELETE` |
-| Membership periods | `people` | Unit | Last period ends | 7 years (financial/administrative, if applicable) | `REVIEW` |
-| Student profile | `students` | Unit | Last enrolment ends | 24 months | `REVIEW` |
-| Medical / pastoral notes | `students` | Unit + `students.medical.read` | Last enrolment ends | 12 months | **`DELETE`** — never anonymise |
-| Attendance events | `attendance` | Group | Session date | 24 months | `ANONYMISE` to aggregate |
-| Skill progress | `skills` | Group | Achievement date | 7 years | `REVIEW` |
-| Exam results & certificates | `exams` | Course / instance | Certificate issue | 10 years **only where a retention ground applies** | `REVIEW` (§5.2) |
-| Consent records | `consent` | Instance-wide | Withdrawal or expiry of purpose | As long as needed to demonstrate compliance | `REVIEW` |
-| Audit events | `audit` | `audit.read` | Event date | 24 months | `DELETE` |
-| Inquiries (public forms) | `pages` | Instance-wide | Submission | 6 months | `DELETE` |
-| Public page content | `pages` | Instance-wide | — | Until deleted | — |
-| Organisation settings & branding | `organization` | Singleton | — | Indefinite | — |
-| Operational logs | `lib/logging` | Operators — **no PII** | Write | 30 days | `DELETE` |
+**Decision D-097 — The retention table records a lawful basis per data class.**
+The column existed in the prose describing this table ("on what lawful basis it
+is held") and not in the table itself, so the one question an organisation must
+answer to defend a default was the one the defaults did not state. A proposed
+basis can be argued with; a blank cannot. Where the entry reads *unresolved*, it
+is unresolved and must be settled before that default ships (F-50).
+
+| Data class | Writing module | Reach | Lawful basis (proposed) | Trigger | Default retention | On expiry |
+|---|---|---|---|---|---|---|
+| Person identity | `identity` | Instance-wide | Contract / legitimate interest | Last relationship of any kind ends (§5.1) | 24 months | `REVIEW` → delete |
+| Login credentials | Better Auth | Instance-wide | Contract | Account closed | Immediate | `DELETE` |
+| Membership periods | `people` | Unit | Contract; legal obligation where a fiscal record depends on it | Last period ends | 7 years (financial/administrative, if applicable) | `REVIEW` |
+| Student profile | `students` | Unit | Contract | Last enrolment ends | 24 months | `REVIEW` |
+| Medical / pastoral notes | `students` | Unit + `students.medical.read` | **Explicit consent** (Art. 9) | Last enrolment ends | 12 months | **`DELETE`** — never anonymise |
+| Assessment remarks | `assessment` | Group + `students.notes.read` | Legitimate interest (teaching) | Assessment date | 12 months | **`DELETE`** (D-087) |
+| Attendance events | `attendance` | Group | Contract | Session date | 24 months | **`DELETE`** — see §5.3 |
+| Skill progress | `skills` | Group | Contract | Achievement date | 7 years | `REVIEW` |
+| Assessment results (formal) | `assessment` | Course / instance | Contract; legal claims where a ground applies | Assessment date | 7 years | `REVIEW` |
+| Exam results & awards | `exams` | Course / instance | *Unresolved* — a ground must be identified per organisation (§5.2) | Award issue | 10 years **only where a retention ground applies** | `REVIEW` (§5.2) |
+| Charges | `fees` | `fees.read` | Legal obligation — fiscal administration | Charge due date | 7 years | **`PSEUDONYMISE`** (D-092) |
+| Payments | `fees` | `fees.read` | Legal obligation — fiscal administration | Received date | 7 years | **`PSEUDONYMISE`** (D-092) |
+| Consent records | `consent` | Instance-wide | Legal obligation — accountability (Art. 5(2)) | Withdrawal or expiry of purpose | As long as needed to demonstrate compliance | `REVIEW` |
+| Audit events | `audit` | `audit.read` | Legitimate interest — security | Event date | 24 months | `DELETE` |
+| Inquiries (public forms) | `pages` | Instance-wide | Legitimate interest — responding to a request | Submission | 6 months | `DELETE` |
+| Waitlist entries | `students` | Unit | Legitimate interest — placing a request | Placement or withdrawal | 12 months | `DELETE` |
+| **Pre-migration backups** | `maintenance` | Operators | Legitimate interest — recoverability | Migration run (D-044) | **Deleted after the next successful start; at most 3 retained** | `DELETE` |
+| Public page content | `pages` | Instance-wide | — (no personal data) | — | Until deleted | — |
+| Organisation settings & branding | `organization` | Singleton | — (no personal data) | — | Indefinite | — |
+| Operational logs | `lib/logging` | Operators — **no PII** | Legitimate interest — operations | Write | 30 days | `DELETE` |
+
+**On the pre-migration backup row.** D-044's automatic backup before a migration
+is the right behaviour and it had **no retention policy at all** — meaning a full
+copy of the database, including medical notes, accumulated once per upgrade and
+outlived every rule in this table. A backup taken as a safety net is only needed
+until the thing it protects against has not happened: delete it after the next
+successful start, and keep at most three so that a bad migration discovered late
+is still recoverable. Recorded as **F-49**.
 
 ### 5.1 People with no membership are not an edge case
 
@@ -511,18 +619,44 @@ rather than a column, so it belongs to the same registry that erasure uses
 (D-014) and is covered by the same test that asserts every `Person`-referencing
 table is registered.
 
-### 5.2 Certificates and the right to erasure — honestly
+### 5.2 Awards and the right to erasure — honestly
 
 An erasure request does **not** automatically lose to a diploma register.
 
 The organisation must identify an actual ground for retention — a legal
 obligation, or the establishment or defence of legal claims. Many swim schools
-will have none, in which case the certificate record is deleted or genuinely
+will have none, in which case the award record is deleted or genuinely
 anonymised like anything else. Where a ground does exist, the record is retained
 **with that ground recorded against it**, the data subject is told which records
 were kept and why, and the retention is revisited when the ground expires.
 
-And where a certificate number remains looked-up-able, the honest statement is
-that the record is **pseudonymised, not anonymous** — it is still personal data
+And where an award number remains looked-up-able, the honest statement is that
+the record is **pseudonymised, not anonymous** — it is still personal data
 (D-065). Telling a parent otherwise would be wrong, and the privacy notice must
 not do so. Finding **F-06 (revised)**.
+
+### 5.3 Attendance does not "anonymise to aggregate"
+
+**Decision D-098 — Expired attendance events are **deleted**, not anonymised.**
+What may be kept is a genuinely aggregate counter that no longer references a
+student — and it is kept because it was computed, not because a row was stripped.
+
+The previous default said `ANONYMISE` to aggregate. Stripping the student
+reference from an attendance event does not produce anonymous data here. A group
+holds around twelve children, `GroupMembership` is retained and time-bounded, and
+session dates are known. Anyone with both tables can re-identify a large share of
+the stripped rows by a join and a counting argument — twelve memberships, eleven
+present, one absent, and the absent child is whoever the roster says was not
+counted. That fails the mechanical test for anonymisation being written into
+`02-security-privacy.md`, and calling it anonymisation in a privacy notice would
+be the same false comfort D-065 exists to prevent.
+
+**Reason.** Anonymisation claims must survive the joins the same database makes
+trivial. If a row can be re-identified from data the application itself retains,
+it was pseudonymised, and pseudonymised data is still personal data with the same
+obligations — so nothing was gained by not deleting it.
+
+**Trade-off.** Attendance-rate history beyond the retention window is lost unless
+someone deliberately computes and stores an aggregate first. That is the correct
+order: decide what statistic is worth keeping, compute it, keep that — rather
+than keeping the raw rows and calling them anonymous. Recorded as **F-48**.
