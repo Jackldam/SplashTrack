@@ -59,21 +59,44 @@ defaults.
 **Trade-off.** Two containers rather than one; operators wanting a managed
 database point `DATABASE_URL` elsewhere. Acceptable and expected.
 
-Non-negotiable properties of the image:
+#### Target properties of the image — and what is actually true today
 
-- **No default credentials, ever.** Secrets are generated on first run and
-  written to the data volume; the app refuses to start with a placeholder value.
-- **First-run setup wizard in-app** — create the first administrator, force MFA
-  enrolment, set organisation name and branding. Replaces D-028's script.
-- **Migrations run automatically on start**, forward-only, logged, and safe to
-  interrupt.
-- **All configuration via environment variables**, documented in one place. No
-  configuration file editing required for a standard install.
-- **Runs as non-root**, read-only root filesystem, no build tools in the final
-  layer, multi-stage build, pinned base image, published SBOM.
-- **Health and readiness endpoints** so an operator's own monitoring works.
-- **Backup and restore commands shipped with the image**, because a self-hoster
-  who cannot restore has no backups (§2).
+An earlier draft of this section listed six "non-negotiable properties of the
+image" as though they described the artifact we have. They do not. Verified
+against the repository: the Dockerfile is a self-described *"development/Sprint-0
+image"* — single-stage, `FROM node:22-alpine` with no digest pin, `npm ci`
+including devDependencies, the full source tree in the final layer, and the
+process running as root. `postgresql-client` is not installed, although
+`14-backup-restore-upgrade.md` §3.1 previously claimed the client tooling ships
+in the image. Two further bullets in that list were not merely unmet but *wrong*:
+"all configuration via environment variables" inverts the whole of chapter 13,
+and "secrets are generated on first run and written to the data volume" is
+incompatible with restore (the archive would then contain its own key — F-51).
+
+The list below is therefore stated as **targets with their current status**, not
+as a description. An implementer must be able to tell which of these they have
+to build. Finding **F-57**.
+
+| Property | Status | Where it is specified |
+|---|---|---|
+| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **To build** | `13-…` §3.1.1 (D-090) |
+| **Bootstrap secrets only in the environment.** All runtime configuration is database-backed and edited in-app | **To build** | `13-…` §3 (D-036/D-037) |
+| **First-run setup wizard in-app** — first administrator, forced MFA, organisation name, branding. Replaces D-028's script | **To build** | `13-…` §6.3 (D-039) |
+| **Migrations never run against a database whose state is unknown.** The entrypoint detects state first; migration is a consequence of that state | **To build** | `13-…` §6 (D-055, D-098) |
+| **The application's database role is not a superuser** — owner of its own schema only, `NOSUPERUSER NOCREATEROLE`, created that way by the reference compose | **To build** | `14-…` §4.2 (D-094) |
+| **Runs as non-root**, read-only root filesystem, multi-stage build, no build tools or devDependencies in the final layer, digest-pinned base image, published SBOM | **None of this holds today.** Single-stage, root, undigested, devDeps present | Phase 1 of the build |
+| **`postgresql-client` present** for dump/restore tooling | **Absent today** | `14-…` §3.1 |
+| **Health and readiness endpoints** so an operator's own monitoring works | **To build** | — |
+| **Backup and restore commands shipped with the image**, because a self-hoster who cannot restore has no backups | **To build** | `14-…` §3, §4 |
+
+**D-095** (stated in `14-…` §3.1, not restated here) makes the backup a
+structured logical export the application writes and reads itself rather than a
+raw SQL dump. It is named here only because it changes what the image must
+contain.
+
+The lifecycle of `SECRET_KEY` is stated **once**, authoritatively, in
+`13-configuration-and-setup.md` §3.1.1. This chapter does not restate it, and
+neither does `14-backup-restore-upgrade.md`; both point at it. Finding **F-50**.
 
 ### 1.3 Structure inside an instance
 

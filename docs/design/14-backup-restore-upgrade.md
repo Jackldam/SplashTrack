@@ -35,10 +35,10 @@ token. Both are required; neither is useful alone.**
 
 ```text
 ┌── splashtrack-backup-2026-08-31T0300.stbak ──┐   ┌── Recovery token ──┐
-│  manifest (version, schema, checksum, date)  │   │  STK1-XXXX-XXXX-…  │
-│  database dump                                │ + │  wraps SECRET_KEY  │
-│  uploaded assets                              │   │  shown ONCE        │
-│  AES-256-GCM encrypted                        │   │  printable         │
+│  header: format, keyId, wrapped data key     │   │  STK1-XXXX-XXXX-…  │
+│  manifest (version, schema, counts, date)    │ + │  ≥128 bits         │
+│  logical export + uploaded assets            │   │  passphrase over   │
+│  framed AEAD, per-archive data key           │   │  the master key    │
 └───────────────────────────────────────────────┘   └────────────────────┘
 ```
 
@@ -49,18 +49,84 @@ it means the file alone is inert — which makes it *safe to store casually*,
 which in turn means operators will actually keep backups. Security that makes
 the safe path the easy path.
 
-**The token is `SECRET_KEY`** (§5 of `13-configuration-and-setup.md`), wrapped
-in a checksummed, human-transcribable format. That is not a coincidence — the
-same key already protects the encrypted secrets and special-category columns
-*inside* the dump, so a restore needs it regardless. Making it explicitly "the
-recovery token" turns a hidden dependency into a visible, printable artefact.
+### 2.1 The token is a passphrase, not the key
 
-**Trade-off.** Lose the token and the backup is unrecoverable — genuinely,
-permanently. This is a deliberate choice over a recoverable-but-weaker scheme,
-and it obliges us to make losing it hard: shown at setup with a "print this"
-step, an explicit confirmation that it has been stored, re-displayable later
-under step-up authentication, and included in the diagnostics page as a
-"recovery token acknowledged: yes/no" check. Finding **F-24**.
+An earlier draft said "**the token is `SECRET_KEY`**", while the diagram beside
+it said the token *wrapped* `SECRET_KEY`, and `13-…` §5 said secrets used a key
+*derived from* it. Three schemes in two chapters. The lifecycle of `SECRET_KEY`
+is now stated once, in `13-configuration-and-setup.md` §3.1.1 (D-090); this
+chapter does not restate it. Finding **F-50**.
+
+Making the token *be* the key was wrong on its own terms, independent of the
+contradiction. One key, forever, would protect the backup archive, every medical
+column and every stored OAuth/SMTP secret — printed on paper, re-displayable in
+the UI, and with no revocation. A volunteer administrator who photographs it
+during setup in 2026 and leaves in 2027 can decrypt any archive they obtain in
+2029. And rotation would be **worse than useless**: re-encryption touches the
+database and cannot reach `.stbak` files already written, so after a rotation the
+operator must keep the *old* token for old archives and the *new* one for new
+ones — two permanently critical secrets, and no protection whatsoever for the
+archives the departing administrator can already read. Finding **F-55**.
+
+**Decision D-092 — Two-level key envelope. A random 256-bit master key is
+generated at setup and stored wrapped by a KDF over the printed recovery token.
+Each archive carries its own random data key, wrapped by the master key and
+stored in the archive header.**
+
+```text
+recovery token  ──Argon2id──▶  KEK  ──unwraps──▶  master key
+                                                      │
+                                                 unwraps per-archive data key
+                                                      │
+                                            framed AEAD over the archive body
+```
+
+- **KDF: Argon2id**, `m = 64 MiB`, `t = 3`, `p = 1`, 128-bit random salt stored
+  beside the wrapped master key. Parameters are recorded in the wrapped-key
+  record so they can be raised for new wraps without breaking old ones.
+- **Rotation = re-wrap the master key under a new token.** Old archives stay
+  readable, because their data keys are wrapped by the *same* master key. The
+  token can genuinely be rotated when someone leaves, which is the entire point.
+- **A leaked archive compromises one archive**, not the estate, because the data
+  key is per archive.
+- The master key is also derivable as `HKDF(SECRET_KEY, info="backup-master-v1")`
+  for the bootstrap case (`13-…` §3.1.1), so a fresh install has a master key
+  before any archive exists.
+
+**Reason.** Every property the Recovery Kit promises — printable, storable,
+revocable when a volunteer leaves, safe to keep old archives — requires the
+printed artefact to be a *passphrase*, not key material. This is the standard
+shape and there is no reason to invent another.
+**Trade-off.** Two unwrap steps on every restore and an Argon2id cost the
+operator waits through (deliberately). Losing the token still loses the data —
+that has not changed, and F-24 stands.
+
+### 2.2 Token format, entropy and handling
+
+**Decision D-093 — The recovery token carries ≥128 bits of entropy, is encoded
+in Crockford base32 with a check character and grouped for transcription, and
+every re-display is a high-severity audit event that notifies all
+`ORGANIZATION`-scoped administrators.**
+
+The previous specification stated a shape (`STK1-XXXX-XXXX-…`, "human
+transcribable", "printable") and no entropy floor. That is the dangerous
+combination: if the token had to encode a full 256-bit key it would run past
+fifty characters and nobody would transcribe it correctly, so the pressure would
+be to shorten it — and shortening key material is silently catastrophic in a way
+shortening a passphrase over Argon2id is not. Making it a passphrase (D-092) is
+what makes a transcribable length defensible. Finding **F-55**.
+
+Handling rules, all of which were missing:
+
+- Re-display under step-up **and** high-severity audit **and** notification to
+  every organisation-scoped administrator. Step-up alone protects nothing
+  against the administrator who is the threat; `07-operations.md` §1.2's audit
+  list does not currently mention token re-display at all, and it must.
+- The restore endpoint lives in the **unauthenticated** setup wizard. It is
+  rate-limited with lockout, and failed attempts are audited. So is
+  recovery-token entry generally.
+- Diagnostics keeps the "recovery token acknowledged: yes/no" check (F-24) and
+  adds the date of the last re-display.
 
 ---
 
@@ -69,22 +135,116 @@ under step-up authentication, and included in the diagnostics page as a
 ### 3.1 On demand, from the admin UI
 
 `Admin → Maintenance → Backup → Create backup now` produces one `.stbak` file:
-manifest, `pg_dump` output, and the uploaded assets, streamed into an encrypted
-archive. The manifest records application version, schema/migration version,
-creation time, row counts per table and a checksum — everything a restore needs
-to refuse an incompatible or corrupt file *before* touching anything.
+a manifest, a database export, and the uploaded assets, streamed into an
+encrypted archive. The manifest records application version, schema/migration
+version, creation time and row counts per table — everything a restore needs to
+refuse an incompatible file *before* touching anything.
 
-`pg_dump` runs from the app container against the database over the compose
-network, so the client tooling ships in the image (§1.2 of
-`03-deployment-model.md`).
+**Decision D-095 — The database export is a structured logical export the
+application writes and reads itself, not a raw `pg_dump` replayed by the
+database.**
+
+Restoring a `pg_dump` produced elsewhere is arbitrary SQL execution — see §4.2
+and F-52. The honest comparison is short: a logical export deletes that entire
+class of failure, costs nothing the design relies on (D-046's
+`_prisma_migrations` trick carries perfectly well as a **manifest field**
+recording the applied-migration list), and removes the need to ship and version
+`pg_dump`/`pg_restore` binaries whose output format is tied to a server version
+the operator controls. It is more code than shelling out to `pg_dump`, and it
+must be kept in step with the schema — which is exactly what the restore matrix
+(§4.3.1) tests on every pull request anyway.
+
+**Reason.** The v1 choice should be the one where the dangerous case cannot be
+expressed, not the one where it must be filtered. Filtering an attacker-supplied
+dump (§4.2) is achievable but is a permanent allow-list to maintain against a
+format designed to be expressive.
+**Trade-off.** We own the export/import code, including every column type and
+every future schema change. If v1 nonetheless ships `pg_dump`, §4.2's
+restrictions are **mandatory, not advisory**, and `postgresql-client` must
+actually be in the image — it is not today (`03-…` §1.2).
+
+**Decision D-102 — The archive uses a framed AEAD construction with per-chunk
+sequence numbers and an explicit final-chunk marker; the manifest is
+authenticated as a separate AEAD message before it is parsed.**
+
+"AES-256-GCM encrypted" over a streamed multi-gigabyte archive was
+under-specified in a way that reads as safe and is not. GCM is not a streaming
+construction: a naive implementation either buffers the whole archive — which a
+large instance cannot — or encrypts chunks independently, in which case an
+attacker can truncate, reorder or splice chunks between archives and every
+per-chunk tag still verifies. Finding **F-56**.
+
+- Use a named framed construction — libsodium `secretstream` (XChaCha20-Poly1305)
+  or `age` — with sequence-bound chunks and a final-chunk tag, so truncation and
+  splicing fail.
+- **Nonce policy:** random per archive, never reused. Per-archive data keys
+  (D-092) give this for free, which is the second reason to have them.
+- The manifest is a **separate AEAD message bound to the archive's data key**,
+  verified **before any parsing**. Reading the manifest to drive the restore
+  before the archive is authenticated is acting on attacker-controlled data, and
+  it compounds §4.2 directly.
+
+**Key material is never in the archive.** The writer excludes the key-material
+path explicitly and CI asserts that no shipped `.stbak` fixture contains it
+(`13-…` §3.1.1, D-091). Without that exclusion the archive would contain its own
+decryption key and every "the file alone is inert" claim in this chapter would be
+false with nothing failing. Finding **F-51**.
+
+**Assets are files on a path, not an object store.** Uploaded assets live under
+`DATA_DIR` (`13-…` §3.1) and are captured *inside* the encrypted archive. There
+is no versioned, replicated object-storage tier in this product — that is a
+managed-cloud assumption inherited from the hosted design, and `blob-storage.ts`
+in the template supports only `"local"` and throws on anything else. Volume-level
+redundancy is the operator's choice, and should be documented as such rather than
+stated as our policy.
 
 ### 3.2 Scheduled, unattended
 
-Configured in the settings registry, executed by the existing `maintenance`
-job runner: frequency, retention count, and destination — a mounted volume by
-default, with an S3-compatible target as the one supported remote option.
-Failures raise an admin notification, because a silently broken backup schedule
-is worse than none.
+Configured in the settings registry, executed by the existing `maintenance` job
+runner: frequency, retention count, and destination. Failures raise an admin
+notification, because a silently broken backup schedule is worse than none.
+
+**Decision D-103 — v1 writes backups to a mounted volume only. There is no
+S3 destination, and a change of backup destination is treated as equal in
+severity to a backup download.**
+
+**No S3 in v1**, for two independent reasons.
+
+The first is that it does not exist: `WebAppTemplate`'s `blob-storage.ts`
+supports only `"local"` and throws on anything else, and there is no S3 client
+in `package.json`. The design listed `backup.destination (volume | s3)` and
+`backup.s3.*` as though a remote target were inherited. It is not. An operator
+who wants off-site copies syncs the volume with the tool they already use —
+`rclone`, `restic`, a NAS job — which is better software than we would write,
+already has their credentials, and keeps three secrets out of our settings
+registry.
+
+The second is the reason it must *stay* out until the controls exist. D-042
+correctly wraps the download button in step-up, rate limiting, high-severity
+audit and a single-use signed link — and then a destination setting beside it
+would have been an ordinary form. A departing administrator never touches the
+download button: they point the destination at their own bucket, and every night
+the instance ships a complete copy of every person, every medical note and every
+exam result, encrypted with a key the same UI will re-display to them. The most
+controlled path guarded, the uncontrolled path next to it a text field. Finding
+**F-58**.
+
+So when a remote destination does arrive, it carries the download's controls in
+full:
+
+- Step-up re-authentication, high-severity audit, and **mandatory notification
+  to every `ORGANIZATION`-scoped administrator** on any change of destination or
+  destination credentials.
+- A **24-hour delay or a second administrator's approval** before the first
+  backup reaches a new destination.
+- The current destination shown **permanently on the dashboard**, beside the
+  backup-age indicator (D-041), so a silent redirect is visible without anyone
+  opening a settings page.
+
+**Trade-off.** Off-site backup — the thing that survives the building burning
+down — becomes the operator's job in v1, and we must say so plainly in the
+installation documentation rather than leaving a checkbox that implies we did
+it.
 
 **Decision D-041 — The last-successful-backup age is surfaced on the dashboard
 and in diagnostics.**
@@ -123,17 +283,64 @@ Jack wants it. The wizard's first question becomes:
 
 ```text
 upload .stbak + paste recovery token
-  → decrypt and verify checksum            (fail → stop, nothing touched)
-  → read manifest, compare versions        (see 4.3 — old backups are
+  → unwrap master key (Argon2id) → unwrap this archive's data key
+  → authenticate the manifest as its own AEAD message   ← before any parsing
+  → authenticate the archive body (framed AEAD, D-102)  (fail → stop, nothing touched)
+  → parse manifest, compare versions       (see 4.3 — old backups are
                                              restored then migrated forward)
-  → restore database + assets
+  → restore into a freshly created empty schema, allow-listed (§4.2.1)
   → run any newer migrations forward
   → verify row counts against the manifest
   → done: log in with your existing accounts
 ```
 
-Nothing is written until decryption and verification succeed, so a wrong token
-or a corrupt file costs nothing.
+Nothing is written until authentication succeeds, so a wrong token or a corrupt
+file costs nothing.
+
+#### 4.2.1 A `.stbak` from anywhere else is untrusted input
+
+**State this plainly, because the design previously did not: an archive from any
+source other than the operator's own instance is untrusted input.** Restore was
+specified as replaying a database dump produced elsewhere, and the reference
+compose's database user is conventionally the superuser. The words "superuser",
+"least-privilege database role" and "restrict dump contents" appeared nowhere in
+fifteen chapters.
+
+The attack is not exotic; it is the documented recovery path. A volunteer posts
+"my instance won't start". A helpful stranger supplies a "known-good starter
+backup" plus its token — the wizard's first question invites exactly this — and
+the dump contains `CREATE FUNCTION`, `COPY … FROM PROGRAM` or `ALTER ROLE`,
+executed as the database superuser. The result is code execution in the database
+container and persistence via a trigger that survives every future migration.
+The previous verification step made this worse by sounding sufficient: it checked
+that the archive was *intact*, not that it was *benign*, and both the checksum
+and the manifest came from the same attacker-supplied file. Finding **F-52**.
+
+**Decision D-094 — The application's database role is not a superuser. It owns
+its own schema and nothing else, `NOSUPERUSER NOCREATEROLE`, and the reference
+`docker-compose.yml` creates it that way.**
+
+This is a non-negotiable property of what we ship, stated alongside "runs as
+non-root" (`03-…` §1.2). It bounds the blast radius of *every* SQL-injection
+class in the product, not only this one.
+
+**If v1 nonetheless replays a dump** rather than adopting D-095's logical export,
+these restrictions are mandatory:
+
+- `pg_restore --no-owner --no-acl --no-comments`, custom format only, into a
+  **freshly created empty schema**.
+- An **allow-list of object types**: tables, indexes, constraints, sequences.
+  Hard rejection of functions, triggers, extensions, event triggers, and
+  `COPY … FROM PROGRAM`. Anything outside the allow-list **aborts the restore**
+  — it is not skipped with a warning, because a partial restore of a file we
+  have just decided is hostile is not a recovery.
+- The allow-list is enforced by inspecting the archive's table of contents
+  before execution, not by grepping SQL text.
+
+**Trade-off.** An operator restoring a legitimately unusual database — one
+carrying an extension they added by hand — is refused and must add it
+deliberately after the restore. Correct: the alternative is an allow-list with a
+hole in it.
 
 ### 4.3 Restoring an OLD backup into a NEW version — the core promise
 
@@ -190,8 +397,51 @@ build on the day it is written — not two years later on a stranger's server.
 **Reason.** "Skipped versions are supported" is worthless as a sentence in a
 document. It is only true if a machine checks it on every pull request.
 **Trade-off.** The matrix grows with every release and eventually needs pruning
-(§4.3.2), and seeded backup fixtures must be kept in the repository. Both are
-cheap next to the failure they prevent.
+(§4.3.2). Both are cheap next to the failure they prevent.
+
+**As previously written, D-047 was not implementable, and at v1.0 it protects
+nothing.** It named no source for the fixtures, no generator, no fixture
+encryption key, no storage, and no definition of "domain invariants" — and
+structurally, at v1.0 there are zero prior releases, so the matrix is green while
+asserting nothing. The trap is that **fixture generation must ship in v1.0 or
+v1.1 can never test restore from v1.0**. Finding **F-62**.
+
+**Decision D-105 — The release workflow generates the restore fixture; the
+matrix consumes it from GitHub Release assets, not from the repository.**
+
+*Generation — the final step of every release workflow:*
+
+1. Boot the just-built image against a scratch PostgreSQL.
+2. `seed --fixture=restore-matrix` — deterministic: same ids every time, every
+   table non-empty, at least one encrypted column and one enrolled TOTP factor.
+3. Take a backup with the fixed **public** `RESTORE_FIXTURE_KEY` — public
+   deliberately, because F-19 forbids credentials in fixtures and a fixture key
+   protects nothing worth protecting.
+4. Upload the `.stbak` as a **GitHub Release asset**. Not a git commit: this
+   repository already never squashes migrations (D-048), and adding a database
+   dump plus assets per release, forever, to the same tree is how it becomes
+   unclonable.
+
+*The matrix job* lists releases at or above `minimumRestorableVersion` via the
+Releases API, restores each into `HEAD`, migrates, and then asserts:
+
+| Assertion | How |
+|---|---|
+| Migration state clean | `migrate status` reports no pending or failed migration |
+| **Schema genuinely matches** | `prisma migrate diff --from-schema-datamodel --to-schema-datasource` produces **empty** output. One command; this is the real schema assertion, and it replaces the vague "assert the schema" |
+| Row counts | Per table, against the manifest |
+| Every `Person` readable | Full read of each row through the application's own repositories |
+| Every award resolves | Each `Certificate` resolves to a non-superseded `ExamResult` (D-062) |
+| **Every encrypted column decrypts to known plaintext** | Fixture plaintexts are known; compare (D-096) |
+| **An enrolled TOTP still verifies** | Against the same recovery token — the assertion that catches `13-…` §5.3's rotation hazard |
+| Audit chain verifies | Full chain walk |
+
+The two rows in bold are the ones F-25 called "the nastiest" case and then left
+out of the very test meant to cover it: a restore that succeeds while the
+*contents* are unreadable passes every schema check there is.
+
+`minimumRestorableVersion` is declared in the release manifest and compared as a
+semantic version, with pre-release tags excluded from the matrix.
 
 **Decision D-048 — Migration chains are never squashed within a major version,
 and every release declares a `minimumRestorableVersion`.**
@@ -221,6 +471,17 @@ designed in before the first release, because retrofitting an envelope onto
 existing ciphertext is far harder.
 **Trade-off.** A small amount of permanently retained legacy crypto code, and a
 migration obligation at each major boundary.
+
+**D-049 is extended by D-096 and D-097** (`13-…` §5.1, §5.2), which supply the
+two things it was missing. The envelope is `v1:<keyId>:<nonce>:<ct>` with AAD
+binding `(table, column, primary key, keyId)` — versioning the *key* as well as
+the format, and binding a ciphertext to its location so it cannot be moved
+between rows. And "decryptors are retained" becomes a **committed golden-vector
+test** rather than a promise: one entry per format ever shipped, under a fixed
+public test key, so removing a decryptor breaks the build. As it stands the
+template's `decryptSecret` throws on any format mismatch and exists in two
+divergent copies, which guarantees the exact failure D-049 was written to
+prevent.
 
 ### 4.3.2 Compatibility rules, stated as a table
 
@@ -266,8 +527,8 @@ setup wizard first. The authoritative boot sequence is
 `13-configuration-and-setup.md` §6 (D-055); this section describes only what
 happens once the state is known.
 
-**Decision D-044 — An automatic pre-migration backup is taken whenever a start
-would apply migrations, retained for a configurable number of upgrades.**
+**Decision D-044 (amended by D-104) — An automatic pre-migration backup is taken
+whenever a start would apply migrations.**
 **Reason.** The most dangerous moment in this product's life is a migration
 against real data during an unattended upgrade. A snapshot taken automatically
 at exactly that moment is the difference between a five-minute rollback and a
@@ -276,9 +537,58 @@ lost swim school.
 than the alternative. It can be disabled only by an explicit setting, which the
 documentation advises against.
 
-If a migration fails, the container stops with a clear error, the database is
-left at its pre-migration state, and the pre-migration backup is named in the
-log. It never starts in a half-migrated state.
+### 5.1 What actually happens when a migration fails
+
+The previous text said the database "is left at its pre-migration state". **That
+is not true with Prisma.** A failed migration **stays recorded** in
+`_prisma_migrations` and blocks every later one — the P3009 class that the
+template's own `tests/unit/migration-safety.test.ts` exists for. Without naming
+that state, the container simply retries on every restart and the operator sees
+an unexplained crash loop.
+
+The container stops with a clear error, names the pre-migration backup in the
+log, and the entrypoint recognises the condition as the **`FAILED`** state
+(`13-…` §6.1, D-098): refuse to start, name the backup, and tell the operator
+that recovery is `migrate resolve` or a restore — not another restart. It never
+starts in a half-migrated state.
+
+### 5.2 Pre-migration backups have a retention policy
+
+"Retained for a configurable number of upgrades" was **no maximum, no policy and
+no expiry trigger**, on the same volume, under the same key. Set against
+`02-security-privacy.md` §5.3's commitment that special-category data is
+"hard-deleted, never anonymised" at twelve months — and against a backup policy
+of thirty days rolling plus one monthly for twelve months — the arithmetic is
+uncomfortable: a parent requests erasure, the school reports the medical note
+deleted, and it is present in up to thirteen archives plus an unbounded set of
+pre-migration snapshots. Finding **F-59**.
+
+**Decision D-104 — Pre-migration backups are deleted after the next successful
+start and at most three are kept. Backup retention may not exceed the shortest
+special-category retention period, and the resulting "backup horizon" is
+published.**
+
+- **Cap.** A pre-migration backup exists to make the *next* start recoverable.
+  Once a start succeeds, its purpose is served: delete it, keeping at most three
+  for the case of an operator upgrading repeatedly while debugging.
+- **Ceiling.** The registry refuses a backup retention longer than the shortest
+  special-category retention, or — where an operator has a documented reason to
+  exceed it — surfaces the mismatch as a **diagnostics warning** naming both
+  figures. Silently allowing the mismatch is what turns an Article 15 response
+  into a false statement.
+- **Backup horizon.** One computed figure — *"personal data may persist in
+  backups for up to N days after deletion from live storage"* — shown in
+  diagnostics and in the privacy screen, so the organisation can quote it in its
+  privacy notice instead of guessing. The erasure confirmation UI states it at
+  the moment of erasure.
+
+The retention table in `01-domain-model.md` §5 needs a `pre-migration backup`
+data class with this trigger and cap; that chapter is not edited here, but the
+requirement is stated so it is not lost.
+
+**Trade-off.** An operator who wants a long backup history against a short
+erasure period must choose one and record why. That choice is the organisation's
+to make; hiding it was ours to stop doing.
 
 ---
 
@@ -328,12 +638,27 @@ path, and CI tests it against a populated database.
 ## 7. What this adds to the settings registry
 
 ```text
-backup.schedule.enabled          backup.schedule.cron
-backup.retention.count           backup.destination (volume | s3)
-backup.s3.*                      (endpoint, bucket, key id, secret)
+backup.schedule.enabled          backup.schedule.intervalHours
+backup.schedule.window           (e.g. 02:00–05:00 local)
+backup.retention.count           backup.retention.days
 backup.premigration.enabled      (default: true)
 update.check.enabled             (default: true — D-034)
 ```
+
+**Decision D-107 — the schedule is `intervalHours` plus a run window, not a cron
+expression.**
+**Reason.** `backup.schedule.cron` was specified against a job runner that has no
+cron in it: `MaintenanceJob` is interval-based (`intervalMinutes`), there is no
+cron parser and no cron dependency in the repository. Adding one to a
+data-critical path — where a misparsed expression means backups silently stop —
+buys expressiveness nobody has asked for. An interval plus "run between 02:00
+and 05:00" covers every schedule a swim school will want.
+**Trade-off.** "Every Sunday at 03:00" is not directly expressible. Accepted;
+`intervalHours: 24` with a night window is what operators actually mean.
+
+`backup.destination` and `backup.s3.*` are **not** in this list: v1 writes to a
+mounted volume only (D-103), and a destination setting without the download's
+controls is an exfiltration channel with a text field in front of it.
 
 All live-applied (D-038), all audited, secrets encrypted (§5 of
 `13-configuration-and-setup.md`).

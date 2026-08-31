@@ -81,7 +81,7 @@ first is kept deliberately tiny.
 ```text
 DATABASE_URL      where the database is
 APP_URL           the public origin (also the WebAuthn relying-party origin)
-SECRET_KEY        master key for encrypting secrets at rest (§5)
+SECRET_KEY_FILE   path to the file holding the bootstrap secret (§3.1.1)
 DATA_DIR          uploads/assets path (optional, sane default)
 PORT              listen port (optional, sane default)
 ```
@@ -89,10 +89,89 @@ PORT              listen port (optional, sane default)
 That is the current set, not a quota. It may grow when a value genuinely meets
 the criterion below, and it should stay small because few values do.
 
-Separately, and **not** application-owned: standard runtime and platform
-variables an operator may need (`TZ`, `NODE_ENV`, proxy settings, a custom CA
-bundle, container resource limits). We document them where relevant but do not
-own or invent them.
+#### 3.1.1 `SECRET_KEY` — the single authoritative statement
+
+**This subsection is the only place in the design that defines the lifecycle of
+the bootstrap secret.** `03-deployment-model.md` §1.2 and
+`14-backup-restore-upgrade.md` §2 point here and do not restate it. An earlier
+draft gave four mutually exclusive accounts — an operator-supplied environment
+variable (here), a value "generated on first run and written to the data volume"
+(`03` §1.2), a value *displayed* by the wizard (§6.3 step 4), and the recovery
+token itself (`14` §2, whose own diagram said it *wrapped* the key rather than
+being it). Four descriptions, four failure modes. Finding **F-50**.
+
+Worse, the design asserted a template capability that does not exist. Verified
+against `WebAppTemplate`: **there is no `SECRET_KEY`.** At-rest encryption
+derives its key from **`BETTER_AUTH_SECRET`** via HKDF-SHA256 with a per-module
+`info` label (`src/modules/identity/infrastructure/secret-crypto.ts`, plus a
+near-duplicate in `notifications` carrying a *different* label), and
+`BETTER_AUTH_SECRET` **also signs sessions and encrypts TOTP secrets**. Both
+readings of "is `SECRET_KEY` that value?" fail:
+
+- **Same value** → the Recovery Kit prints the session-signing key on paper. A
+  printed artefact that forges administrator sessions.
+- **Different values** → a restore supplies `SECRET_KEY` while the fresh
+  container holds a *new* `BETTER_AUTH_SECRET`, so every TOTP enrolment and
+  every Better Auth-encrypted value in the restored dump is silently dead. MFA
+  is mandatory for administrators, so the Recovery Kit fails at precisely the
+  moment it exists for.
+
+**Decision D-090 — There is exactly one bootstrap secret, `SECRET_KEY`. It is
+the root of every key the application uses, including the Better Auth signing
+secret, which is derived from it rather than configured separately.**
+
+```text
+SECRET_KEY  (32 random bytes, operator-held, supplied via SECRET_KEY_FILE)
+   │
+   ├─ HKDF-SHA256(info="auth-signing-v1")   → Better Auth signing secret
+   ├─ HKDF-SHA256(info="totp-v1")           → TOTP secret encryption
+   ├─ HKDF-SHA256(info="settings-secret-v1")→ SMTP / OAuth / registry secrets
+   ├─ HKDF-SHA256(info="medical-v1")        → special-category column encryption
+   └─ HKDF-SHA256(info="backup-master-v1")  → backup master key (14 §2, D-092)
+```
+
+Every application envelope uses `HKDF(SECRET_KEY, info=<purpose>)` and records
+the purpose in the envelope itself (§5.1, D-096). Deriving the auth signing
+secret means restore reproduces it **identically**, so sessions, TOTP enrolments
+and Better Auth-encrypted values survive a restore — and it is not a second
+variable an operator can get out of step.
+
+**Reason.** One root, one thing to keep, one thing to lose. The alternatives
+were a second secret nobody would keep in sync, or reusing the session-signing
+key as a printable artefact.
+**Trade-off.** Compromise of `SECRET_KEY` compromises everything derived from
+it. That is already true of `BETTER_AUTH_SECRET` today; making the derivation
+explicit at least makes the blast radius stateable, and the purpose labels mean
+a future scheme can rotate one branch without touching the others.
+
+**Supplied as a file, not an environment variable.** `SECRET_KEY_FILE` names a
+mounted file or Docker secret; the application reads it at start and never logs
+it. An environment variable is readable via `docker inspect`,
+`/proc/<pid>/environ`, crash dumps and — most commonly — the operator's own
+`docker-compose.yml` committed to a repository. A plain `SECRET_KEY` variable is
+accepted as a deprecated fallback so an existing install is not bricked, and its
+use raises a diagnostics warning.
+
+**Generation.** The application never generates the bootstrap secret into
+`DATA_DIR`. If `SECRET_KEY_FILE` is absent the container **refuses to start**
+and prints the command that generates one:
+
+```bash
+docker compose run --rm app splashtrack secret:init --out ./secrets/secret_key
+```
+
+**Decision D-091 — Key material is never inside a backup archive. The backup
+writer excludes the key-material path explicitly, and CI asserts it.**
+**Reason.** `14-…` §3.1 captures the uploaded assets from `DATA_DIR`. If key
+material also lived under `DATA_DIR` and assets were captured as a directory
+tree, **the archive would contain its own decryption key** — and every claim
+that the encrypted file is inert without the token collapses silently, with
+nothing failing. That is why the "generated on first run and written to the data
+volume" sentence is deleted from `03` §1.2 rather than softened. Finding
+**F-51**.
+**Trade-off.** The exclusion is a deny-list entry, which is the weaker shape; it
+is backed by a test that greps every shipped `.stbak` fixture for the key bytes
+and for the file name, so the check does not depend on remembering.
 
 **Decision D-037 — Environment holds only what must be known before
 the database is readable, or what selects where state lives. Everything else
@@ -111,6 +190,11 @@ ADR gate to stay honest. Settings that conventionally live in environment
 variables (SMTP host, log level) move into the database and therefore cannot be
 changed while it is unreachable — acceptable, because if the database is down,
 those are not the settings being fixed.
+
+Separately, and **not** application-owned: standard runtime and platform
+variables an operator may need (`TZ`, `NODE_ENV`, proxy settings, a custom CA
+bundle, container resource limits). We document them where relevant but do not
+own or invent them.
 
 ### 3.2 Layer 2 — Runtime settings (database, in-app, live)
 
@@ -133,6 +217,14 @@ The registry is the single source of truth: it generates the admin UI, the
 validation, the API surface, the documentation table, and the diagnostics page.
 Adding a setting means adding a registry entry — never touching a form, a
 migration and a docs page separately.
+
+**One correction to a stated assumption:** `zod` is **not present in either
+repository** — not in `WebAppTemplate`'s `package.json`, not in SplashTrack's,
+and there are no imports of it anywhere. The design has described the registry
+as "one Zod schema per setting" as though the dependency were inherited. It is
+not. Adding it is a one-line change, but it is a build task rather than an
+existing capability, and the same correction applies to `05-technical.md`'s
+module template, which lists `validation/` as Zod schemas. Finding **F-63**.
 
 ### 3.3 Layer 3 — Organisation content
 
@@ -158,9 +250,9 @@ redeployment.
   toggles, password policy, rate limits.
 - **`appliesLive: false`** — settings consumed by an object constructed once at
   startup. These are re-applied by **rebuilding that object**, not by restarting
-  the process. The identity-provider registry (D-035) is the worked example:
-  `WebAppTemplate` already loads Entra configuration at auth-context init, so
-  changing a provider rebuilds the auth context rather than the container.
+  the process. The identity-provider registry (D-035) is the intended worked
+  example, and it is the one case where the mechanism does not exist yet — see
+  §4.1.
 
 **Genuinely restart-requiring settings are only those in Layer 1**, and the UI
 says so plainly where relevant — for example, changing `APP_URL` alters the
@@ -175,27 +267,145 @@ import time, which is a common source of stale-configuration bugs.
 **Trade-off.** Settings must be read through the service rather than a constant,
 which is marginally more verbose and needs a lint rule to enforce.
 
+### 4.1 The identity-provider case, corrected
+
+An earlier draft of this section said: *"`WebAppTemplate` already loads Entra
+configuration at auth-context init, so changing a provider rebuilds the auth
+context rather than the container."* **That is factually inverted.** The
+template's own comment at `src/lib/auth/auth.ts:507-509` says the opposite —
+the Entra login configuration *"is read once at auth-context construction and so
+only applies on the next restart/redeploy"*. `export const auth =
+betterAuth({...})` is a module-level singleton, Next.js runs several worker
+processes, and there is no rebuild mechanism at all. The `genericOAuth` plugin
+the design bets on takes a **static config array at construction** and routes
+callbacks on `/api/auth/callback/:providerId`, so provider ids must exist at
+init for routing to work. Adding a provider at runtime is not something the
+plugin does today. Finding **F-60**.
+
+The mechanism that would actually work, and which must be built:
+
+```text
+getAuth()  →  { version, instance }        (module-level cache, per worker)
+                    │
+  every request (or every TTL window):
+    read settings_version  (one indexed row, cheap)
+    version moved?  →  reconstruct the Better Auth instance, store new version
+```
+
+A `settings_version` counter row, bumped by **every** settings write, gives
+cross-process invalidation via a cheap indexed read with no IPC. The same
+counter serves the settings-service cache above.
+
+**Decision D-106 — D-038 stands for every setting except identity providers,
+which are marked *requires a spike before being treated as decided*.**
+**Reason.** D-038's worked example rested on a template capability that does not
+exist, and `genericOAuth`'s construction-time config array may make an instance
+rebuild insufficient even with `getAuth()`. The spike is narrow and decisive:
+add a `genericOAuth` provider through the database and complete a sign-in
+**without restarting the container**.
+**Trade-off.** One decision stays open into the build. If the spike fails,
+identity providers become the single named exception to the no-restart rule, the
+admin UI must say so at the point of saving ("this provider becomes active after
+the next container restart"), and the release notes must say so too — rather
+than the operator discovering it when sign-in silently uses the old
+configuration.
+
 ---
 
-## 5. Secrets in the database
+## 5. Secrets and encrypted values in the database
 
-SMTP passwords, OAuth client secrets and the like are stored encrypted with a
-key derived from `SECRET_KEY`, using the pattern `WebAppTemplate` already
-implements for the Entra client secret: encrypted at rest, decrypted
-server-side only for use, and **never returned to any client** — the admin API
-exposes a `secretSet: boolean`, never the value.
+SMTP passwords, OAuth client secrets, TOTP secrets and special-category columns
+are all stored encrypted under a purpose-derived key
+(`HKDF(SECRET_KEY, info=<purpose>)`, §3.1.1). Decryption happens server-side
+only, and values are **never returned to any client** — the admin API exposes a
+`secretSet: boolean`, never the value. That last part is the one piece
+`WebAppTemplate` genuinely already implements, for the Entra client secret.
+
+### 5.1 The envelope
+
+**Decision D-096 — Every encrypted value is stored as
+`v1:<keyId>:<nonce>:<ct>`, authenticated with AAD binding
+`(table, column, primary key, keyId)`.**
+
+D-049 versioned the ciphertext *format* but not the *key*, and nothing bound a
+ciphertext to its location. Both omissions are load-bearing:
+
+- **No key id.** A rotation interrupted at 60% — container restart, OOM, an
+  upgrade — leaves two keys in one column with no discriminator. Both decryptors
+  are present; neither knows which applies, and every failed decrypt is
+  indistinguishable from corruption. Medical notes for an arbitrary subset of
+  children become permanently unreadable, and the restore matrix would not catch
+  it, because it asserts schema rather than plaintext.
+- **No AAD.** A `v1:` blob is then **portable**. Anyone with a SQL write
+  primitive — or a careless data-migration or de-duplication script — can copy
+  child A's encrypted allergy note into child B's row, where it decrypts
+  perfectly and authenticates. A child with a severe nut allergy is recorded as
+  having none. Column encryption is assumed to prevent exactly this and, as
+  previously specified, does not.
+
+With a key id, rotation becomes **resumable and observable**: "how many rows
+remain under `keyId=1`" is a query. With AAD, a relocated ciphertext fails to
+authenticate. Finding **F-56**.
+
+**Trade-off.** Envelopes get longer and every read site must pass its own
+`(table, column, pk)`. That is a small, mechanical cost, and it is paid at the
+call site rather than discovered in a child's medical record.
+
+### 5.2 One decryptor registry, and a test that enforces it
+
+The template already stamps `FORMAT = "v1"` — good — but `decryptSecret`
+**throws on any format mismatch**. There is one decryptor and no registry, so
+the moment a `v2` ships every `v1` value becomes unreadable, which is precisely
+the failure D-049 exists to prevent. There are also **two independent copies of
+the file with different HKDF labels and separate `FORMAT` constants**
+(`identity` and `notifications`), so a v2 rollout would have to happen twice,
+consistently, with nothing enforcing it.
+
+**Decision D-097 — One `src/lib/crypto/envelope.ts` holds a
+`DECRYPTORS: Record<FormatVersion, Decryptor>` registry and a `CURRENT_FORMAT`.
+Per-module files become thin purpose labels over it. A committed golden-vector
+test carries one entry per format ever shipped.**
+
+The golden vectors are `{format, purpose, ciphertext, expectedPlaintext}` under a
+fixed **public** test key, committed to the repository. Removing or breaking a
+decryptor breaks the build. That is what converts "we retain decryptors for
+every previously shipped format" from a promise into a check — D-049 as written
+had no enforcement mechanism at all.
+
+**Trade-off.** A permanently growing vector file and a small amount of legacy
+crypto code that can never be deleted. Both are the point.
+
+### 5.3 What rotation actually touches
 
 Consequences the documentation must state plainly:
 
-- Losing `SECRET_KEY` means every stored secret becomes unreadable and must be
-  re-entered. It is not recoverable from a database backup alone.
+- Losing `SECRET_KEY` means every encrypted value becomes unreadable and every
+  secret must be re-entered. It is not recoverable from a database backup alone.
 - A database backup without `SECRET_KEY` is therefore *safer* to move around,
   which is a feature.
-- Rotating `SECRET_KEY` requires a re-encryption command, which ships with the
-  image.
+- Rotating `SECRET_KEY` requires the re-encryption command that ships with the
+  image, and the command must state **exactly** what it covers.
+
+`splashtrack key:rotate` re-wraps, in one resumable pass per column, keyed by
+`keyId`:
+
+| Covered | Not covered |
+|---|---|
+| Settings-registry secrets (SMTP, OAuth client secrets) | `.stbak` archives already written — see `14-…` §2 (D-092), which is why the backup key is a *two-level* envelope and rotation there means re-wrapping the master key rather than re-encrypting archives |
+| Special-category columns (D-013) | Nothing else. If a value is not in this table the command does not touch it, and the release notes must say so |
+| TOTP secrets and Better Auth-encrypted values, **because §3.1.1 derives their key from `SECRET_KEY`** | — |
+
+That last row is not a detail. Before D-090, Better Auth's internal TwoFactor
+secrets were encrypted with an *independent* `BETTER_AUTH_SECRET` that our
+re-encryption command could not reach — so rotating the key would have silently
+un-enrolled **every administrator's second factor at once**, while MFA is
+mandatory for administrators. The HKDF split is what makes rotation safe, and
+the restore matrix carries an invariant asserting that an enrolled TOTP still
+verifies after a restore (`14-…` §4.3.1). Finding **F-61**.
 
 This is the same key-management question as OD-7 (special-category column
-encryption); both are answered by one key and one documented rotation path.
+encryption); both are answered by one root key, one envelope and one documented
+rotation path.
 
 ---
 
@@ -228,12 +438,18 @@ container start
   │         │
   │         └─ Restore from backup
   │              → decrypt + verify archive (nothing written until this passes)
-  │              → restore dump: old schema + old data + _prisma_migrations
+  │              → restore export: old schema + old data + migration history
   │              → run forward migrations from that point (D-046)
   │              → verify against manifest → serving with the original accounts
   │
-  ├── PARTIAL  (tables exist, no bootstrap record)
+  ├── PARTIAL  (no bootstrap record AND no person/account/role data)
   │     → setup was interrupted. Resume SETUP MODE; do not migrate silently.
+  │
+  ├── TAMPERED  (no bootstrap record, but data exists)
+  │     → REFUSE TO SERVE. Log loudly. Break-glass CLI only (§7, D-099).
+  │
+  ├── FAILED  (a migration is recorded as unfinished or rolled back)
+  │     → REFUSE TO START. Name the pre-migration backup (D-098).
   │
   ├── EXISTING  (tables + bootstrap record, schema older than app)
   │     → take automatic pre-migration backup (D-044)
@@ -255,12 +471,78 @@ two paths explicit and keeps restore a normal operation rather than a rescue.
 **Trade-off.** The entrypoint cannot be a naive `migrate deploy && start`; it
 carries a small state machine, and that state machine is security- and
 data-critical code. It is therefore covered by its own test matrix, one case per
-state above.
+state.
 
-### 6.1 The setup wizard
+### 6.1 The states, as decidable predicates
 
-Reachable **only** in `SETUP MODE` (states EMPTY and PARTIAL), so it cannot be
-re-opened once an administrator exists:
+The diagram above describes intent; it does not tell an implementer how to
+*decide* a state, and a state machine the design itself calls security- and
+data-critical cannot be specified in prose. These predicates are evaluated **in
+order, against one connection**, and the first that matches wins.
+
+**Decision D-098 — The boot states are the following ordered predicates, and a
+sixth state, `FAILED`, is added.**
+
+| # | Predicate | State | Action |
+|---|---|---|---|
+| 1 | `_prisma_migrations` absent **and** zero other tables | **EMPTY** | Setup mode |
+| 2 | `_prisma_migrations` holds a `migration_name` not present in the image's migrations directory | **AHEAD** | Refuse to start; name the version required (D-043) |
+| 3 | Any row with `finished_at IS NULL` **or** `rolled_back_at IS NOT NULL` | **FAILED** | Refuse to start; name the pre-migration backup |
+| 4 | No `InstallationBootstrap` row with `completedAt` | **PARTIAL** or **TAMPERED** — see D-099 | Setup mode, or refuse |
+| 5 | An image migration is missing from `_prisma_migrations` | **EXISTING** | Pre-migration backup (D-044) → `migrate deploy` |
+| 6 | Otherwise | **CURRENT** | Serve |
+
+**`FAILED` exists because a claim in `14-backup-restore-upgrade.md` §5 was
+untrue.** That section said a failed migration leaves the database "at its
+pre-migration state". With Prisma it does not: the failed migration **stays
+recorded** and blocks every later one — the P3009 class that the template's own
+`tests/unit/migration-safety.test.ts` was written for. Without this state the
+container retries `migrate deploy` on every restart, fails identically, and the
+operator sees a crash loop with no indication that the fix is `migrate resolve`
+plus the named backup.
+
+**Do not rely on `prisma migrate status` exit codes.** They are not a stable
+API. The predicates above read the `_prisma_migrations` table directly, which is
+a documented schema.
+
+**Trade-off.** Six states rather than five, and the entrypoint reads a
+Prisma-internal table. Reading it is already the mechanism D-046 depends on for
+restore, so the coupling is not new — it is now stated.
+
+### 6.2 Setup mode requires an empty installation, not a missing row
+
+The previous specification keyed the only unauthenticated administrative surface
+in the product on the presence of a **single row**: `PARTIAL (tables exist, no
+bootstrap record) → resume SETUP MODE`, and the wizard's "New installation" path
+then creates a first administrator with full `ORGANIZATION` scope.
+
+Any primitive that deletes one row — SQL injection, a compromised low-privilege
+database credential, a botched restore, a support script, a bug in the erasure
+transaction — therefore puts a **populated production database holding thousands
+of children's records into unauthenticated setup mode**. D-039's claim that the
+wizard self-destructs once the first administrator exists was false as
+specified: it self-destructed once a *row* existed. Finding **F-53**.
+
+**Decision D-099 — Setup mode requires **all** of: no bootstrap record, zero
+`UserAccount` rows, zero `Person` rows and zero `RoleAssignment` rows. Data
+present with the bootstrap record missing is not `PARTIAL`; it is `TAMPERED`.**
+
+`TAMPERED` refuses to serve any request, logs at high severity, writes an audit
+event, and can be cleared only from the host via the break-glass CLI (§7) — the
+same host-access proof of ownership everything else in this chapter rests on.
+
+**Reason.** The gate on an unauthenticated administrative surface must be a
+property of the *installation*, not the presence of one deletable row. Four
+counts and one lookup are cheap; they run once per boot.
+**Trade-off.** An operator who genuinely wants to reset a populated instance to
+factory state must do it deliberately from the host rather than by deleting a
+row. That is the correct amount of friction. `TAMPERED` is added as a case in
+D-055's test matrix alongside the six states above.
+
+### 6.3 The setup wizard
+
+Reachable **only** in `SETUP MODE` (states EMPTY and PARTIAL as redefined by
+D-099), so it cannot be re-opened once an installation holds any data:
 
 ```text
 0. New installation, or restore from backup?
@@ -272,19 +554,61 @@ re-opened once an administrator exists:
 6. Done → bootstrap record written, /setup permanently closed
 ```
 
-`PlatformBootstrap` is the template's existing enforced-singleton first-run
-record, reused unchanged.
+Step 4's recovery token is a **passphrase over the backup master key**, not the
+bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-092). The
+wizard displays the token; it never displays `SECRET_KEY`.
 
-**Decision D-039 — The setup wizard is the only unauthenticated administrative
-surface, and it self-destructs.**
+**Decision D-100 — The first-run record is `InstallationBootstrap`, not
+`PlatformBootstrap`.** The template's enforced-singleton record is reused, but
+it keeps the `Platform` prefix that D-056 deletes alongside `PlatformSettings`
+and `PlatformRoleAssignment`. Leaving one `Platform*` model behind reintroduces
+the namespace the extraction exists to remove — and it is the model the boot
+state machine reads on every start, the worst place for a name that means
+something the architecture no longer has.
+
+**Decision D-039 (amended) — The setup wizard is the only unauthenticated
+administrative surface, and it self-destructs.**
 **Reason.** First-run configuration is the one moment where no account can exist
-yet. Bounding that window to "before the first administrator exists" removes the
-standing unauthenticated admin surface that a permanent admin-token model keeps
-open forever.
+yet. Bounding that window to "before the installation holds any data" (D-099)
+removes the standing unauthenticated admin surface that a permanent admin-token
+model keeps open forever.
 **Trade-off.** A race exists between container start and the operator reaching
-`/setup` — whoever arrives first becomes administrator. Mitigated by printing a
-one-time setup token to the container logs, which the wizard requires: the
-operator can read their own logs, a stranger on the internet cannot.
+`/setup` — whoever arrives first becomes administrator. It is mitigated by a
+one-time setup token, which the wizard requires.
+
+#### The setup token does not go to the logs
+
+The original mitigation printed that token **to the container logs**. Four
+chapters away, F-20 states as a design assumption that *"self-hosters debugging a
+problem paste logs, screenshots and database rows"*. The mitigation and the
+acknowledged behaviour are mutually exclusive, and the repository is public: an
+operator whose setup fails opens an issue, pastes `docker compose logs app`, and
+publishes a credential that makes a stranger the administrator of an instance the
+school is about to populate. The same exposure occurs through Portainer, Synology
+and Unraid log panes, and through centralised log shipping to a third party.
+Finding **F-54**.
+
+**Decision D-101 — The setup token is written to `$DATA_DIR/setup-token`, mode
+0600, and only its *path* is printed. It is single-use, expires in ≤60 minutes,
+and is reissued only from the host.**
+
+```bash
+docker compose exec app splashtrack setup:token --new
+```
+
+**Reason.** Host access is the proof of ownership, which is the pattern §7's
+break-glass CLI already establishes for every other privileged operation. A
+bearer credential does not belong in a log stream that the design elsewhere
+expects to be published.
+**Trade-off.** The operator needs filesystem access to the data volume rather
+than a `docker logs` scroll. That is one extra command, of the same class they
+already need for break-glass.
+
+Token submission is **rate-limited with lockout**, and failed attempts are
+audited — the existing rate-limiting specification covers login, password reset,
+export and public forms, and did not cover this. §8's diagnostics page and the
+GitHub issue template both carry a warning that container logs may contain a
+setup-token *path*, and that the file itself must never be pasted.
 
 ---
 
@@ -299,6 +623,10 @@ docker compose exec app splashtrack admin:reset-mfa   --email …
 docker compose exec app splashtrack admin:grant-admin --email …
 docker compose exec app splashtrack settings:reset    --key …
 docker compose exec app splashtrack settings:list
+docker compose exec app splashtrack setup:token --new           (D-101)
+docker compose run  --rm app splashtrack secret:init --out …    (D-090)
+docker compose exec app splashtrack key:rotate                  (§5.3)
+docker compose exec app splashtrack bootstrap:clear-tampered    (D-099)
 ```
 
 Every one of these writes an audit event. This replaces Vaultwarden's
@@ -330,3 +658,17 @@ exists (D-034).
 It is the first thing to ask for in a support issue, and it must be safe to
 paste into a public GitHub issue — so it renders **no secrets and no personal
 data** (F-20).
+
+It additionally surfaces:
+
+- A warning that container logs and `$DATA_DIR` may contain a live **setup
+  token**, with the instruction never to paste either (D-101). The same warning
+  is in the issue template.
+- A warning if `SECRET_KEY` is supplied as a plain environment variable rather
+  than `SECRET_KEY_FILE` (§3.1.1).
+- The **backup horizon**, and any mismatch between backup retention and the
+  shortest special-category retention period (`14-…` §5.2, D-104).
+- The current **backup destination**, permanently, beside the backup-age
+  indicator (`14-…` §3.2, D-103).
+- Whether any encrypted column still holds ciphertext under a superseded
+  `keyId` — the resumability signal D-096 makes possible.
