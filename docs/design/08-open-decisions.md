@@ -31,20 +31,25 @@ workflow and designing for an imagined one.
 
 ---
 
-### OD-3 — Hosting target for UAT and PROD.
+### OD-3 — Hosting target, and **who operates a customer's instance**.
 
-**Why it matters.** It determines the deployment mechanism, the OIDC
-federation setup, backup tooling, object storage, TLS and wildcard DNS
-management. The subdomain tenancy decision (D-015) needs wildcard DNS and a
-wildcard certificate on day one.
-**Options.** A single VPS with Docker Compose (simplest, matches the template's
-stated infrastructure); a managed container platform; a Kubernetes cluster
-(explicitly discouraged — no demonstrated need).
-**Cost of delay.** Medium — but it blocks setting up UAT, which blocks
-acceptance testing.
-**My recommendation:** one VPS per environment with Docker Compose plus managed
-Postgres backups. It matches the template, it is cheap, and it is the KISS
-answer at this scale.
+**Why it matters.** Single-tenancy makes this decision much larger than it was.
+It now determines the provisioning script, per-instance cost, backup tooling,
+certificate automation and the whole fleet model.
+**Two questions, not one:**
+1. *Where do instances run?* One VPS per instance with Docker Compose (simplest,
+   matches the template); several small instances co-located on shared hardware
+   with separate databases and processes (cheaper, still isolated); or a managed
+   container platform. Kubernetes remains discouraged — no demonstrated need.
+2. *Who operates them — you, or the customer?* If SplashTrack is a hosted
+   service you run, you are the processor and F-13/F-14 apply in full. If
+   customers self-host, the fleet problem largely disappears but so does your
+   ability to upgrade them, and support becomes much harder.
+**Cost of delay.** **High, and higher than before** — it blocks the provisioning
+script (D-028), which now blocks UAT.
+**My recommendation:** you host, one small VPS per instance, co-locating early
+customers on shared hardware with strictly separate databases and processes.
+Revisit when a customer contractually demands dedicated hardware.
 
 ---
 
@@ -130,3 +135,35 @@ meaning. Decide the glossary once, in a `docs/glossary.md`, before the first
 domain module is written.
 **Cost of delay.** Low individually, high cumulatively — renaming a schema
 concept after ten modules use it is painful.
+
+---
+
+### OD-11 — Per-customer cost floor and minimum viable price.
+
+**Why it matters.** A dedicated database, storage, certificate, backup schedule
+and monitoring per organisation creates a hard marginal cost per customer that
+a multi-tenant design would not have (F-16). That sets a floor on pricing and
+may make very small organisations — a one-pool swim club with 40 members —
+unprofitable to serve.
+**Needed.** A rough target price per organisation per month, so the hosting
+shape in OD-3 can be chosen to fit it.
+**Cost of delay.** Medium. It does not block v1 development, but it does shape
+the hosting decision, and reversing hosting later is expensive.
+**My assumption if unanswered:** co-locate small instances on shared hardware
+to keep the floor low, while preserving separate databases and processes.
+
+---
+
+### OD-12 — Is cross-instance functionality ever required?
+
+**Why it matters.** Single-tenancy makes some things impossible by design: a
+swimmer transferring from school A to school B carrying their diploma history;
+a national federation viewing results across affiliated schools; an examiner
+working across several schools with one login. If any of these is a real
+requirement, it needs a deliberate mechanism — most likely a signed, exportable
+**credential document** rather than a shared database.
+**Cost of delay.** Medium. Designing an export/import format is cheap now and
+awkward later.
+**My recommendation:** treat certificates as portable signed artefacts from the
+start (they are already immutable, numbered records — D-007). That covers the
+transfer case without any cross-instance data path.

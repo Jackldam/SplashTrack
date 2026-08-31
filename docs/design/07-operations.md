@@ -62,12 +62,12 @@ enough to be readable by non-engineers.
 
 | | Policy |
 |---|---|
-| Database | Automated daily full + continuous WAL archiving. RPO ≤ 24 h, target ≤ 15 min via WAL |
+| Database | **Per instance:** automated daily full + continuous WAL archiving. RPO ≤ 24 h, target ≤ 15 min via WAL |
 | Object storage | Versioned, replicated |
 | Retention of backups | 30 days rolling, plus one monthly for 12 months |
 | Encryption | Backups encrypted at rest with keys separate from the database host; special-category columns remain independently encrypted (D-013) |
 | Access | Restore requires two-person authorisation and is audited |
-| **Restore drill** | **Quarterly, into an isolated environment, timed, documented.** A backup that has never been restored is a hypothesis |
+| **Restore drill** | **Quarterly, into an isolated environment, timed, documented, rotating across instances** so every instance is exercised over time. A backup that has never been restored is a hypothesis |
 | RTO | ≤ 4 hours |
 
 **Backups contain personal data and are therefore in scope for GDPR.** Two
@@ -84,13 +84,13 @@ Finding **F-07**.
 |---|---|---|---|
 | FM-1 | **Poolside WiFi drops mid-registration** | Instructor loses work; attendance unrecorded | Idempotent `clientEventId` writes; optimistic UI with honest failure; work retained on screen; offline queue prepared (P-02) |
 | FM-2 | Database unavailable | Total outage | Deny-by-default means failures become 403/503, never accidental allows; readiness probe removes the instance |
-| FM-3 | **Tenant isolation bug** | Catastrophic — cross-org data exposure | Three independent layers (scoping extension, composite FKs, isolation tests). A single mistake is insufficient to leak |
+| FM-3 | **Scope-escape bug** (missed reach filter on a list query) | Serious — one organisation's staff see records they should not, e.g. another location's students | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). Cross-*organisation* exposure is impossible by deployment (D-012 revised) |
 | FM-4 | Destructive migration | Data loss | Migration-against-populated-database CI job; forward-only; reviewed; restore drill validated |
 | FM-5 | Brand colours break contrast | Unusable UI, accessibility failure | Contrast validated at save time, not at render |
-| FM-6 | Public cache key omits tenant | Org A's page served to Org B | Tenant in the cache key, asserted by test |
+| FM-6 | **Fleet version skew / migration fails mid-rollout** | Some instances on the old version; one instance broken | Waves, bounded skew, halt-on-failure, per-instance restore (F-13) |
 | FM-7 | Compromised org admin account | Full org data exposure | MFA mandatory; export requires step-up and is rate-limited and alerted; audit visible to the org |
 | FM-8 | Compromised Lucky / prompt injection | Malicious PR | No secrets, no PROD path, workflows outside write scope, human approval required (D-025) |
-| FM-9 | Leaked backup | Mass personal data exposure | Backup encryption + separate column encryption for health data |
+| FM-9 | Leaked backup | Personal data exposure **for one organisation only** | Per-instance encrypted backups + separate column encryption for health data |
 | FM-10 | Retention job deletes too much | Irreversible data loss | Dry-run and report before execution; deletions audited; restorable within backup window |
 | FM-11 | Email delivery fails | Password resets and invitations lost | Queued with retry; failures visible in admin; not on the critical path for attendance |
 | FM-12 | Certificate issued in error | Legal/reputational | Certificates are revoked and reissued, never edited; every action audited |
@@ -98,8 +98,9 @@ Finding **F-07**.
 
 ## 4. Scalability risks
 
-Stated scale: ~100 organisations, ~50,000 persons, one Postgres instance. The
-architecture is comfortable there. The risks below are the ones that would bite
+Stated scale: ~100 organisations. Under single-tenancy that is ~100 modest
+deployments rather than one large one — each holding perhaps a few thousand
+persons. Per-instance load is trivial; **fleet size is the scaling problem.** The risks below are the ones that would bite
 first, in the order they would bite.
 
 | Risk | When it bites | Prepared response |
@@ -108,9 +109,9 @@ first, in the order they would bite.
 | **Audit table growth** | Fastest-growing table; audit UI queries slow first | Time-based partitioning + retention rotation; index on (org, timestamp, actor) |
 | **Attendance table growth** | ~50k persons × weekly sessions ≈ millions of rows/year | Partition by period; aggregate + anonymise at 24 months (retention policy doubles as a scalability control) |
 | **Seasonal peak** | Enrolment season and exam periods concentrate load | Stateless processes scale horizontally; no in-process state anywhere (P-08) |
-| **Single Postgres instance** | Write saturation | Read replicas for reporting first; sharding by organisation is possible *because* every row carries `organizationId` — but is explicitly out of scope until measured |
-| **Cross-org `Person`** | Person table is not org-scoped, so it cannot use the scoping extension and grows globally | Guard `assertPersonReachable` (F-01); index on identity lookups |
-| **Public site traffic spikes** | An org's newsletter or a news item | Per-tenant ISR caching; public surface has no person-table access so cannot cascade into the portal (D-017) |
+| **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. Sharding is moot: the fleet is already partitioned by organisation |
+| **Fleet size** | The real scaling axis is now *number of instances*, not rows. 100 organisations = 100 deployments, databases, backup schedules and upgrade targets | Scripted provisioning (D-028), waved rollouts, fleet manifest, per-instance monitoring. **This is the dominant operational cost** — F-13 |
+| **Public site traffic spikes** | A newsletter or news item | ISR caching; the public surface has no person-table access so it cannot cascade into the portal (D-017). A spike affects one organisation only |
 | **N+1 queries in the group matrix** | The hot path, immediately | Explicit repository methods returning the full matrix in one query; a performance test on a seeded 30×40 matrix in CI |
 
 **The honest summary:** none of these justify architectural complexity today.

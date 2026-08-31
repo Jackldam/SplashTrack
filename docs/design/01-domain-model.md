@@ -101,19 +101,22 @@ Organization ──< OrganizationMembership >── Person ──0..1── User
   here and nowhere else.
 - `UserAccount` holds **no credentials** — Better Auth owns those. It is the
   optional bridge between a human and a login.
-- Every org-scoped row carries a direct `organizationId` column with an index,
-  injected centrally by `forOrganization(orgId)`.
+- There is no tenant column. Rows that a scoped role can reach carry `unitId`,
+  and reach is resolved centrally by `resolveReach()`
+  (`02-security-privacy.md` §2.3).
 
-**Decision D-004 — `Person` spans organisations; profiles are org-scoped.**
-**Reason.** One human, one PII record, is the only model that makes GDPR
-rectification and erasure tractable — correcting a date of birth must not
-require finding N copies. It also supports the real case of an instructor
-working for two swim schools.
-**Trade-off.** `Person` is not org-scoped, so it cannot rely on the automatic
-scoping extension; access to a Person must always be justified by a membership
-or profile in an organisation the caller can reach. This is a genuine sharp
-edge and is called out as risk **F-01** in `10-findings.md`, with a mandatory
-`assertPersonReachable(personId, orgId)` guard as the mitigation.
+**Decision D-004 (revised) — One `Person` per human per instance; profiles are
+domain views on that Person.**
+**Reason.** Single-tenancy (D-012 revised) means an instance holds exactly one
+organisation, so the earlier cross-organisation `Person` — and the isolation
+hole it created — is gone. Within the instance, one human is still one `Person`
+row so that rectification and erasure touch one place. A human who attends two
+different swim schools is simply two unrelated records in two unrelated
+databases, which is the correct privacy outcome, not a duplication problem.
+**Trade-off.** No cross-organisation continuity: an instructor working at two
+schools maintains two profiles and two logins. Accepted — the alternative
+(shared identity across customers) would recreate a cross-customer data path,
+which is precisely what the deployment model exists to prevent.
 
 ### 2.2 The swim domain
 
@@ -177,8 +180,8 @@ when a measured query is slow, not before.
 ## 3. Key entities and relations
 
 Only fields that carry architectural or privacy meaning are listed. `id`,
-`organizationId`, `createdAt`, `updatedAt` are implied on every org-scoped
-entity.
+`id`, `createdAt`, `updatedAt` are implied on every entity; `unitId` is implied
+on every entity that participates in unit-scoped reach.
 
 ### 3.1 People and students
 
@@ -230,21 +233,26 @@ a replayed offline queue all collapse to the same row.
 | `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, remarks? | 0..1 `Certificate` | Append-only; a correction is a new row referencing the superseded one |
 | `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | A diploma is a legal-ish artefact: issue and revoke, never delete |
 
-### 3.6 Multi-tenancy invariant
+### 3.6 Scoping invariant
 
-Every org-scoped entity above carries `organizationId` **directly**, even when
-it could be derived through a parent. `AttendanceRecord` could reach its
-organisation via `ScheduledSession → Group → Organization`, but stores it
-anyway.
+There is no tenant column. Instead, every entity that can be *reached* by a
+scoped role resolves to a position in the organisational unit tree. `Group`
+carries `unitId`; `ScheduledSession` inherits its unit from its group;
+`StudentProfile` carries its home `unitId`. Reach resolution (§2.3 of
+`02-security-privacy.md`) walks that tree, and every list query is filtered by
+it.
 
-**Decision D-006 — Denormalise `organizationId` onto every org-scoped row.**
-**Reason.** It makes the central scoping extension a single `where` injection
-instead of a join, makes every isolation test trivial, and makes an accidental
-cross-tenant leak require *two* mistakes rather than one.
-**Trade-off.** Redundant data that could theoretically diverge. Mitigated by a
-database check: `organizationId` is part of composite foreign keys where the
-parent relation exists, so the database itself refuses a child whose org
-differs from its parent's.
+**Decision D-006 (withdrawn) — `organizationId` is *not* carried on domain
+rows.**
+**Reason.** With one organisation per database the column is a constant. It
+would be dead weight on ~20 tables, and a constant column gives no protection
+while implying one, which is worse than absent. Domain rows instead carry
+`unitId` where the organisational unit is meaningful — that is the column that
+actually constrains access now (`02-security-privacy.md` §2).
+**Trade-off.** Consolidating instances into a shared database later would
+require adding the column and a backfill. Accepted deliberately; the brief
+rules out multi-tenancy, and designing for a rejected model is exactly the
+premature complexity the brief warns against.
 
 ---
 
@@ -269,18 +277,18 @@ either all landed or none did.
 "Ownership" answers three questions per data class: which module may write it,
 which organisation controls it, and who is the GDPR controller.
 
-| Data class | Writing module | Tenant scope | GDPR role | Retention default |
+| Data class | Writing module | Scope | GDPR role | Retention default |
 |---|---|---|---|---|
-| Person PII | `identity` | Cross-org (shared human) | SplashTrack = processor; each org = controller for its use | While any active membership + 24 months |
-| Login credentials | Better Auth | Cross-org | Processor | Account lifetime |
-| Student profile & notes | `students` | Single org | Org is controller | Enrolment + 24 months, then anonymise |
-| Medical / pastoral notes | `students` | Single org | Org is controller, **special category** | Enrolment + 12 months, then hard delete |
-| Attendance records | `attendance` | Single org | Org is controller | 24 months, then aggregate + anonymise |
-| Skill progress | `skills` | Single org | Org is controller | 7 years (evidence for diplomas) |
-| Exam results & certificates | `exams` | Single org | Org is controller | 10 years — a diploma must remain verifiable |
-| Audit events | `audit` | Org-tagged, platform-readable | Joint; legitimate interest | 24 months minimum, then rotate |
-| Public page content | `pages` | Single org | Org is controller | Until deleted by org |
-| Platform settings | `organizations` | Platform | SplashTrack is controller | Indefinite |
+| Person PII | `identity` | Instance-wide | Organisation = controller; operator = processor | While any active membership + 24 months |
+| Login credentials | Better Auth | Instance-wide | Processor | Account lifetime |
+| Student profile & notes | `students` | Unit | Org is controller | Enrolment + 24 months, then anonymise |
+| Medical / pastoral notes | `students` | Unit, extra permission | Org is controller, **special category** | Enrolment + 12 months, then hard delete |
+| Attendance records | `attendance` | Group | Org is controller | 24 months, then aggregate + anonymise |
+| Skill progress | `skills` | Group | Org is controller | 7 years (evidence for diplomas) |
+| Exam results & certificates | `exams` | Course / instance | Org is controller | 10 years — a diploma must remain verifiable |
+| Audit events | `audit` | Instance-wide, `audit.read` | Organisation is controller | 24 months minimum, then rotate |
+| Public page content | `pages` | Instance-wide | Org is controller | Until deleted by org |
+| Instance settings & branding | `organizations` | Instance singleton | Org is controller | Indefinite |
 | Operational logs | `lib/logging` | None — **no PII** | n/a | 30 days |
 
 **The retention conflict is real and must be surfaced, not hidden.** Exam

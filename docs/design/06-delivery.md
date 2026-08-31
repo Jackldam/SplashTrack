@@ -2,24 +2,27 @@
 
 ## 1. DEV / UAT / PROD model
 
-| | DEV | UAT | PROD |
+| | DEV | UAT | PROD (per instance) |
 |---|---|---|---|
 | URL | `dev.splashtrack.sysadminheaven.com` | `uat.splashtrack.sysadminheaven.com` | TBD |
-| Purpose | Lucky develops, tests, breaks things | Jack accepts changes | Real organisations |
+| Purpose | Lucky develops, tests, breaks things | Jack accepts changes | One deployment per customer organisation |
 | Data | **Synthetic only** — seeded, never real | **Synthetic only** — production-*shaped*, not production-derived | Real personal data |
-| Deploys on | Every merge to `main` | Tagged release candidate, automatic | Tagged release, **manual approval** |
+| Deploys on | Every merge to `main` | Tagged release candidate, automatic | Tagged release, **manual approval**, rolled out in waves across the fleet |
 | Lucky access | Full lifecycle | Read-only (logs, health) | **None** |
 | Jack access | Full | Full | Full |
 | Config | Env vars per environment | Same as PROD shape | — |
 | Reset | Anytime, scripted | On demand | Never |
 
-**Decision D-022 — The same container image is promoted DEV → UAT → PROD.**
+**Decision D-022 (extended) — The same container image is promoted DEV → UAT →
+every production instance.**
 **Reason.** The brief requires it and it is correct: an image built once and
 promoted is the only way to know that what was accepted in UAT is what runs in
 production. Rebuilding per environment means testing something you never ship.
-**Trade-off.** All environment differences must be expressible as configuration
-and secrets injected at runtime — no build-time environment flags. This is a
-discipline constraint on every future feature.
+**Trade-off.** All environment *and per-customer* differences must be
+expressible as runtime configuration and secrets — no build-time flags, and no
+customer-specific branches or images, ever. This is a hard discipline constraint
+on every future feature, and it is what keeps a fleet of instances maintainable
+by one team.
 
 ```text
   merge to main
@@ -33,7 +36,11 @@ discipline constraint on every future feature.
         │                              │
         │                        Jack accepts
         │                              ▼
-        └──▶ tag v1.2.0 ──────▶ deploy PROD  (manual approval gate)
+        └──▶ tag v1.2.0 ──────▶ fleet rollout (manual approval gate)
+                                    wave 1: internal instance
+                                    wave 2: early adopters
+                                    wave 3: remaining instances
+                                    a failed migration halts the wave
 ```
 
 **Decision D-023 — UAT never receives a copy of production data.**
@@ -78,8 +85,9 @@ Accepted; a hotfix path that bypasses tests is how outages get worse.
 
 ### 2.2 Secrets and cloud access
 
-- Deploy credentials live in **GitHub Environments**, scoped per environment,
-  with required reviewers on UAT and PROD.
+- Deploy credentials live in **GitHub Environments**, scoped **per instance**,
+  with required reviewers on UAT and every production instance. One instance's
+  credentials never grant access to another (D-029).
 - Prefer **OIDC federation** over long-lived cloud keys.
 - PROD secrets are never readable by CI jobs triggered from a fork or from a
   pull request — only from a tag build on `main`.
@@ -145,7 +153,7 @@ because there is no principal.
 | **Local / DEV** | Full lifecycle: edit code, create branches, write and run tests, build containers, run migrations, deploy to DEV, read DEV logs, analyse failures, work issues, open PRs, update docs |
 | **GitHub** | Create branches, push, open/update PRs, comment, triage issues, apply labels. **Cannot** approve PRs, merge, push to `main`, change branch protection, edit workflow permissions, or manage secrets |
 | **UAT** | Read-only: health endpoints, logs (which contain no PII by design). No deploy, no database access |
-| **PROD** | **Nothing.** No credentials exist. Not restricted — absent |
+| **PROD (any instance)** | **Nothing.** No credentials exist for any customer instance. Not restricted — absent |
 | **Secrets** | None. DEV uses generated throwaway values; UAT/PROD secrets live in GitHub Environments Lucky cannot read |
 | **Real personal data** | Never. DEV and UAT contain synthetic data only (D-023) |
 

@@ -5,17 +5,15 @@ wrong, why it matters, and what this design does about it.
 
 ## Missing requirements
 
-### F-01 — `Person` is cross-organisation, which is a tenant-isolation hole
-**Severity: high.** D-004 makes `Person` span organisations so that PII exists
-once. The consequence is that `Person` cannot use the automatic org-scoping
-extension that protects every other table. Any code path that fetches a Person
-by id, without proving the caller may reach that person, is a cross-tenant
-read.
-**Response.** A mandatory `assertPersonReachable(personId, organizationId)`
-guard that verifies the person has a membership or an org-scoped profile in
-that organisation. Every Person fetch goes through a repository that calls it;
-a lint rule forbids direct `prisma.person.findUnique` outside that repository;
-isolation tests attempt the attack explicitly.
+### F-01 — ~~`Person` is cross-organisation~~ **(dissolved by single-tenancy)**
+**Status: closed.** This was the highest-severity finding in the original
+design: `Person` spanned organisations and therefore could not use the
+automatic tenant-scoping extension. With one instance per organisation
+(D-012 revised) a person exists in exactly one database and the hole is gone.
+The `assertPersonReachable` guard is no longer needed.
+
+**Replaced by F-15** — the same *shape* of risk now lives one level down, in
+unit- and group-scoped reach filtering.
 
 ### F-02 — Consent for minors was not specified
 **Severity: high.** The brief mentions consent but not that the overwhelming
@@ -85,7 +83,8 @@ speculative endpoint inventory.
 
 ### F-10 — "Publieke website" vs "privacy by default"
 A public site and a database of children's data in one application is inherent
-tension.
+tension, and single-tenancy does not reduce it — the public site and the
+student records now live in the *same* database by definition.
 **Response.** D-017 — the public surface has no code path to person tables. The
 tension is resolved structurally rather than by care.
 
@@ -104,30 +103,71 @@ from the template rather than evolving the prototype.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Cross-tenant read via `Person` | High | F-01 guard, repository funnel, lint rule, isolation tests |
+| **Scope escape on a list query** (instructor sees students outside their groups) | High | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). *This replaces cross-tenant read as the top internal risk* |
 | Public page leaks person data | High | D-017 — no code path exists |
-| Public cache key omits tenant | High | Tenant in cache key, asserted by test (FM-6) |
+| **Fleet-wide credential or image compromise** | High | Per-instance secrets, no shared control plane (D-029), signed images, protected environments |
 | Stored XSS via CMS content | High | Closed token set (D-016); server-side sanitisation on save *and* render; no arbitrary HTML/JS |
 | Shared tablet left unlocked | High | `SHARED_DEVICE` mode (D-009) |
 | Health data in a backup leak | High | Column encryption (D-013) + encrypted backups |
 | Org admin bulk-exports and leaves | Medium | Step-up, rate limit, high-severity audit event visible to the org |
-| Platform support browsing tenant PII | Medium | D-011 |
+| Operator with fleet deploy rights | Medium-high | F-14 — per-instance credentials, required reviewers, audited deploys |
 | Prompt injection via GitHub issue text | Medium | D-025; human-reviewed PR is the only output channel |
-| Raw SQL bypassing org scoping | Medium | Lint flag on `$queryRaw`/`$executeRaw`, explicit reviewer sign-off |
+| Raw SQL bypassing reach filtering | Medium | Lint flag on `$queryRaw`/`$executeRaw`, explicit reviewer sign-off |
 | Third-party font/CDN leaking visitor IPs | Low-medium | Self-hosted curated fonts only |
 | User enumeration on public forms | Low-medium | Uniform responses, rate limits, writes go to `Inquiry` not `Person` |
 
+### F-13 — Fleet operations are now the dominant risk and were not in the brief
+**Severity: high (operational).** Single-tenancy converts a data-isolation
+problem into an operations problem. 100 customers means 100 databases, 100
+backup schedules, 100 migration targets and 100 TLS certificates. Done
+manually this fails at roughly the fifth customer.
+**Response.** Scripted provisioning (D-028), a machine-readable fleet manifest,
+waved rollouts with halt-on-failure, bounded version skew, per-instance
+monitoring and rotating restore drills. **This work must exist before the
+second customer, not after.**
+
+### F-14 — The fleet operator is the new most-dangerous principal
+**Severity: medium-high.** With no platform super administrator inside the
+application, the concentrated power moved to whoever can deploy. That principal
+can reach every customer's instance.
+**Response.** Per-instance deploy credentials in separate GitHub Environments
+with required reviewers; no single credential that opens the whole fleet; every
+deploy audited; no standing database access — access is provisioned per
+incident and revoked after.
+
+### F-15 — Scope filtering has the same failure mode tenancy did
+**Severity: high.** A missed `where` on a list query silently returns more than
+it should. This is the identical bug class as a missed tenant predicate, simply
+scoped to units and groups instead of organisations. Deleting the tenancy tests
+without replacing them would be a regression in assurance, not a simplification.
+**Response.** D-031 (reach as a required repository argument) and D-032
+(mandatory scope-escape tests per module).
+
+### F-16 — Per-customer cost floor was not considered
+**Severity: medium (commercial).** A dedicated database, storage bucket,
+certificate and monitoring per organisation sets a hard marginal cost per
+customer that shared hosting would not have. This constrains pricing and makes
+very small organisations potentially unprofitable.
+**Response.** Flagged for Jack as a commercial decision, not a technical one —
+see OD-11. Technically mitigable by co-locating several small instances on
+shared infrastructure while keeping databases and processes separate.
+
 ## Scalability problems
 
-Covered in full in `07-operations.md` §4. The two that will bite first:
+Covered in full in `07-operations.md` §4. Single-tenancy changes which risks
+matter: per-instance data volume becomes small, and **fleet size becomes the
+scaling axis**.
 
-1. **Derived progress state.** The group skill matrix (30 students × 40 skills)
-   computed from an append-only log is the first query that will be measurably
-   slow. The response — a materialised summary refreshed on write — is designed
-   but deliberately not built (D-005).
-2. **Audit and attendance table growth.** Both grow monotonically and are the
-   two fastest-growing tables. Partitioning plus retention rotation is the
-   answer; the retention policy doubles as a scalability control.
+1. **Fleet size.** 100 organisations means 100 deployments to upgrade, back up
+   and monitor. This is now the dominant scaling concern (F-13).
+2. **Derived progress state.** The group skill matrix (30 students × 40 skills)
+   computed from an append-only log is still the first query that will be
+   measurably slow, even in a small instance. The materialised summary is
+   designed but deliberately not built (D-005).
+3. **Audit and attendance table growth.** Still the two fastest-growing tables,
+   but per organisation rather than globally — which pushes the problem out by
+   roughly the number of customers. Partitioning plus retention rotation
+   remains the answer.
 
 Neither justifies added complexity today. Knowing the answer is the deliverable
 at this stage; building it would be exactly the premature complexity the brief

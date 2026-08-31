@@ -63,41 +63,108 @@ single deny-list evaluated in `requirePermission`, not scattered per route.
 
 ---
 
-## 2. Roles and authorization model
+## 2. Authorization — permissions × scope
 
-### 2.1 Mechanism
+With tenancy gone, authorization carries the full weight of "who may see and do
+what". Inside one organisation that is a harder and more interesting problem
+than tenant isolation was, and it is where the brief's *"met scoping alle
+rechten granulair"* requirement lands.
 
-Permission-based, never role-name-based. Business logic asks
-`requirePermission(session, orgId, 'attendance.record')`, never
-`if (role === 'instructor')`.
+### 2.1 The model
+
+A grant is not a permission. **A grant is a permission plus a scope.**
 
 ```text
-Person ──< RoleAssignment (org-scoped) >── Role ──< RolePermission >── Permission
-Person ──< PlatformRoleAssignment >────── Role      (the explicit exception path)
-Person ──< AccessGroup membership >────── narrower resource reach
+Person ──< RoleAssignment >── Role ──< RolePermission >── Permission
+              │
+              └── scope: { type, id }        ← the granular axis
 ```
 
-Membership and permission are checked **together**. A permission check without
-a membership check would let a permission held in Organisation A read
-Organisation B's data — the template documents this explicitly and we keep it.
+`RoleAssignment(personId, roleId, scopeType, scopeId)` where `scopeType` is one
+of:
 
-### 2.2 Starter roles for SplashTrack
-
-| Role | Scope | Purpose |
+| Scope type | Meaning | Example |
 |---|---|---|
-| Platform Super Administrator | Platform | Operate SplashTrack. Assigned to no one by seed. MFA required |
-| Platform Support | Platform | Read-only diagnostics, **no PII access** — see D-011 |
-| Organisation Administrator | Org | Full control within one organisation. MFA required |
-| Planner | Org | Schedules, groups, locations, instructor assignment |
-| Instructor | Org | Own groups: attendance, skills sign-off, read student basics |
-| Examiner | Org (may be time-bounded) | Exam sessions and results only |
-| Member Administrator | Org | People and student administration, enrolments |
-| Content Editor | Org | Public pages, branding assets. **No access to person data** |
-| Read-only Viewer | Org | Reporting and oversight |
+| `ORGANIZATION` | The whole instance | Organisation administrator |
+| `UNIT` | One `OrganizationUnit` **and its descendants** | "Planner for Locatie Zuidbad" |
+| `GROUP` | One specific group | "Instructor of Groep A1" |
+| `COURSE` | One course across groups | "Examiner for Diploma B" |
+| `SELF` | The holder's own records | Every authenticated person, implicitly |
+| `RELATED` | Persons the holder is related to | Guardian → their children (v2 portal, table exists in v1) |
 
-### 2.3 Permission catalogue (domain additions)
+The same person may hold several assignments simultaneously: instructor of two
+groups, planner for one location, and a member of the organisation. Their
+effective reach is the **union** of their grants.
 
-Added to the template's catalogue, following its naming convention:
+### 2.2 The authorization question
+
+Every protected operation asks one question:
+
+```text
+requirePermission(session, 'attendance.record', { group: groupId })
+```
+
+Resolution: does the caller hold *any* grant whose permission includes
+`attendance.record` **and** whose scope covers the referenced resource? Scope
+coverage walks the unit tree upward — a grant on `Locatie Zuidbad` covers
+`Groep A1` beneath it.
+
+**Decision D-030 — Authorization is always resource-referenced; a bare
+permission check is not sufficient.**
+**Reason.** `hasPermission('students.read')` is meaningless in a scoped world —
+the honest question is always *"this student?"*. Allowing an unscoped check
+would let an instructor's group-scoped permission read the entire organisation,
+which is exactly the class of bug tenancy checks used to catch. Making the
+resource reference a required argument means the compiler enforces that the
+question is asked properly.
+**Trade-off.** Every call site must know which resource it is acting on, which
+is more verbose than a role check and occasionally awkward for list endpoints.
+List endpoints instead ask for the caller's **reach** (§2.3) and filter by it.
+
+### 2.3 Reach — the read side
+
+For lists and searches, the inverse question is asked once and turned into a
+filter:
+
+```text
+resolveReach(session, 'students.read') → { units: [...], groups: [...], all: false }
+```
+
+Repositories accept a reach object and constrain the query with it. A single
+helper, used everywhere, means there is one place to get list filtering right —
+the same architectural benefit a central tenant-scoping extension would have
+provided, applied to the boundary that still exists.
+
+**Decision D-031 — Reach resolution is centralised and repositories cannot be
+called without it.**
+**Reason.** Scoping bugs in list endpoints are the most likely remaining data
+exposure, because a missed filter silently returns everything. Making reach a
+required repository argument turns a silent over-fetch into a type error.
+**Trade-off.** Repository signatures are noisier. Worth it — this is now the
+highest-risk code path in the application.
+
+### 2.4 Starter roles
+
+| Role | Typical scope | Purpose |
+|---|---|---|
+| Organisation Administrator | `ORGANIZATION` | Full control. MFA required |
+| Location Manager | `UNIT` | Everything within one location and below |
+| Planner | `UNIT` or `ORGANIZATION` | Schedules, groups, locations, instructor assignment |
+| Instructor | `GROUP` (one per group taught) | Attendance, skill sign-off, read student basics |
+| Examiner | `COURSE` or a single exam session, time-bounded | Exam results only |
+| Member Administrator | `UNIT` or `ORGANIZATION` | People and student administration, enrolments |
+| Content Editor | `ORGANIZATION` | Public pages and branding. **No person data** |
+| Read-only Viewer | `UNIT` | Oversight and reporting |
+| Instance Operator | `ORGANIZATION` | Bootstrap, integrations, technical settings. MFA required |
+
+Note there is no platform-wide super administrator any more: there is no
+platform. Each instance has its own operator, and that operator's reach ends at
+their own deployment (§1 of `03-deployment-model.md`).
+
+### 2.5 Permission catalogue
+
+Unchanged in content from the earlier design, but every key is now evaluated
+against a scope. Domain additions:
 
 ```text
 people.read            people.create         people.update
@@ -105,78 +172,77 @@ people.delete          people.export
 
 students.read          students.create       students.update
 students.archive       students.notes.read   students.notes.write
-students.medical.read  students.medical.write     (special category — separately gated)
+students.medical.read  students.medical.write    (special category — separately gated)
 
 groups.read            groups.manage         groups.assign_members
 courses.read           courses.manage        enrolments.manage
 
 skills.read            skills.manage_catalogue
-skills.assess                                (sign-off — the instructor's core act)
-skills.revoke                                (undo an achieved skill — privileged)
+skills.assess          skills.revoke
 
 attendance.read        attendance.record     attendance.amend
-                                             (amend = change a past record; separately gated)
 
 exams.read             exams.manage          exams.assess
 exams.results.record   certificates.issue    certificates.revoke
 
 planning.read          planning.manage
 
-pages.read             pages.manage
-branding.manage
-organization.settings.manage
-audit.read
-privacy.export         privacy.erase         (GDPR operations — always step-up + audited)
+pages.read             pages.manage          branding.manage
+organization.settings.manage                 audit.read
+privacy.export         privacy.erase
 ```
 
-**Decision D-010 — Medical/pastoral notes have their own permission pair and
-their own audit event type.**
-**Reason.** GDPR special-category data must be least-privilege by default; a
-planner or content editor never needs it, and reading it should leave a trace
-even for those who may. Folding it into `students.read` would grant it to
-everyone who can see a class list.
-**Trade-off.** An extra permission to administer, and a UI that must degrade
-gracefully when the field is not readable. Worth it — this is the highest-risk
-data in the product.
+**Decision D-010 (unchanged) — Medical/pastoral notes have their own permission
+pair and their own audit event type.**
+**Reason.** GDPR special-category data must be least-privilege by default. An
+instructor with `students.read` scoped to their group still should not
+automatically see a child's medical history; that requires
+`students.medical.read`, and every read of it is audited.
+**Trade-off.** An extra permission to administer and a UI that must degrade
+gracefully when the field is unreadable. This is the highest-risk data in the
+product; the cost is justified.
 
-**Decision D-011 — Platform Support cannot read tenant personal data.**
-**Reason.** "Least privilege" is meaningless if the operator role can read
-every child's medical note. Support diagnoses with audit metadata, IDs and
-aggregate counts. Reading tenant PII requires `platform.super_admin`, step-up
-auth, and emits a `warn`-level audit event visible to the organisation.
-**Trade-off.** Some support cases become harder and need customer cooperation.
-That is the correct trade for a system holding data about minors.
+### 2.6 Access groups
 
----
-
-## 3. Organisation isolation
-
-Isolation is defence in depth, three layers, and the design assumes each layer
-will eventually fail:
-
-1. **Query scoping.** `forOrganization(orgId)` — a Prisma client extension
-   injecting `organizationId` into `where`/`data` centrally. Does **not** cover
-   `$queryRaw`/`$executeRaw`; those must be scoped by hand and are flagged in
-   review.
-2. **Composite foreign keys.** A child row's `organizationId` must match its
-   parent's, enforced by the database (D-006). A cross-tenant write is rejected
-   by Postgres even if the application logic is wrong.
-3. **Isolation tests.** Every module ships tests that attempt cross-tenant
-   reads and writes and assert 403/empty. These are not optional; a module
-   without them fails Definition of Done.
-
-**Decision D-012 — Single database, shared schema, row-level tenancy.**
-**Reason.** Schema-per-tenant multiplies migration risk by the tenant count and
-makes cross-org platform operations painful; database-per-tenant multiplies
-operational cost. Row-level scoping with the three layers above is the KISS
-answer at the stated scale (100 orgs / 50k persons).
-**Trade-off.** A single catastrophic scoping bug affects all tenants rather
-than one. Accepted because the layered mitigations make a single bug
-insufficient to cause a leak — and because "prepare, don't build" applies: if a
-tenant ever contractually requires physical isolation, the org-scoped design
-allows extraction of that tenant without a rewrite.
+For organisations that need bundles rather than per-resource assignments, the
+inherited `AccessGroup` primitive (ADR-018/019) groups permissions and scopes
+into a named, reusable set — "Zwemles-instructeur Zuidbad" — assigned in one
+action. This is convenience over the model above, never a bypass of it.
 
 ---
+
+## 3. Defence in depth without tenancy
+
+The old design leaned on three tenancy layers. Two of them are gone; what
+replaces them is narrower but still layered:
+
+1. **Deployment isolation.** Separate process, database, storage and domain per
+   organisation. This is now the outermost and strongest boundary, and it is
+   enforced by infrastructure rather than by code.
+2. **Scope enforcement.** `requirePermission(..., resourceRef)` for writes and
+   single-resource reads; `resolveReach()` for lists. Deny by default, including
+   on unexpected failure.
+3. **Scope tests.** Every module ships tests asserting that a `GROUP`-scoped
+   instructor cannot read, write, or list outside their groups, and that a
+   `UNIT`-scoped role cannot escape its subtree. These replace the old
+   isolation suite the multi-tenant design would have needed, and are equally
+   non-optional for Definition of Done.
+
+**Decision D-032 — Scope-escape tests are mandatory per module.**
+**Reason.** The old isolation suite existed because query-predicate tenancy is
+easy to get wrong. Scope filtering has the identical failure mode — a missed
+`where` returns too much — so it needs the identical discipline. Deleting the
+tenancy tests without replacing them would trade a tested boundary for an
+untested one.
+**Trade-off.** Test-writing effort per module. Unavoidable; this is the
+boundary that now protects a child's records from a colleague who should not
+see them.
+
+### 3.1 Raw SQL
+
+`$queryRaw` / `$executeRaw` no longer risk cross-tenant leaks, but they *do*
+bypass reach filtering. They still require an explicit reviewer sign-off and
+are flagged by a lint rule.
 
 ## 4. Application security controls
 
@@ -305,21 +371,26 @@ different retention and different readers.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
+│ BOUNDARY 0 — Deployment isolation  (strongest, infrastructural) │
+│   Org A instance │ Org B instance │ Org C instance              │
+│   separate process · database · storage · domain · secrets      │
+│   NO shared runtime, NO shared data, NO control plane (D-029)   │
+└─────────────────────────────────────────────────────────────────┘
+        each instance internally:
+┌─────────────────────────────────────────────────────────────────┐
 │ INTERNET (untrusted)                                            │
 │   anonymous visitors · authenticated users · API consumers      │
 └───────────────┬─────────────────────────────────────────────────┘
-                │  TLS · WAF/rate limit · CSP
+                │  TLS · rate limit · CSP
 ┌───────────────▼─────────────────────────────────────────────────┐
 │ BOUNDARY 1 — Application edge (Next.js middleware)              │
 │   session resolution · CSRF · headers · public vs portal split  │
 └───────────────┬─────────────────────────────────────────────────┘
-                │  requirePermission() — the ONLY authorization gate
+                │  requirePermission(perm, resourceRef)  /  resolveReach()
 ┌───────────────▼─────────────────────────────────────────────────┐
-│ BOUNDARY 2 — Organisation isolation                             │
-│   forOrganization() · composite FKs · isolation tests           │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
-│   │   Org A     │  │   Org B     │  │   Org C     │             │
-│   └─────────────┘  └─────────────┘  └─────────────┘             │
+│ BOUNDARY 2 — Scope enforcement  (the boundary that now matters) │
+│   ORGANIZATION ▸ UNIT ▸ GROUP ▸ COURSE ▸ SELF ▸ RELATED         │
+│   deny by default · scope-escape tests per module (D-032)       │
 └───────────────┬─────────────────────────────────────────────────┘
                 │
 ┌───────────────▼─────────────────────────────────────────────────┐
@@ -329,7 +400,7 @@ different retention and different readers.
                 │
 ┌───────────────▼─────────────────────────────────────────────────┐
 │ BOUNDARY 4 — Environment separation                             │
-│   DEV  ──promote──▶  UAT  ──promote──▶  PROD                    │
+│   DEV  ──promote──▶  UAT  ──promote──▶  PROD (per instance)     │
 │   synthetic data      synthetic data      real data             │
 │   Lucky: full         Lucky: read-only    Lucky: NO ACCESS      │
 └─────────────────────────────────────────────────────────────────┘
@@ -339,24 +410,29 @@ different retention and different readers.
 
 | Boundary | Rule | Enforced by |
 |---|---|---|
+| Org A → Org B | **No shared anything.** Separate deployment, database, storage, domain, secrets | Infrastructure, not application code (D-012 revised) |
 | Internet → App | No trust in any client input | Validation at every entry point |
-| App → Data | Every protected operation calls `requirePermission` | Code review + a lint rule requiring the guard in route handlers |
-| Org A → Org B | No read or write crosses a tenant | Scoping extension, composite FKs, isolation tests |
+| App → Data (write / single read) | Every protected operation calls `requirePermission(perm, resourceRef)` | Lint rule requiring the guard; code review |
+| App → Data (lists) | Every list query is constrained by `resolveReach()` | Reach is a required repository argument (D-031) |
+| Scope → wider scope | A `GROUP`-scoped role cannot reach the unit; a `UNIT`-scoped role cannot escape its subtree | Scope-escape tests per module (D-032) |
 | Ordinary → special-category | Separate permission, audited, encrypted | D-010, D-013 |
 | DEV → UAT → PROD | Artifacts promote; data never does | CI/CD design (`06-delivery.md`) |
-| Lucky → PROD | **No path exists.** Not "restricted" — absent | No credentials issued; see `06-delivery.md` §4 |
-| CI → Cloud | Short-lived OIDC tokens, no long-lived cloud keys | GitHub Environments + OIDC |
+| Lucky → PROD | **No path exists.** Not "restricted" — absent | No credentials issued (`06-delivery.md` §4) |
+| CI → an instance | Per-instance deploy credentials, short-lived OIDC | GitHub Environments, one per instance |
+| Instance → instance | No operator credential grants access to a second instance | Per-instance secrets (D-029) |
 
 ### 6.2 Abuse scenarios considered
 
 | Scenario | Mitigation |
 |---|---|
 | Instructor tablet stolen from pool deck | `SHARED_DEVICE` mode, short idle timeout, no export, remote session revocation |
-| Instructor browses students they don't teach | Instructor permissions scoped to assigned groups via access groups; out-of-scope reads audited |
-| Org admin exports the whole member base and leaves | Export requires step-up, is rate-limited, and raises a high-severity audit event |
-| Parent guesses another child's record via ID | Opaque non-sequential IDs; authorization on every fetch; no enumeration |
-| Public site used to enumerate members | Public surface never queries person tables (`03-multi-org.md` §3.2) |
+| **Instructor browses students they don't teach** | `GROUP`-scoped grants; reach-filtered lists; scope-escape tests. **This is now the primary internal threat** |
+| Location manager reads another location's records | `UNIT` scope walks down the tree only, never sideways or up |
+| Org admin exports the whole member base and leaves | Export requires step-up, is rate-limited, raises a high-severity audit event |
+| Parent guesses another child's record via ID | Opaque non-sequential IDs; scope check on every fetch; no enumeration |
+| Public site used to enumerate members | Public surface never queries person tables (`03-deployment-model.md` §5.1) |
 | Malicious/compromised dependency | Lockfile, Dependabot, audit gate, no post-install scripts from new deps without review |
-| Compromised Lucky / prompt injection via issue text | Lucky has no PROD path, no real data, no secret access; all output arrives as a reviewed PR (`06-delivery.md` §4.3) |
-| Backup exfiltration | Backups encrypted; special-category columns separately encrypted; restore drills audited |
-| Support engineer curiosity | D-011 — platform support cannot read tenant PII |
+| Compromised Lucky / prompt injection via issue text | No PROD path, no real data, no secret access; all output arrives as a reviewed PR (`06-delivery.md` §4.3) |
+| Backup exfiltration | Backups encrypted per instance; special-category columns separately encrypted |
+| **Compromise of one customer's instance** | Blast radius is one organisation. No shared credentials, no control plane, no lateral path (D-029) |
+| **Operator with fleet deploy rights** | The genuinely dangerous principal now. Per-instance credentials in protected environments, required reviewers, all deploys audited — finding **F-14** |

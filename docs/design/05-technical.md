@@ -3,14 +3,16 @@
 ## 1. Architecture overview
 
 ```text
+  ONE INSTANCE = ONE ORGANISATION (see 03-deployment-model.md)
+
                      ┌──────────────────────────────┐
-  Browser / tablet ──▶│ Reverse proxy (TLS, wildcard)│
+  Browser / tablet ──▶│ Reverse proxy (TLS)          │
   API consumer     ──▶│  rate limit · security hdrs  │
                      └──────────────┬───────────────┘
                                     │
                      ┌──────────────▼───────────────┐
                      │ Next.js (App Router, Node)   │
-                     │  middleware: tenant resolve   │
+                     │  middleware: session + scope  │
                      │   ├ (public)  public site     │
                      │   ├ (portal)  portal + admin  │
                      │   └ /api/v1   external API    │
@@ -38,8 +40,8 @@ configuration change (P-08).
 |---|---|---|
 | Language | TypeScript everywhere | Team stack; one language across app, tests, tooling |
 | Framework | Next.js App Router on Node | Inherited; Server Components + Route Handlers give one codebase for site, portal and API |
-| Database | PostgreSQL (single primary) | Inherited (ADR-002). Relational domain, strong constraints, mature |
-| ORM | Prisma, single ORM | Inherited (ADR-005). Migrations, typed client, the scoping extension |
+| Database | PostgreSQL, one per instance | Inherited (ADR-002). Relational domain, strong constraints, mature |
+| ORM | Prisma, single ORM | Inherited (ADR-005). Migrations, typed client |
 | Auth | Better Auth (+ passkeys, MFA, Entra) | Inherited (ADR-003). Identity/sessions only |
 | Styling | Bootstrap + CSS custom properties | Inherited; token-driven theming (D-019) |
 | i18n | next-intl, cookie-based locale | Inherited (ADR-006). NL default |
@@ -143,9 +145,11 @@ them (P-01), not speculatively.
 
 ## 5. Data access rules
 
-1. All queries go through the scoping extension `forOrganization(orgId)`.
-2. `$queryRaw` / `$executeRaw` require an explicit reviewer sign-off and manual
-   scoping; they are flagged by a lint rule.
+1. Single-resource reads and all writes go through
+   `requirePermission(perm, resourceRef)`; list queries take a `Reach` object
+   from `resolveReach()` as a **required** repository argument (D-030, D-031).
+2. `$queryRaw` / `$executeRaw` bypass reach filtering; they require an explicit
+   reviewer sign-off and are flagged by a lint rule.
 3. Repositories live in `modules/<m>/infrastructure/`; no module queries another
    module's tables.
 4. Migrations are forward-only, reviewed, and tested against a **populated**
