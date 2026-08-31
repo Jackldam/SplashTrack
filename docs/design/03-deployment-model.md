@@ -79,11 +79,11 @@ to build. Finding **F-57**.
 
 | Property | Status | Where it is specified |
 |---|---|---|
-| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **To build** | `13-…` §3.1.1 (D-090) |
+| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **To build** | `13-…` §3.1.1 (D-112) |
 | **Bootstrap secrets only in the environment.** All runtime configuration is database-backed and edited in-app | **To build** | `13-…` §3 (D-036/D-037) |
 | **First-run setup wizard in-app** — first administrator, forced MFA, organisation name, branding. Replaces D-028's script | **To build** | `13-…` §6.3 (D-039) |
 | **Migrations never run against a database whose state is unknown.** The entrypoint detects state first; migration is a consequence of that state | **To build** | `13-…` §6 (D-055, D-098) |
-| **The application's database role is not a superuser** — owner of its own schema only, `NOSUPERUSER NOCREATEROLE`, created that way by the reference compose | **To build** | `14-…` §4.2 (D-094) |
+| **The application's database role is not a superuser** — owner of its own schema only, `NOSUPERUSER NOCREATEROLE`, created that way by the reference compose | **To build** | `14-…` §4.2 (D-116) |
 | **Runs as non-root**, read-only root filesystem, multi-stage build, no build tools or devDependencies in the final layer, digest-pinned base image, published SBOM | **None of this holds today.** Single-stage, root, undigested, devDeps present | Phase 1 of the build |
 | **`postgresql-client` present** for dump/restore tooling | **Absent today** | `14-…` §3.1 |
 | **Health and readiness endpoints** so an operator's own monitoring works | **To build** | — |

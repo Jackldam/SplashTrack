@@ -54,7 +54,7 @@ the safe path the easy path.
 An earlier draft said "**the token is `SECRET_KEY`**", while the diagram beside
 it said the token *wrapped* `SECRET_KEY`, and `13-…` §5 said secrets used a key
 *derived from* it. Three schemes in two chapters. The lifecycle of `SECRET_KEY`
-is now stated once, in `13-configuration-and-setup.md` §3.1.1 (D-090); this
+is now stated once, in `13-configuration-and-setup.md` §3.1.1 (D-112); this
 chapter does not restate it. Finding **F-50**.
 
 Making the token *be* the key was wrong on its own terms, independent of the
@@ -68,7 +68,7 @@ operator must keep the *old* token for old archives and the *new* one for new
 ones — two permanently critical secrets, and no protection whatsoever for the
 archives the departing administrator can already read. Finding **F-55**.
 
-**Decision D-092 — Two-level key envelope. A random 256-bit master key is
+**Decision D-114 — Two-level key envelope. A random 256-bit master key is
 generated at setup and stored wrapped by a KDF over the printed recovery token.
 Each archive carries its own random data key, wrapped by the master key and
 stored in the archive header.**
@@ -103,7 +103,7 @@ that has not changed, and F-24 stands.
 
 ### 2.2 Token format, entropy and handling
 
-**Decision D-093 — The recovery token carries ≥128 bits of entropy, is encoded
+**Decision D-115 — The recovery token carries ≥128 bits of entropy, is encoded
 in Crockford base32 with a check character and grouped for transcription, and
 every re-display is a high-severity audit event that notifies all
 `ORGANIZATION`-scoped administrators.**
@@ -113,7 +113,7 @@ transcribable", "printable") and no entropy floor. That is the dangerous
 combination: if the token had to encode a full 256-bit key it would run past
 fifty characters and nobody would transcribe it correctly, so the pressure would
 be to shorten it — and shortening key material is silently catastrophic in a way
-shortening a passphrase over Argon2id is not. Making it a passphrase (D-092) is
+shortening a passphrase over Argon2id is not. Making it a passphrase (D-114) is
 what makes a transcribable length defensible. Finding **F-55**.
 
 Handling rules, all of which were missing:
@@ -178,7 +178,7 @@ per-chunk tag still verifies. Finding **F-56**.
   or `age` — with sequence-bound chunks and a final-chunk tag, so truncation and
   splicing fail.
 - **Nonce policy:** random per archive, never reused. Per-archive data keys
-  (D-092) give this for free, which is the second reason to have them.
+  (D-114) give this for free, which is the second reason to have them.
 - The manifest is a **separate AEAD message bound to the archive's data key**,
   verified **before any parsing**. Reading the manifest to drive the restore
   before the archive is authenticated is acting on attacker-controlled data, and
@@ -186,7 +186,7 @@ per-chunk tag still verifies. Finding **F-56**.
 
 **Key material is never in the archive.** The writer excludes the key-material
 path explicitly and CI asserts that no shipped `.stbak` fixture contains it
-(`13-…` §3.1.1, D-091). Without that exclusion the archive would contain its own
+(`13-…` §3.1.1, D-113). Without that exclusion the archive would contain its own
 decryption key and every "the file alone is inert" claim in this chapter would be
 false with nothing failing. Finding **F-51**.
 
@@ -316,7 +316,7 @@ The previous verification step made this worse by sounding sufficient: it checke
 that the archive was *intact*, not that it was *benign*, and both the checksum
 and the manifest came from the same attacker-supplied file. Finding **F-52**.
 
-**Decision D-094 — The application's database role is not a superuser. It owns
+**Decision D-116 — The application's database role is not a superuser. It owns
 its own schema and nothing else, `NOSUPERUSER NOCREATEROLE`, and the reference
 `docker-compose.yml` creates it that way.**
 
@@ -431,7 +431,7 @@ Releases API, restores each into `HEAD`, migrates, and then asserts:
 | **Schema genuinely matches** | `prisma migrate diff --from-schema-datamodel --to-schema-datasource` produces **empty** output. One command; this is the real schema assertion, and it replaces the vague "assert the schema" |
 | Row counts | Per table, against the manifest |
 | Every `Person` readable | Full read of each row through the application's own repositories |
-| Every award resolves | Each `Certificate` resolves to a non-superseded `ExamResult` (D-062) |
+| Every award resolves | Each `Award` resolves to a non-superseded `ExamResult` (D-062) |
 | **Every encrypted column decrypts to known plaintext** | Fixture plaintexts are known; compare (D-096) |
 | **An enrolled TOTP still verifies** | Against the same recovery token — the assertion that catches `13-…` §5.3's rotation hazard |
 | Audit chain verifies | Full chain walk |

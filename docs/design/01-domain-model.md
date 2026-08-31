@@ -382,12 +382,12 @@ not evidence.
 | `Enrolment` | studentProfileId, courseId, status (incl. `TRIAL`), startedAt, endedAt? | Student ↔ Course | Status is a lifecycle, not a payment state (P-03 and D-093). `TRIAL` marks a *proefzwemmer* — a prospective pupil attending once |
 | `Group` | name, courseLevelId?, capacity?, active | N `GroupMembership`, N `ScheduledSession` | Who is taught together |
 | `GroupMembership` | studentProfileId, groupId, fromDate, toDate? | | **Time-bounded** — moving groups is a new row, not an update |
-| `GroupMove` | studentProfileId, fromGroupId?, toGroupId, direction (`UP`/`DOWN`/`LATERAL`), reason, decidedByPersonId, occurredAt | N `GroupMembership` | The *action* behind the two membership rows. Both directions are ordinary history — see D-095 |
+| `GroupMove` | studentProfileId, fromGroupId?, toGroupId, direction (`UP`/`DOWN`/`LATERAL`), reason, decidedByPersonId, occurredAt | N `GroupMembership` | The *action* behind the two membership rows. Both directions are ordinary history — see D-108 |
 | `SessionRosterEntry` | sessionId, studentProfileId, source (`GROUP`/`GUEST`), reason? | 1 `ScheduledSession` | The roster of a session is derived from the group **plus** any explicitly added guests. A make-up lesson is a `GUEST` entry; nothing else about it is modelled |
 | `InstructorAssignment` | personId, groupId \| sessionId, role, fromDate, toDate? | | Instructors change; history is preserved |
 | `Location` | name, address?, capacity? | N `ScheduledSession` | Pools, halls |
 
-**Decision D-095 — Moving a child to another group is recorded as a `GroupMove`
+**Decision D-108 — Moving a child to another group is recorded as a `GroupMove`
 carrying a direction and a reason, and moving *down* is ordinary history, not a
 correction.**
 
@@ -409,7 +409,7 @@ being reported as a demotion.
 administrators would rather do in two clicks. Accepted: the reason is the entire
 value of the record.
 
-**Decision D-096 — Trial lessons, waiting lists and make-up lessons are
+**Decision D-109 — Trial lessons, waiting lists and make-up lessons are
 *modelled*; no workflow is built for them in v1.**
 
 What exists: `Enrolment.status = TRIAL`, `StudentLifecycleEvent.TRIAL_ATTENDED`,
@@ -553,7 +553,7 @@ basis expires.
 `RetentionPolicy` the organisation confirms or changes, with `onExpiry` being
 `DELETE`, `ANONYMISE` or `REVIEW` (`02-security-privacy.md` §5.6, D-065).
 
-**Decision D-097 — The retention table records a lawful basis per data class.**
+**Decision D-110 — The retention table records a lawful basis per data class.**
 The column existed in the prose describing this table ("on what lawful basis it
 is held") and not in the table itself, so the one question an organisation must
 answer to defend a default was the one the defaults did not state. A proposed
@@ -637,7 +637,7 @@ not do so. Finding **F-06 (revised)**.
 
 ### 5.3 Attendance does not "anonymise to aggregate"
 
-**Decision D-098 — Expired attendance events are **deleted**, not anonymised.**
+**Decision D-111 — Expired attendance events are **deleted**, not anonymised.**
 What may be kept is a genuinely aggregate counter that no longer references a
 student — and it is kept because it was computed, not because a row was stripped.
 

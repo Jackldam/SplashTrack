@@ -142,7 +142,7 @@ of:
 | Scope type | Meaning | Example |
 |---|---|---|
 | `ORGANIZATION` | The whole instance | Organisation administrator |
-| `UNIT` | One `OrganizationUnit` **and its descendants** | "Planner for Locatie Zuidbad" |
+| `UNIT` | One `OrganizationUnit`, **flat — no descendant walk in v1** (D-121) | "Planner for Locatie Zuidbad" |
 | `GROUP` | One specific group | "Instructor of Groep A1" |
 | `COURSE` | One course across groups | "Examiner for Diploma B" |
 | `SESSION` | **Participation in one scheduled session (lesson, aftest or exam session) and its roster, for a bounded window** | "Independent aftest assessor, Groep A1's Thursday aftest" · "Substitute instructor, one evening" · "External examiner, Saturday 14 March" |
@@ -177,13 +177,19 @@ Coverage is defined per scope type, once, and nowhere else:
 | Scope type | Covers |
 |---|---|
 | `ORGANIZATION` | Every resource in the installation |
-| `UNIT` | The unit **and all its descendants**, and every group, session, student and exam session beneath them |
+| `UNIT` | **That unit only** — every group, session, student and exam session directly beneath it. No descendant walk (D-121) |
 | `GROUP` | That group, its scheduled sessions, and the students in it *for the period of their membership* |
 | `COURSE` | That course, its levels, its enrolments, and **all** its exam sessions |
 | `SESSION` | **That one session's roster only** — the students on it, for the window the grant is valid, and (for an exam or aftest session) the assessment/results being recorded there. Nothing else, not the course, not the students' other records |
 | `SELF` | Records whose subject is the holder |
 
-Only `UNIT` walks a tree. Every other scope covers exactly what it names.
+**Decision D-121 — `UNIT` is a flat scope in v1: it covers the unit itself, not
+a tree of descendant units.** There is one pool (`00-overview.md` §3.5.1). A
+recursive descendant walk is the highest-risk code path a scoped query can
+contain — it fails open, silently, at whatever depth the bug sits — and
+building it now would be for a location hierarchy nobody operates. Adding the
+walk later is additive: the scope type does not change, only its resolution.
+No scope type walks a tree in v1.
 
 **Decision D-054 — (Superseded by D-068) `EXAM_SESSION` was a first-class scope
 type covering only exam sessions.** Retained here as history: the reasoning —

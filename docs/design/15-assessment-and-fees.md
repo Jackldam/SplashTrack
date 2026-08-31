@@ -267,17 +267,18 @@ number a chair can act on; a workaround is not.
 
 The independent assessor is, by definition, not the child's instructor, and
 therefore holds no `GROUP` grant covering that child. Under D-030 and D-031
-(`02-security-privacy.md` §2.2–2.3) **they cannot read the student at all**, and
-the gate above is unimplementable as the security model currently stands.
+(`02-security-privacy.md` §2.2–2.3) this would leave them unable to read the
+student at all, and the gate above unimplementable — the reason this chapter
+originally recorded a hard dependency here.
 
-This is being resolved in `02-security-privacy.md` by a new **`SESSION`
-participation reach** — reach follows assignment to a session and its roster, for
-a bounded window — proposed there as **D-068**, replacing the `EXAM_SESSION`
-scope of D-054. The same mechanism covers the substitute instructor, the make-up
-lesson and the external examiner.
+**Resolved.** `02-security-privacy.md` §2.1–2.2 decides **D-068**: `SESSION`
+participation reach — reach follows assignment to a session and its roster, for
+a bounded window — replacing the `EXAM_SESSION` scope of D-054. The same
+mechanism covers the substitute instructor, the make-up lesson and the
+external examiner. D-085 is implementable.
 
-That chapter owns the decision. This chapter only records that the assessment
-model **depends** on it: without `SESSION` reach, D-085 cannot ship.
+That chapter owns the decision; this chapter only records that the assessment
+model depended on it.
 
 ---
 
@@ -570,17 +571,19 @@ credential.
 
 ## 9. Dependencies and open items
 
-1. **D-085 depends on `SESSION` participation reach (proposed D-068,
-   `02-security-privacy.md`).** Without it the independent assessor cannot read
-   the student and the four-eyes gate cannot be implemented.
+1. **(Resolved) D-085 depended on `SESSION` participation reach.** Decided as
+   **D-068** in `02-security-privacy.md` §2.1–2.2 — no longer proposed. The
+   four-eyes gate is implementable.
 2. **No scheme catalogue may be seeded until the NRZ criteria and thresholds are
-   confirmed with the domain expert** (§2.5, F-44).
-3. **The `Certificate` → `Award` rename (D-082) is applied in
-   `01-domain-model.md` §2.2, §3.5 and §5, and is still outstanding in
-   `04-ux.md` §4.4.** It is only free while both names never coexist.
-4. **D-086's exception to the thirty-second doctrine is stated here and not yet
-   where the doctrine itself is stated** (`04-ux.md` §4.1, `00-overview.md`).
-   A reader of chapter 04 alone will build the wrong screen.
-5. **The grade scale is assumed to be the five ordinal values given.** Whether a
-   school may define its own scale is supported by the model (`GradeScale` is
-   org-owned) and unasked as a requirement.
+   confirmed with the domain expert** (§2.5, F-44). Still open — a question for
+   Jack, not an architecture decision.
+3. **(Resolved) The `Certificate` → `Award` rename (D-082)** is applied
+   throughout `01-domain-model.md` and `04-ux.md` — neither chapter uses
+   `Certificate` as an entity name any longer.
+4. **(Resolved) D-086's exception to the thirty-second doctrine** is now stated
+   both here and where the doctrine itself lives: `04-ux.md` §4.7 and the
+   product-thesis qualification in `00-overview.md` §1.
+5. **(Open — OD-17, `08-open-decisions.md`)** The grade scale is assumed to be
+   the five ordinal values given. Whether a school may ever define its own
+   scale is supported by the model (`GradeScale` is org-owned) and unasked as a
+   requirement.

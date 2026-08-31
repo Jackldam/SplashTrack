@@ -116,7 +116,7 @@ readings of "is `SECRET_KEY` that value?" fail:
   is mandatory for administrators, so the Recovery Kit fails at precisely the
   moment it exists for.
 
-**Decision D-090 — There is exactly one bootstrap secret, `SECRET_KEY`. It is
+**Decision D-112 — There is exactly one bootstrap secret, `SECRET_KEY`. It is
 the root of every key the application uses, including the Better Auth signing
 secret, which is derived from it rather than configured separately.**
 
@@ -127,7 +127,7 @@ SECRET_KEY  (32 random bytes, operator-held, supplied via SECRET_KEY_FILE)
    ├─ HKDF-SHA256(info="totp-v1")           → TOTP secret encryption
    ├─ HKDF-SHA256(info="settings-secret-v1")→ SMTP / OAuth / registry secrets
    ├─ HKDF-SHA256(info="medical-v1")        → special-category column encryption
-   └─ HKDF-SHA256(info="backup-master-v1")  → backup master key (14 §2, D-092)
+   └─ HKDF-SHA256(info="backup-master-v1")  → backup master key (14 §2, D-114)
 ```
 
 Every application envelope uses `HKDF(SECRET_KEY, info=<purpose>)` and records
@@ -160,7 +160,7 @@ and prints the command that generates one:
 docker compose run --rm app splashtrack secret:init --out ./secrets/secret_key
 ```
 
-**Decision D-091 — Key material is never inside a backup archive. The backup
+**Decision D-113 — Key material is never inside a backup archive. The backup
 writer excludes the key-material path explicitly, and CI asserts it.**
 **Reason.** `14-…` §3.1 captures the uploaded assets from `DATA_DIR`. If key
 material also lived under `DATA_DIR` and assets were captured as a directory
@@ -391,11 +391,11 @@ Consequences the documentation must state plainly:
 
 | Covered | Not covered |
 |---|---|
-| Settings-registry secrets (SMTP, OAuth client secrets) | `.stbak` archives already written — see `14-…` §2 (D-092), which is why the backup key is a *two-level* envelope and rotation there means re-wrapping the master key rather than re-encrypting archives |
+| Settings-registry secrets (SMTP, OAuth client secrets) | `.stbak` archives already written — see `14-…` §2 (D-114), which is why the backup key is a *two-level* envelope and rotation there means re-wrapping the master key rather than re-encrypting archives |
 | Special-category columns (D-013) | Nothing else. If a value is not in this table the command does not touch it, and the release notes must say so |
 | TOTP secrets and Better Auth-encrypted values, **because §3.1.1 derives their key from `SECRET_KEY`** | — |
 
-That last row is not a detail. Before D-090, Better Auth's internal TwoFactor
+That last row is not a detail. Before D-112, Better Auth's internal TwoFactor
 secrets were encrypted with an *independent* `BETTER_AUTH_SECRET` that our
 re-encryption command could not reach — so rotating the key would have silently
 un-enrolled **every administrator's second factor at once**, while MFA is
@@ -555,7 +555,7 @@ D-099), so it cannot be re-opened once an installation holds any data:
 ```
 
 Step 4's recovery token is a **passphrase over the backup master key**, not the
-bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-092). The
+bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-114). The
 wizard displays the token; it never displays `SECRET_KEY`.
 
 **Decision D-100 — The first-run record is `InstallationBootstrap`, not
@@ -624,7 +624,7 @@ docker compose exec app splashtrack admin:grant-admin --email …
 docker compose exec app splashtrack settings:reset    --key …
 docker compose exec app splashtrack settings:list
 docker compose exec app splashtrack setup:token --new           (D-101)
-docker compose run  --rm app splashtrack secret:init --out …    (D-090)
+docker compose run  --rm app splashtrack secret:init --out …    (D-112)
 docker compose exec app splashtrack key:rotate                  (§5.3)
 docker compose exec app splashtrack bootstrap:clear-tampered    (D-099)
 ```
