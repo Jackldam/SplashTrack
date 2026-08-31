@@ -38,6 +38,7 @@
 | 28 | Failure modes | `07-operations.md` §3 |
 | 29 | Scalability risks | `07-operations.md` §4 |
 | 30 | Open architecture decisions | `08-open-decisions.md` |
+| + | Configuration, setup & administration | `13-configuration-and-setup.md` |
 
 Revisions: `11-revision-single-tenant.md` (multi-tenant → single-tenant) and
 `12-revision-open-source.md` (single-tenant → open-source self-hosted). Both

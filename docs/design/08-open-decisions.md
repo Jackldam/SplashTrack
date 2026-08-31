@@ -231,6 +231,11 @@ are very different products — the second needs a one-click package, a
 reverse-proxy story and far more documentation.
 **Cost of delay.** Medium. It shapes documentation and packaging, not the
 architecture.
-**My assumption if unanswered:** an IT-literate operator comfortable with Docker
-Compose, TLS and backups.
+**Partially answered (2026-08-31).** Jack's requirement — full in-app
+configuration, no restarts — sets the bar firmly at the *low* end: the operator
+must manage Docker, TLS and backups, and **nothing else**. All application
+configuration is in the web interface (`13-configuration-and-setup.md`).
+**Still open:** whether to also ship one-click packages (Synology, Unraid,
+CasaOS, Proxmox helper script), which would widen reach considerably at the cost
+of maintaining packaging we do not control.
 
