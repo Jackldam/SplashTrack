@@ -8,7 +8,7 @@ Conflating them is a common and expensive mistake.
 | System | Question it answers | Contains PII? | Reader | Retention |
 |---|---|---|---|---|
 | **Operational logs** (pino) | "Is the system healthy? Why did this request fail?" | **No** — ids only | Operators | 30 days |
-| **Audit trail** (`AuditEvent`) | "Who did what to whom, when?" | Yes, by design | Org admins with `audit.read`; platform super admin | ≥ 24 months |
+| **Audit trail** (`AuditEvent`) | "Who did what to whom, when?" | Yes, by design | Holders of `audit.read` in this installation | ≥ 24 months |
 | **Metrics** | "How is it behaving over time?" | No | Operators | 13 months |
 
 ### 1.1 Operational logging rules
@@ -28,7 +28,8 @@ Events that **must** be audited:
 
 - Authentication: login success/failure, MFA enrolment/reset, password reset,
   session revocation, step-up challenges.
-- Authorization: every denial; every use of `platform.super_admin` (at `warn`).
+- Authorization: every denial; every use of an instance-administrator override
+  (at `warn`).
 - Personal data: read of medical/pastoral notes (D-010); create/update/delete of
   a Person or StudentProfile; export; erasure; consent given/withdrawn.
 - Domain-significant: skill sign-off and revocation; exam result recorded or
@@ -104,19 +105,24 @@ Finding **F-07**.
 
 ## 4. Scalability risks
 
-Stated scale: ~100 organisations. Under single-tenancy that is ~100 modest
-deployments rather than one large one — each holding perhaps a few thousand
-persons. Per-instance load is trivial; **fleet size is the scaling problem.** The risks below are the ones that would bite
-first, in the order they would bite.
+**Scalability is defined per independent installation** (`00-overview.md` §4.2):
+one organisation, up to ~10,000 persons, ~100 concurrent users, ~50,000
+attendance-bearing sessions per year, ten years of retained exam results. There
+is no aggregate figure across organisations — instances are independent and we
+operate none of them.
+
+At that scale a single modest Postgres is comfortable. The risks below are the
+ones that would bite first *within one installation*, in the order they would
+bite.
 
 | Risk | When it bites | Prepared response |
 |---|---|---|
 | **Derived progress queries** — "current level" computed from an append-only log | A student with years of history, or a group matrix view over 30 students × 40 skills | `StudentProgressSummary` materialised on write. **Prepared, not built** (D-005) |
 | **Audit table growth** | Fastest-growing table; audit UI queries slow first | Time-based partitioning + retention rotation; index on (org, timestamp, actor) |
-| **Attendance table growth** | ~50k persons × weekly sessions ≈ millions of rows/year | Partition by period; aggregate + anonymise at 24 months (retention policy doubles as a scalability control) |
+| **Attendance table growth** | ~50,000 attendance-bearing sessions/year in a large organisation | Partition by period; aggregate + anonymise at 24 months — the retention policy doubles as a growth control |
 | **Seasonal peak** | Enrolment season and exam periods concentrate load | Stateless processes scale horizontally; no in-process state anywhere (P-08) |
 | **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. Sharding is moot: the fleet is already partitioned by organisation |
-| **Fleet size** | The real scaling axis is now *number of instances*, not rows. 100 organisations = 100 deployments, databases, backup schedules and upgrade targets | Scripted provisioning (D-028), waved rollouts, fleet manifest, per-instance monitoring. **This is the dominant operational cost** — F-13 |
+| **Ten years of retained exam history** | The one table that never shrinks, by legal necessity | Small rows, indexed by candidate; a diploma register is naturally append-only and read-rarely |
 | **Public site traffic spikes** | A newsletter or news item | ISR caching; the public surface has no person-table access so it cannot cascade into the portal (D-017). A spike affects one organisation only |
 | **N+1 queries in the group matrix** | The hot path, immediately | Explicit repository methods returning the full matrix in one query; a performance test on a seeded 30×40 matrix in CI |
 

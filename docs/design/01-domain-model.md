@@ -105,18 +105,23 @@ Organization ──< OrganizationMembership >── Person ──0..1── User
   and reach is resolved centrally by `resolveReach()`
   (`02-security-privacy.md` §2.3).
 
-**Decision D-004 (revised) — One `Person` per human per instance; profiles are
-domain views on that Person.**
-**Reason.** Single-tenancy (D-012 revised) means an instance holds exactly one
-organisation, so the earlier cross-organisation `Person` — and the isolation
-hole it created — is gone. Within the instance, one human is still one `Person`
-row so that rectification and erasure touch one place. A human who attends two
-different swim schools is simply two unrelated records in two unrelated
-databases, which is the correct privacy outcome, not a duplication problem.
-**Trade-off.** No cross-organisation continuity: an instructor working at two
-schools maintains two profiles and two logins. Accepted — the alternative
-(shared identity across customers) would recreate a cross-customer data path,
-which is precisely what the deployment model exists to prevent.
+**Decision D-004 — One `Person` per human per installation. `Person`,
+`Membership` and `StudentProfile` are three distinct concepts.**
+
+An installation holds exactly one organisation, so one human is one `Person`
+row — rectification and erasure then touch one place. That person may hold
+several roles simultaneously (instructor, planner, parent); their reach is the
+union of their scoped grants.
+
+**Reason.** Separating the three concepts is what makes the real cases
+representable: a member who never takes lessons, a student enrolled by a
+guardian who is the member, an instructor who is also a parent, and an examiner
+who is neither member nor student (D-052).
+
+**Trade-off.** No continuity between organisations: someone working at two swim
+schools has two records in two independent databases. That is the correct
+privacy outcome — shared identity across installations would recreate exactly
+the cross-organisation data path the distribution model exists to prevent.
 
 ### 2.2 The swim domain
 
@@ -183,13 +188,56 @@ Only fields that carry architectural or privacy meaning are listed. `id`,
 `id`, `createdAt`, `updatedAt` are implied on every entity; `unitId` is implied
 on every entity that participates in unit-scoped reach.
 
-### 3.1 People and students
+### 3.1 People — three distinct concepts
+
+The single most important structural rule in the domain model: **`Person`,
+`Membership` and `StudentProfile` are three different things with three
+different lifecycles.** Member administration is not student administration.
+
+```text
+Person            the human, and the only PII anchor
+  ├─ 0..1  UserAccount      optional login
+  ├─ 0..1  Membership       optional: belongs to the organisation
+  ├─ 0..1  StudentProfile   optional: takes lessons here
+  └─ N     PersonRelationship   guardian of / emergency contact for
+```
+
+Every combination is valid and every one occurs in practice:
+
+| Case | Person | Membership | StudentProfile | Account |
+|---|---|---|---|---|
+| Child taking lessons | ✓ | — | ✓ | — |
+| Adult member who also swims | ✓ | ✓ | ✓ | optional |
+| Member who never takes lessons | ✓ | ✓ | — | optional |
+| Parent who consents for a child | ✓ | optional | — | later (P-04) |
+| Instructor | ✓ | ✓ | — | ✓ |
+| External examiner (D-052) | ✓ | — | — | temporary, scoped |
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `Person` | givenName, familyName, dateOfBirth, email?, phone? | 0..1 `UserAccount`, N `OrganizationMembership` | **Not** org-scoped. The only PII anchor |
-| `PersonRelationship` | type (GUARDIAN_OF, EMERGENCY_CONTACT), fromPersonId, toPersonId | Person ↔ Person | Built in v1 (cheap); guardian portal deferred |
-| `StudentProfile` | studentNumber, status, joinedAt, leftAt?, notes? | 1 `Person`, N `Enrolment`, N `GroupMembership` | Org-scoped. Medical/pastoral notes are **special-category data** — see `02-security-privacy.md` §5.3 |
+| `Person` | givenName, familyName, dateOfBirth, email?, phone? | 0..1 `UserAccount`, 0..1 `Membership`, 0..1 `StudentProfile` | The only PII anchor. One row per human per installation |
+| `Membership` | memberNumber, status, joinedAt, endedAt?, unitId? | 1 `Person` | Belonging to the organisation. **Independent of whether they take lessons** |
+| `StudentProfile` | studentNumber, status, joinedAt, leftAt?, notes?, unitId | 1 `Person`, N `Enrolment`, N `GroupMembership` | Enrolment identity. Medical/pastoral notes are **special-category data** (`02-security-privacy.md` §5.3) |
+| `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, authority, validFrom, validTo? | Person ↔ Person | **v1.** `authority` records whether this relationship may consent on behalf of the subject (R-04). Every change audited |
+
+**Decision D-053 — `Membership` and `StudentProfile` are separate tables, never
+one table with a flag.**
+**Reason.** They have different numbering, different lifecycles (a member can
+leave while their diploma history is retained for ten years), different
+retention rules and different permissions. A single table with a `isStudent`
+flag would force one retention policy onto both and make "member who never
+swims" awkward to represent.
+**Trade-off.** Two lookups where a naive model has one, and administrators must
+understand the distinction. The UI hides it: adding a person offers both
+options.
+
+**Guardian authority is a v1 requirement, not just a relationship.** Almost all
+data subjects here are children who cannot legally consent. A consent record
+therefore references both the **subject** person and the **consenting** person,
+and is only valid if a `GUARDIAN_OF` relationship with `authority = true` existed
+at the time it was given. That is why the relationship carries validity dates and
+is audited: consent evidence that cannot be traced to the authority behind it is
+not evidence.
 
 ### 3.2 Teaching structure
 
@@ -207,7 +255,7 @@ on every entity that participates in unit-scoped reach.
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `Skill` | code, name, description, catalogueId, sequence | N `SkillRequirement`, N `SkillProgress` | Org-defined; catalogues are copyable between orgs by a platform admin |
+| `Skill` | code, name, description, catalogueId, sequence | N `SkillRequirement`, N `SkillProgress` | Defined by this organisation. A default catalogue ships with the seed; catalogues can be exported and imported as files |
 | `SkillRequirement` | courseLevelId, skillId, mandatory | | Defines "what does Diploma A require" |
 | `SkillProgress` | studentProfileId, skillId, state, assessedByPersonId, assessedAt, sessionId?, note? | | **Append-only**. `state` ∈ {INTRODUCED, PRACTISING, ACHIEVED, REVOKED} |
 
@@ -229,7 +277,7 @@ a replayed offline queue all collapse to the same row.
 |---|---|---|---|
 | `ExamSession` | courseLevelId, locationId, scheduledAt, status | N `ExamCandidate`, N `ExamAssessor` | |
 | `ExamCandidate` | examSessionId, studentProfileId, status | 0..1 `ExamResult` | |
-| `ExamAssessor` | examSessionId, personId, role | | Supports the **external examiner** case (F-03) without org membership |
+| `ExamAssessor` | examSessionId, personId, role, validUntil | | Supports the **external examiner** case without membership. If they record results themselves they get an individual, expiring, minimally scoped account — never a shared login (D-052) |
 | `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, remarks? | 0..1 `Certificate` | Append-only; a correction is a new row referencing the superseded one |
 | `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | A diploma is a legal-ish artefact: issue and revoke, never delete |
 

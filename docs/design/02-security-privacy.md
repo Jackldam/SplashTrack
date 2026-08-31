@@ -203,19 +203,21 @@ highest-risk code path in the application.
 
 | Role | Typical scope | Purpose |
 |---|---|---|
-| Organisation Administrator | `ORGANIZATION` | Full control. MFA required |
+| Instance Administrator | `ORGANIZATION` | Full control **of this installation**: settings, identity providers, backups, roles. MFA required. This is the highest authority that exists |
 | Location Manager | `UNIT` | Everything within one location and below |
 | Planner | `UNIT` or `ORGANIZATION` | Schedules, groups, locations, instructor assignment |
 | Instructor | `GROUP` (one per group taught) | Attendance, skill sign-off, read student basics |
-| Examiner | `COURSE` or a single exam session, time-bounded | Exam results only |
-| Member Administrator | `UNIT` or `ORGANIZATION` | People and student administration, enrolments |
+| Examiner | `COURSE` or a single exam session, **always time-bounded** | Exam results only. May be an external person with no membership (D-052) |
+| Member Administrator | `UNIT` or `ORGANIZATION` | People, **memberships** and student administration, enrolments — three distinct concepts (`01-domain-model.md` §3.1) |
 | Content Editor | `ORGANIZATION` | Public pages and branding. **No person data** |
 | Read-only Viewer | `UNIT` | Oversight and reporting |
-| Instance Operator | `ORGANIZATION` | Bootstrap, integrations, technical settings. MFA required |
+| Guardian | `RELATED` | Consent on behalf of their child (v1); portal access deferred (P-04) |
 
-Note there is no platform-wide super administrator any more: there is no
-platform. Each instance has its own operator, and that operator's reach ends at
-their own deployment (§1 of `03-deployment-model.md`).
+**There is no platform super administrator, and no platform.** The instance
+administrator is the highest authority and their reach ends at this
+installation. There is no account, credential or code path that can reach a
+second organisation — other organisations run entirely independent deployments
+(`03-deployment-model.md` §1).
 
 ### 2.5 Permission catalogue
 
@@ -381,10 +383,14 @@ was consented to, which version of which text, by whom, when, and how it was
 withdrawn. SplashTrack needs consent for: photographs, publication of results
 in a public list, marketing email, and any org-defined profile field.
 
-**Consent for a minor is given by a guardian.** The `PersonRelationship` table
-(v1) is what makes this recordable — the consent points at the consenting
-`Person` (the guardian) *and* the subject `Person` (the child). Designing this
-in later would mean rewriting every existing consent row. Finding **F-02**.
+**Consent for a minor is given by a guardian, and the authority to do so must be
+recorded.** A consent record references both the **subject** `Person` (the child)
+and the **consenting** `Person` (the guardian), and is valid only if a
+`GUARDIAN_OF` relationship carrying `authority = true` existed at the moment it
+was given. The relationship therefore carries validity dates, and every change to
+it is audited. This is **v1 (R-04)** — the guardian *portal* is deferred, the
+guardian *authority model* is not. Designing it in later would mean rewriting
+every existing consent row and would leave the earlier ones unprovable. Finding **F-02**.
 
 ### 5.5 Data subject rights
 

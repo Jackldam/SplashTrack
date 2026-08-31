@@ -15,21 +15,26 @@ The `assertPersonReachable` guard is no longer needed.
 **Replaced by F-15** — the same *shape* of risk now lives one level down, in
 unit- and group-scoped reach filtering.
 
-### F-02 — Consent for minors was not specified
+### F-02 — **(Resolved into v1)** Consent for minors was not specified
 **Severity: high.** The brief mentions consent but not that the overwhelming
 majority of data subjects are children who cannot legally consent. A consent
 record that only names the subject is useless for a minor.
-**Response.** `PersonRelationship` (guardian ↔ child) is built in v1, and every
-consent record references both the consenting person and the subject person.
-Retrofitting this would require rewriting every existing consent row.
+**Response.** R-04: `PersonRelationship` carries an `authority` flag and validity
+dates, every consent record references both subject and consenting person, and a
+consent is valid only if the authority existed when it was given. Changes to the
+relationship are audited. The guardian *portal* is deferred (P-04); the guardian
+*authority model* is v1.
 
-### F-03 — External examiners were not modelled
+### F-03 — **(Resolved)** External examiners were not modelled
 **Severity: medium.** Swim diplomas are frequently assessed by an examiner who
 appears for one afternoon and is not a member of the organisation. A model
 where assessment requires org membership either blocks the real workflow or
 forces over-granting.
-**Response.** `ExamAssessor` references a `Person` directly with a time-bounded,
-narrowly-scoped role — assessment rights without organisational membership.
+**Response.** D-052: `ExamAssessor` references a `Person` directly. If the
+examiner records results themselves they receive an individual, expiring account
+scoped to `exams.assess` / `exams.results.record` only — never a shared login,
+because attribution on a child's diploma outcome is exactly what must not be
+lost.
 
 ### F-04 — Photographs of minors were not called out
 **Severity: high.** "Afbeeldingen" appears in the branding list, but the real
@@ -230,20 +235,16 @@ reason.
 
 ## Scalability problems
 
-Covered in full in `07-operations.md` §4. Single-tenancy changes which risks
-matter: per-instance data volume becomes small, and **fleet size becomes the
-scaling axis**.
+Covered in full in `07-operations.md` §4. Scale is defined **per installation**
+(`00-overview.md` §4.2), not across organisations. Two risks bite first:
 
-1. **Fleet size.** 100 organisations means 100 deployments to upgrade, back up
-   and monitor. This is now the dominant scaling concern (F-13).
-2. **Derived progress state.** The group skill matrix (30 students × 40 skills)
+1. **Derived progress state.** The group skill matrix (30 students × 40 skills)
    computed from an append-only log is still the first query that will be
    measurably slow, even in a small instance. The materialised summary is
    designed but deliberately not built (D-005).
-3. **Audit and attendance table growth.** Still the two fastest-growing tables,
-   but per organisation rather than globally — which pushes the problem out by
-   roughly the number of customers. Partitioning plus retention rotation
-   remains the answer.
+2. **Audit and attendance table growth.** The two fastest-growing tables within
+   an installation. Partitioning plus retention rotation is the answer, and the
+   retention policy doubles as the growth control.
 
 Neither justifies added complexity today. Knowing the answer is the deliverable
 at this stage; building it would be exactly the premature complexity the brief

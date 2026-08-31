@@ -14,7 +14,10 @@ project if a swim school is depending on it today.
 **Needed.** A yes/no, plus — if yes — how many organisations, how many people,
 and whether they can tolerate a cutover.
 **Cost of delay.** High. It changes whether v1 needs an import path at all.
-**My assumption if unanswered:** no production users; no import path built.
+**Status: BLOCKING, confirmed by Jack (2026-08-31).** No destructive action is
+taken against the existing repository, its migration history, or any prototype
+database until this is answered. If real data exists, a one-time export/import
+path becomes requirement **R-29** rather than an assumption.
 
 ---
 
