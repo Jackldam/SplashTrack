@@ -68,6 +68,7 @@ adds the security jobs.
 | **Organisation isolation tests** | Yes | Dedicated suite; a module without them fails DoD |
 | Migration smoke (migrate + seed) | Yes | |
 | **Migration against populated DB** | Yes | Inherited: applies base migrations, populates rows, then applies the PR's migrations. Catches destructive migrations before they reach data |
+| **Restore-from-every-release matrix** | Yes | D-047: restores a seeded backup of each supported release into `HEAD`, migrates forward, asserts schema + domain invariants. Protects the "old backup into new version" promise (F-25) |
 | E2E (Playwright) | Yes | Incl. axe accessibility assertions |
 | Build | Yes | |
 | Container build validation | Yes | The image that would be promoted |

@@ -124,7 +124,8 @@ Jack wants it. The wizard's first question becomes:
 ```text
 upload .stbak + paste recovery token
   → decrypt and verify checksum            (fail → stop, nothing touched)
-  → read manifest, compare versions        (see 4.3)
+  → read manifest, compare versions        (see 4.3 — old backups are
+                                             restored then migrated forward)
   → restore database + assets
   → run any newer migrations forward
   → verify row counts against the manifest
@@ -134,21 +135,107 @@ upload .stbak + paste recovery token
 Nothing is written until decryption and verification succeed, so a wrong token
 or a corrupt file costs nothing.
 
-### 4.3 Version compatibility — the rule that prevents disasters
+### 4.3 Restoring an OLD backup into a NEW version — the core promise
 
-| Backup vs running image | Behaviour |
+**This is a first-class, tested requirement, not a convenience.** An operator
+holding a two-year-old backup must be able to pull the *current* image, restore
+that file, and be running. They must never be told "first install v1.0, restore,
+then upgrade to 1.1, then 1.2…". That instruction is how self-hosted products
+lose people's data.
+
+**Decision D-046 — Restore writes the old schema first, then migrates forward.
+The order is restore → migrate, never migrate → restore.**
+
+```text
+fresh container (v2.4)   +   backup taken on v1.0
+        │
+        ├─ 1. empty database, NO migrations applied yet
+        ├─ 2. restore the dump  → database is now v1.0 schema + v1.0 data
+        │                         (including the _prisma_migrations table)
+        ├─ 3. run `migrate deploy`
+        │      Prisma reads _prisma_migrations, sees which of the ~140
+        │      migrations already ran, applies only the missing ones in order
+        ├─ 4. verify: schema matches v2.4, row counts match the manifest
+        └─ 5. running, with the operator's original data and accounts
+```
+
+**Reason.** The dump carries its own schema *and* Prisma's `_prisma_migrations`
+table. That table is what makes "I see this is v1.0 and I am v2.4" a **fact the
+database states**, not a version string we have to trust or guess from. The
+migration runner then does exactly what it does on any ordinary upgrade — there
+is no special restore-migration path to keep correct, which is precisely why it
+can be relied on.
+
+**Trade-off.** The restore step must run before the application's normal
+start-up migration, so the setup wizard controls the sequence rather than the
+container entrypoint. A restore therefore happens in a distinct start-up mode,
+and the entrypoint must not blindly migrate an empty database before the wizard
+has had its say.
+
+### 4.3.1 What this obliges us to do — the actual cost
+
+The promise is easy to state and easy to break silently. Three commitments make
+it real:
+
+**Decision D-047 — CI tests restore from *every* supported release into `HEAD`,
+not just from the previous one.**
+
+A matrix job: for each released version, restore a stored seeded backup of that
+version into the current build, apply migrations, and assert the schema and a
+set of domain invariants. A migration that breaks restoring from v1.3 fails the
+build on the day it is written — not two years later on a stranger's server.
+
+**Reason.** "Skipped versions are supported" is worthless as a sentence in a
+document. It is only true if a machine checks it on every pull request.
+**Trade-off.** The matrix grows with every release and eventually needs pruning
+(§4.3.2), and seeded backup fixtures must be kept in the repository. Both are
+cheap next to the failure they prevent.
+
+**Decision D-048 — Migration chains are never squashed within a major version,
+and every release declares a `minimumRestorableVersion`.**
+
+Squashing migrations is the standard way this breaks: it feels like tidying, and
+it silently strands everyone whose data predates the squash. If a chain ever
+*must* be collapsed, it happens only at a major-version boundary, the new
+major's `minimumRestorableVersion` is raised, and the release notes say plainly:
+"restoring a backup older than X requires intermediate step Y."
+
+**Trade-off.** The migration folder grows monotonically and will look untidy.
+Untidy is not a problem; unrestorable data is.
+
+**Decision D-049 — Encrypted values carry a format version, and decryptors for
+every previously shipped format are retained.**
+
+A backup contains ciphertext: encrypted secrets, encrypted medical columns. If
+the encryption scheme is ever changed or strengthened, v2.4 must still be able
+to read v1.0's ciphertext — otherwise the restore "succeeds" and the data is
+quietly unreadable. So every encrypted value is stored with an envelope
+(`v1:…`), new writes use the current format, and old formats stay decryptable
+until a major boundary re-encrypts them during migration.
+
+**Reason.** This is the failure mode that would not surface in a schema test at
+all — the tables restore perfectly and the *contents* are gone. It has to be
+designed in before the first release, because retrofitting an envelope onto
+existing ciphertext is far harder.
+**Trade-off.** A small amount of permanently retained legacy crypto code, and a
+migration obligation at each major boundary.
+
+### 4.3.2 Compatibility rules, stated as a table
+
+| Backup version vs running image | Behaviour |
 |---|---|
-| Backup **older** | Restore, then apply newer migrations forward. Supported and tested |
-| Backup **same** | Restore directly |
-| Backup **newer** | **Refuse.** Tell the operator which image version they need |
+| Older, ≥ `minimumRestorableVersion` | **Restore, then migrate forward. Supported, and tested in CI (D-047)** |
+| Older, < `minimumRestorableVersion` | Refuse, naming the intermediate version needed. Only possible across a major boundary |
+| Same | Restore directly |
+| **Newer** | **Refuse**, naming the image version required |
 
-**Decision D-043 — Restoring a newer backup into an older image is refused, and
-the application refuses to start against a schema newer than itself.**
-**Reason.** Forward-only migrations mean an older application against a newer
-schema is undefined behaviour that silently corrupts data. Refusing to start is
-recoverable in thirty seconds; silent corruption may be discovered months later.
+**Decision D-043 (restated) — the application refuses to start against a schema
+newer than itself, and refuses to restore a newer backup.**
+**Reason.** Forward-only migrations make an older application on a newer schema
+undefined behaviour that silently corrupts data. Refusing is recoverable in
+seconds; corruption may surface months later.
 **Trade-off.** An operator who accidentally pulls an older tag gets a container
-that will not start. The error message states exactly which version to use.
+that will not start — with an error naming the exact version they need.
 
 ### 4.4 Restoring onto a *running* instance
 

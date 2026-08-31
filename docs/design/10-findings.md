@@ -214,6 +214,20 @@ authentication; surfaced in diagnostics as an acknowledged/not-acknowledged
 check; and stated plainly in the installation documentation next to the backup
 instructions rather than buried in a security appendix.
 
+### F-25 — "Old backups still restore" fails silently and late
+**Severity: high.** This is the promise most likely to be broken by accident,
+because breaking it produces no symptom at development time. Someone squashes
+migrations to tidy up, or strengthens the encryption scheme, and nothing fails —
+until an operator restores a two-year-old backup and either gets an error they
+cannot act on, or worse, a database that restores cleanly with unreadable
+contents.
+**Response.** Three structural commitments rather than vigilance: D-047 (CI
+restores every supported release into `HEAD` on every PR), D-048 (never squash
+within a major; declare `minimumRestorableVersion`), D-049 (versioned encryption
+envelopes with retained legacy decryptors). The encryption case is the nastiest,
+because it passes every schema check — it is called out separately for that
+reason.
+
 ## Scalability problems
 
 Covered in full in `07-operations.md` §4. Single-tenancy changes which risks
