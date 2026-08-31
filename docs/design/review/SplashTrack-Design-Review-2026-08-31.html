@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>SplashTrack — Design Review (rev. 3)</title>
+  <title>SplashTrack — Design Review (rev. 4)</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -137,15 +137,15 @@ h2.done::after{content:"✓";color:var(--ok);font-size:.8em;margin-left:.5em}
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">SplashTrack — Design Review (rev. 3)</h1>
+<h1 class="title">SplashTrack — Design Review (rev. 4)</h1>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
 <li><a href="#splashtrack--design--architecture" id="toc-splashtrack--design--architecture">SplashTrack — Design &amp;
 Architecture</a>
 <ul>
-<li><a href="#wat-er-veranderde-in-rev-3-je-vijf-correcties" id="toc-wat-er-veranderde-in-rev-3-je-vijf-correcties">Wat er veranderde
-in rev. 3 (je vijf correcties)</a></li>
+<li><a href="#wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01" id="toc-wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01">Wat er
+veranderde in rev. 4 (je review van hoofdstuk 01)</a></li>
 </ul></li>
 <li><a href="#splashtrack--product-vision-requirements--scope" id="toc-splashtrack--product-vision-requirements--scope">SplashTrack —
 Product Vision, Requirements &amp; Scope</a>
@@ -340,24 +340,13 @@ the settings registry</a></li>
 </nav>
 <h1 id="splashtrack--design--architecture">SplashTrack — Design &amp;
 Architecture</h1>
-<p><strong>Versie:</strong> 2026-08-31 (rev. 3) <strong>Status:</strong>
-hoofdstukken 00–10, 13 en 14 zijn <strong>geconsolideerd en
-leidend</strong>. <strong>Branch:</strong>
-<code>design/architecture-phase</code> · PR #14</p>
-<blockquote>
-<p><strong>Eén architectuur, geen gelaagde revisies.</strong> Hoofdstuk
-11 en 12 zijn <strong>historie, geen implementatiebron</strong>. Spreken
-ze een actief hoofdstuk tegen, dan heeft het actieve hoofdstuk
-gelijk.</p>
-</blockquote>
-<blockquote>
-<p><strong>Reviewen.</strong> Onder elke sectie staat:</p>
-<pre><code>&gt; **REVIEW** — [ ] akkoord   [ ] wijzigen   [ ] bespreken
-&gt; commentaar:
-&gt;</code></pre>
-</blockquote>
-<h2 id="wat-er-veranderde-in-rev-3-je-vijf-correcties">Wat er veranderde
-in rev. 3 (je vijf correcties)</h2>
+<p><strong>Versie:</strong> 2026-08-31 (rev. 4) ·
+<strong>Branch:</strong> <code>design/architecture-phase</code> · PR #14
+<strong>Status:</strong> hoofdstukken 00–10, 13 en 14 zijn
+geconsolideerd en leidend. Hoofdstuk 11 en 12 zijn historie, geen
+implementatiebron.</p>
+<h2 id="wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01">Wat er
+veranderde in rev. 4 (je review van hoofdstuk 01)</h2>
 <table>
 <thead>
 <tr>
@@ -369,42 +358,71 @@ in rev. 3 (je vijf correcties)</h2>
 <tbody>
 <tr>
 <td>1</td>
-<td>Startup/setup/restore/migratie-volgorde consistent</td>
-<td><strong>D-055</strong> + herschreven <code>13</code> §6: expliciete
-toestandsmachine EMPTY / PARTIAL / EXISTING / CURRENT / AHEAD;
-<code>14</code> §5 verwijst er nu naar in plaats van een eigen volgorde
-te beweren</td>
+<td>Tenant-semantiek weg; <code>Membership</code> i.p.v.
+<code>OrganizationMembership</code></td>
+<td>Module heet <code>organization</code> (enkelvoud) en beheert
+<em>de</em> organisatie; alle tenant-taal uit actieve hoofdstukken</td>
 </tr>
 <tr>
 <td>2</td>
-<td>Geen harde limiet van vijf env-vars</td>
-<td><strong>D-037 herzien</strong>: criterium in plaats van telling —
-env bevat alleen wat vóór de database bekend moet zijn of bepaalt wáár
-state staat; toevoegen vereist een ADR. Platform-variabelen
-(<code>TZ</code>, proxy, CA-bundle) expliciet als
-niet-applicatie-eigendom benoemd</td>
+<td>Ongebruikte multi-tenant code verwijderen, niet laten staan</td>
+<td><strong>D-056</strong> + <strong>F-26</strong></td>
 </tr>
 <tr>
 <td>3</td>
-<td>R-28: restore vanaf elke <em>ondersteunde</em> release</td>
-<td>Herschreven met <code>minimumRestorableVersion</code>; ook D-047,
-<code>06</code> CI-tabel en <code>00</code> §4.1 gelijkgetrokken</td>
+<td><code>ScheduledSession</code> één eigenaar</td>
+<td><strong>D-057</strong> — nieuwe <code>sessions</code> module</td>
 </tr>
 <tr>
 <td>4</td>
-<td>Autorisatie-inconsistentie externe examinator</td>
-<td><strong>D-054</strong>: <code>EXAM_SESSION</code> wordt een
-volwaardig scope-type; R-14 en de scope-enum bijgewerkt;
-<code>ExamAssessor</code> is nu een attributiefeit, geen
-toegangsmechanisme. Dekkingsregels per scope-type staan nu één keer in
-<code>02</code> §2.2</td>
+<td><code>Person</code> = canonical anchor, niet enige plek voor
+PII</td>
+<td><strong>D-058</strong></td>
 </tr>
 <tr>
 <td>5</td>
-<td>RPO ≤15 min alleen als WAL/PITR geleverd en getest wordt</td>
-<td>Claim verwijderd. Geleverd pad: <strong>RPO ≤ het ingestelde
-backupinterval, standaard 24 u</strong>. WAL/PITR staat als
-operator-optie, expliciet niet als getest pad</td>
+<td>Leave-and-return expliciet</td>
+<td><strong>D-059</strong> — <code>MembershipPeriod</code> +
+<code>StudentLifecycleEvent</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>Membership geen impliciete eis voor rollen</td>
+<td><strong>D-060</strong></td>
+</tr>
+<tr>
+<td>7</td>
+<td>Attendance écht append-only</td>
+<td><strong>D-061</strong> — <code>AttendanceEvent</code> met
+<code>supersedesEventId</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>ExamCandidate → 0..N resultaten</td>
+<td><strong>D-062</strong> — <code>supersedesResultId</code>, één
+effectief resultaat</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Guardian authority als evidence; consent met legal basis</td>
+<td><strong>D-063</strong></td>
+</tr>
+<tr>
+<td>10</td>
+<td>GDPR-rollen corrigeren</td>
+<td><strong>D-064</strong> — project is géén processor</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Retention/erasure policy-driven; pseudonimisering ≠
+anonimisering</td>
+<td><strong>D-065</strong> (vervangt D-007) + <strong>F-06
+herzien</strong></td>
+</tr>
+<tr>
+<td>12</td>
+<td>Retention voor Persons zonder Membership</td>
+<td><strong>D-066</strong> — trigger is &quot;laatste relatie eindigt&quot;</td>
 </tr>
 </tbody>
 </table>
@@ -876,11 +894,14 @@ readable by the organisation</td>
 <tr>
 <td>R-24</td>
 <td>GDPR rights: access, rectification, erasure, export — operated by
-the organisation itself</td>
+the organisation itself, which is the controller (D-064)</td>
 </tr>
 <tr>
 <td>R-25</td>
-<td>Data retention policy with automated, dry-runnable enforcement</td>
+<td><strong>Policy-driven</strong> retention and erasure: per data class
+a purpose, lawful basis, trigger and expiry action (<code>DELETE</code>
+/ <code>ANONYMISE</code> / <code>REVIEW</code>), automated and
+dry-runnable (D-065, D-066)</td>
 </tr>
 <tr>
 <td>R-26</td>
@@ -1316,28 +1337,59 @@ nothing in the workload justifies it (<code>07-operations.md</code>
 <h3 id="11-module-map">1.1 Module map</h3>
 <p>Inherited from <code>WebAppTemplate</code> (already built, reused
 as-is):</p>
-<pre class="text"><code>identity            Person, UserAccount, sessions, MFA, passkeys
-access-control      Roles, permissions, access groups, assignments
-organizations       Tenants, membership, organisational units
-organization-units  Hierarchy / reach
+<pre class="text"><code>identity            Person, UserAccount, login sessions, MFA, passkeys
+access-control      Roles, permissions, scopes, access groups, assignments
+organization        The singleton organisation record, its settings and units
 audit               Append-only security &amp; privacy event trail
-consent             GDPR consent records
+consent             Consent records with legal basis and authority evidence
 pages               Custom pages CMS
-profile-fields      Org-configurable person attributes
+profile-fields      Configurable person attributes
 users               Account administration
 api-credentials     Scoped machine credentials
 email-templates     Templated transactional email
 notifications       Delivery
 maintenance         Scheduled jobs (retention, cleanup)</code></pre>
+<p><strong>Naming.</strong> The module is <code>organization</code>,
+singular, and it manages <strong>the</strong> organisation — its record,
+settings, branding and unit tree. It is not a tenant registry, and
+nothing in the active design uses the word <em>tenant</em>. Likewise the
+join table is <code>Membership</code>, not
+<code>OrganizationMembership</code>: there is only one organisation to
+be a member of.</p>
 <p>New SplashTrack domain modules (built in v1, in this order):</p>
-<pre class="text"><code>people              Domain view over Person: guardians, relationships, tags
-students            StudentProfile, enrolment state, student lifecycle
+<pre class="text"><code>people              Domain view over Person: relationships, guardians, tags
+students            StudentProfile, lifecycle, enrolment state
 groups              Group definition and membership over time
 courses             Course/programme definitions, levels, enrolment
 skills              Skill catalogue, requirements, per-student progress
-attendance          Sessions and attendance records  ← flagship
-exams               Exam sessions, candidates, examiners, results, certificates
-planning            Schedule, locations, resources, instructor assignment</code></pre>
+sessions            ScheduledSession — the shared scheduling primitive
+attendance          Attendance events against a session  ← flagship
+exams               Exam sessions, candidates, assessors, results, certificates
+planning            Schedule construction, locations, resources, assignment</code></pre>
+<h3 id="111-removing-what-single-instance-operation-does-not-need">1.1.1
+Removing what single-instance operation does not need</h3>
+<p><strong>Decision D-056 — Multi-tenant machinery inherited from the
+template is <em>removed</em>, not left dormant.</strong></p>
+<p>The template carries a tenant-scoping client extension, per-row
+tenant columns, a platform-versus-organisation settings duality, and a
+platform role and bootstrap layer. In a single-organisation installation
+none of it has a function.</p>
+<p><strong>Reason.</strong> Dormant code is not free. It is attack
+surface — a scoping extension that is bypassed everywhere gives a false
+sense of protection — plus maintenance load, since every migration and
+refactor must keep it compiling, and a source of confusion for anyone
+reading the codebase to learn how authorization actually works. Dead
+security code is worse than absent security code, because it invites the
+assumption that something is being enforced.</p>
+<p><strong>Trade-off.</strong> Extraction work up front, and a real
+divergence from the upstream template that makes future cherry-picking
+harder. Accepted: the template is a starting point, not a dependency we
+track.</p>
+<p>Removed at extraction time: the tenant-scoping extension, tenant
+columns and their composite foreign keys, <code>PlatformSettings</code>
+(merged into the organisation singleton),
+<code>PlatformRoleAssignment</code>, and the platform permission
+namespace. Recorded as finding <strong>F-26</strong>.</p>
 <p>Deliberately <strong>not</strong> modules: &quot;reporting&quot; (a read
 concern satisfied by queries until proven otherwise), &quot;billing&quot;
 (deferred), &quot;website&quot; (the <code>pages</code> module plus theming
@@ -1348,20 +1400,38 @@ only</em>:</p>
 <pre class="text"><code>        planning        exams
             \            /
         attendance    skills
-              \        /
-          groups    courses
+             |          |
+          sessions   courses
               \      /
+              groups
+                 |
               students
                  |
                people
                  |
-  identity / access-control / organizations   (foundation)</code></pre>
+  identity / access-control / organization    (foundation)</code></pre>
 <p>A module may depend on modules below it, never above or sideways
 without an explicit published interface. <code>attendance</code> may ask
 <code>groups</code> who is in a group; <code>groups</code> may never ask
 <code>attendance</code> anything. Where an upward signal is needed (e.g.
 &quot;attendance was registered, update progress&quot;), it goes through a domain
 event, not a call.</p>
+<p><strong>Decision D-057 — <code>ScheduledSession</code> is owned by
+its own <code>sessions</code> module.</strong></p>
+<p>An earlier draft had <code>planning</code> writing the table and
+<code>attendance</code> reading it — &quot;one table, two owners&quot;, which
+violates this document&#39;s own isolation rule and would have been the
+first boundary to erode in practice.</p>
+<p><strong>Reason.</strong> A session is a real domain concept in its
+own right: a time, a place, a group, a status. Both
+<code>planning</code> (which creates and reschedules sessions) and
+<code>attendance</code> (which records against them) are
+<em>consumers</em> of it. Giving it an owner turns an implicit shared
+table into an explicit published service, and makes the exam module&#39;s
+future need for the same primitive a reuse rather than a duplicate.</p>
+<p><strong>Trade-off.</strong> One more module for a small table. That
+is the correct cost: module count is cheap, ownership ambiguity is
+not.</p>
 <p><strong>Decision D-003 — In-process domain events for upward/sideways
 signals.</strong> <strong>Reason.</strong> Keeps
 <code>attendance → skills</code> decoupled without a message broker.
@@ -1373,12 +1443,33 @@ without changing the publisher.</p>
 <h2 id="2-domain-model">2. Domain model</h2>
 <h3 id="21-the-identity-spine-inherited-unchanged">2.1 The identity
 spine (inherited, unchanged)</h3>
-<pre class="text"><code>Organization ──&lt; OrganizationMembership &gt;── Person ──0..1── UserAccount
-                                              │
-                                              └──&lt; RoleAssignment &gt;── Role ──&lt; RolePermission &gt;── Permission</code></pre>
+<pre class="text"><code>Organization ──&lt; Membership &gt;── Person ──0..1── UserAccount
+                                  │
+                                  └──&lt; RoleAssignment &gt;── Role ──&lt; RolePermission &gt;── Permission</code></pre>
 <ul>
-<li><code>Person</code> is the <strong>PII anchor</strong>. Name, date
-of birth, contact details live here and nowhere else.</li>
+<li><code>Person</code> is the <strong>canonical identity and
+biographical anchor</strong>: name, date of birth, contact details, and
+the identifiers by which a human is recognised.</li>
+</ul>
+<p><strong>Decision D-058 — <code>Person</code> is the canonical
+identity record, not the only place personal data may live.
+Purpose-specific personal data stays in the module that owns its
+purpose.</strong></p>
+<p>Medical and pastoral remarks belong to <code>students</code>, not to
+<code>Person</code>. Attendance belongs to <code>attendance</code>. Exam
+outcomes belong to <code>exams</code>.</p>
+<p><strong>Reason.</strong> Data protection is organised around
+<em>purpose</em>, not around tables. Health data has a different lawful
+basis, a different permission, different retention and different
+encryption from a name and a date of birth; storing it on
+<code>Person</code> would drag all of that onto the identity record and
+make least-privilege impossible — everyone who may see a class list
+would inherit access to medical notes. <strong>Trade-off.</strong>
+Personal data is spread across modules, so erasure and export must
+consult a registry of contributing modules rather than one table. That
+registry already exists and is test-enforced (D-014); this decision
+makes its necessity explicit rather than accidental.</p>
+<ul>
 <li><code>UserAccount</code> holds <strong>no credentials</strong> —
 Better Auth owns those. It is the optional bridge between a human and a
 login.</li>
@@ -1547,35 +1638,89 @@ administration.</p>
 <td>givenName, familyName, dateOfBirth, email?, phone?</td>
 <td>0..1 <code>UserAccount</code>, 0..1 <code>Membership</code>, 0..1
 <code>StudentProfile</code></td>
-<td>The only PII anchor. One row per human per installation</td>
+<td>Canonical identity anchor (D-058). One row per human per
+installation</td>
 </tr>
 <tr>
 <td><code>Membership</code></td>
-<td>memberNumber, status, joinedAt, endedAt?, unitId?</td>
-<td>1 <code>Person</code></td>
-<td>Belonging to the organisation. <strong>Independent of whether they
-take lessons</strong></td>
+<td>memberNumber, unitId?</td>
+<td>1 <code>Person</code>, N <code>MembershipPeriod</code></td>
+<td><strong>One per person, for life.</strong> The number stays the same
+across gaps</td>
+</tr>
+<tr>
+<td><code>MembershipPeriod</code></td>
+<td>membershipId, startedAt, endedAt?, endReason?</td>
+<td>1 <code>Membership</code></td>
+<td>Belonging is a set of intervals, not a status flag</td>
 </tr>
 <tr>
 <td><code>StudentProfile</code></td>
-<td>studentNumber, status, joinedAt, leftAt?, notes?, unitId</td>
-<td>1 <code>Person</code>, N <code>Enrolment</code>, N
-<code>GroupMembership</code></td>
-<td>Enrolment identity. Medical/pastoral notes are
-<strong>special-category data</strong>
-(<code>02-security-privacy.md</code> §5.3)</td>
+<td>studentNumber, unitId</td>
+<td>1 <code>Person</code>, N <code>StudentLifecycleEvent</code>, N
+<code>Enrolment</code>, N <code>GroupMembership</code></td>
+<td><strong>Persistent.</strong> Created once, never duplicated on
+return</td>
+</tr>
+<tr>
+<td><code>StudentLifecycleEvent</code></td>
+<td>studentProfileId, type
+(<code>JOINED</code>/<code>PAUSED</code>/<code>LEFT</code>/<code>RETURNED</code>),
+occurredAt, reason?</td>
+<td>1 <code>StudentProfile</code></td>
+<td>Append-only lifecycle history; current state is derived</td>
 </tr>
 <tr>
 <td><code>PersonRelationship</code></td>
 <td>type (<code>GUARDIAN_OF</code>, <code>EMERGENCY_CONTACT</code>),
-fromPersonId, toPersonId, authority, validFrom, validTo?</td>
+fromPersonId, toPersonId, validFrom, validTo?, evidence?</td>
 <td>Person ↔︎ Person</td>
-<td><strong>v1.</strong> <code>authority</code> records whether this
-relationship may consent on behalf of the subject (R-04). Every change
-audited</td>
+<td><strong>v1.</strong> Records the claimed authority <em>and how it
+was established</em> — see D-063</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-059 — Leaving and returning is modelled with
+periods and lifecycle events, never by creating a second profile or
+flipping a status.</strong></p>
+<p>One <code>Membership</code> per person with many
+<code>MembershipPeriod</code> rows; one persistent
+<code>StudentProfile</code> with an append-only
+<code>StudentLifecycleEvent</code> history. Returning creates a new
+period and new <code>Enrolment</code> / <code>GroupMembership</code>
+rows — it never creates a second profile.</p>
+<p><strong>Reason.</strong> A returning swimmer is the same human with
+the same history, and that history is the product&#39;s value: their skills,
+their diplomas, their previous groups. A second profile fragments it and
+duplicates PII, which then has to be merged by hand and re-erased twice.
+A status flag, meanwhile, silently destroys the answer to &quot;when were
+they a member?&quot; — which matters for contributions, insurance and
+retention. <strong>Trade-off.</strong> Current membership and current
+student status are derived rather than read from a column. A small
+derived-state helper covers it, and it is the same append-only reasoning
+used for progress and attendance (D-005).</p>
+<p><strong>Decision D-060 — Membership is never an implicit prerequisite
+for a role.</strong></p>
+<p>Authorization comes exclusively from role assignments and their
+scopes (<code>02-security-privacy.md</code> §2). An instructor, planner
+or examiner may hold a role with no <code>Membership</code> at all, and
+holding a membership grants nothing by itself.</p>
+<p><strong>Reason.</strong> Membership is an <em>administrative and
+often financial</em> relationship; authorization is a <em>security</em>
+concern. Conflating them means a volunteer instructor who is not a
+paying member cannot be given access without inventing a fake membership
+— and worse, it creates the reverse expectation that members implicitly
+have rights. If an organisation genuinely wants &quot;instructors must be
+members&quot;, that is a configurable business rule they enable, checked at
+assignment time, not an assumption baked into the model.
+<strong>Trade-off.</strong> Two things to administer where a naive model
+has one. The UI offers them together when adding a person, so the cost
+is conceptual, not clerical. | <code>PersonRelationship</code> | type
+(<code>GUARDIAN_OF</code>, <code>EMERGENCY_CONTACT</code>),
+fromPersonId, toPersonId, authority, validFrom, validTo? | Person ↔︎
+Person | <strong>v1.</strong> <code>authority</code> records whether
+this relationship may consent on behalf of the subject (R-04). Every
+change audited |</p>
 <p><strong>Decision D-053 — <code>Membership</code> and
 <code>StudentProfile</code> are separate tables, never one table with a
 flag.</strong> <strong>Reason.</strong> They have different numbering,
@@ -1704,21 +1849,46 @@ PRACTISING, ACHIEVED, REVOKED}</td>
 <code>attendance</code></td>
 </tr>
 <tr>
-<td><code>AttendanceRecord</code></td>
+<td><code>AttendanceEvent</code></td>
 <td>sessionId, studentProfileId, state, recordedByPersonId, recordedAt,
-clientEventId, note?</td>
+<code>clientEventId</code>, <code>supersedesEventId?</code>, note?</td>
 <td></td>
-<td><code>state</code> ∈ {PRESENT, ABSENT, EXCUSED, LATE}.
-<code>clientEventId</code> is a <strong>client-generated UUID</strong>
-making the write idempotent (P-02)</td>
+<td><strong>Append-only.</strong> <code>state</code> ∈ {PRESENT, ABSENT,
+EXCUSED, LATE}. A correction is a <em>new</em> event pointing at the one
+it replaces — the superseded row is never modified.
+<code>clientEventId</code> is a client-generated UUID making the write
+idempotent (P-02)</td>
+</tr>
+<tr>
+<td><em>(derived)</em> <code>AttendanceStatus</code></td>
+<td>sessionId, studentProfileId → effective state</td>
+<td></td>
+<td>The current answer per student per session: the latest event not
+superseded by another. Materialised only if measurement demands it</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-061 — Attendance is an append-only event log; a
+correction never mutates an existing row.</strong></p>
+<p>An instructor who marked a child absent and then finds them in the
+water writes a <em>new</em> event carrying
+<code>supersedesEventId</code>. The effective status is derived: the
+latest event for that student and session that nothing supersedes.</p>
+<p><strong>Reason.</strong> &quot;Append-only&quot; was previously asserted while
+the model still allowed an in-place update, which would have quietly
+destroyed exactly the history the claim promises. Attendance is evidence
+— for absence policy, for parental disputes, and occasionally for
+safeguarding. Who said a child was present, and when they changed their
+mind, is precisely what must survive. <strong>Trade-off.</strong> Reads
+need a derived-state resolution instead of a direct column, and the
+table grows with corrections. Both are cheap; a
+<code>(sessionId, studentProfileId, recordedAt)</code> index answers the
+derivation directly.</p>
 <p><strong><code>clientEventId</code> is the single most important
 forward-looking field in the schema.</strong> It costs one indexed
 column now and is what makes offline-tolerant attendance a feature
 addition rather than a rewrite. A retry, a double-tap or a replayed
-offline queue all collapse to the same row.</p>
+offline queue all collapse to the same event.</p>
 <h3 id="35-exams">3.5 Exams</h3>
 <table>
 <thead>
@@ -1739,8 +1909,9 @@ offline queue all collapse to the same row.</p>
 <tr>
 <td><code>ExamCandidate</code></td>
 <td>examSessionId, studentProfileId, status</td>
-<td>0..1 <code>ExamResult</code></td>
-<td></td>
+<td><strong>0..N</strong> <code>ExamResult</code></td>
+<td>A candidate may have several results over time: an original, a
+correction, an appeal outcome</td>
 </tr>
 <tr>
 <td><code>ExamAssessor</code></td>
@@ -1753,20 +1924,32 @@ external examiner with no membership (D-052)</td>
 </tr>
 <tr>
 <td><code>ExamResult</code></td>
-<td>candidateId, outcome, recordedByPersonId, recordedAt, remarks?</td>
+<td>candidateId, outcome, recordedByPersonId, recordedAt,
+<code>supersedesResultId?</code>, reason?, remarks?</td>
 <td>0..1 <code>Certificate</code></td>
-<td>Append-only; a correction is a new row referencing the superseded
-one</td>
+<td><strong>Append-only.</strong> A correction is a new row pointing at
+the one it replaces. The <strong>effective result</strong> is the latest
+non-superseded row; exactly one exists per candidate at any time</td>
 </tr>
 <tr>
 <td><code>Certificate</code></td>
 <td>resultId, number, issuedAt, revokedAt?, revokeReason?</td>
 <td></td>
-<td>A diploma is a legal-ish artefact: issue and revoke, never
-delete</td>
+<td>Issued against a <em>specific</em> result. Correcting a result
+revokes the certificate and issues a new one — never edits it</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-062 — A candidate has 0..N results, not
+0..1.</strong> <strong>Reason.</strong> A single-result model forces a
+correction to overwrite the original, destroying the record of what was
+first decided and by whom — on a diploma outcome, the one thing that
+must stay reconstructable. Appeals and administrative corrections are
+normal in this domain, not exceptional. <strong>Trade-off.</strong>
+Every read resolves the effective result rather than following a single
+relation. One indexed lookup, and it is the same derivation pattern used
+for attendance (D-061) and skill progress (D-005) — one concept, not
+three.</p>
 <h3 id="36-scoping-invariant">3.6 Scoping invariant</h3>
 <p>There is no tenant column. Instead, every entity that can be
 <em>reached</em> by a scoped role resolves to a position in the
@@ -1833,115 +2016,184 @@ transaction</strong>. Partial attendance is not a valid state — an
 instructor who saves must know it either all landed or none did.</p>
 <hr />
 <h2 id="5-data-ownership">5. Data ownership</h2>
-<p>&quot;Ownership&quot; answers three questions per data class: which module may
-write it, which organisation controls it, and who is the GDPR
-controller.</p>
+<p>&quot;Ownership&quot; answers four questions per data class: which module may
+write it, who may reach it, on what lawful basis it is held, and what
+happens when that basis expires.</p>
+<p><strong>All retention below is a <em>default proposal</em>, not a
+rule we impose.</strong> Each is a <code>RetentionPolicy</code> the
+organisation confirms or changes, with <code>onExpiry</code> being
+<code>DELETE</code>, <code>ANONYMISE</code> or <code>REVIEW</code>
+(<code>02-security-privacy.md</code> §5.6, D-065).</p>
 <table>
 <thead>
 <tr>
 <th>Data class</th>
 <th>Writing module</th>
-<th>Scope</th>
-<th>GDPR role</th>
-<th>Retention default</th>
+<th>Reach</th>
+<th>Trigger</th>
+<th>Default retention</th>
+<th>On expiry</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Person PII</td>
+<td>Person identity</td>
 <td><code>identity</code></td>
 <td>Instance-wide</td>
-<td>Organisation = controller; operator = processor</td>
-<td>While any active membership + 24 months</td>
+<td>Last relationship of any kind ends (§5.1)</td>
+<td>24 months</td>
+<td><code>REVIEW</code> → delete</td>
 </tr>
 <tr>
 <td>Login credentials</td>
 <td>Better Auth</td>
 <td>Instance-wide</td>
-<td>Processor</td>
-<td>Account lifetime</td>
+<td>Account closed</td>
+<td>Immediate</td>
+<td><code>DELETE</code></td>
 </tr>
 <tr>
-<td>Student profile &amp; notes</td>
+<td>Membership periods</td>
+<td><code>people</code></td>
+<td>Unit</td>
+<td>Last period ends</td>
+<td>7 years (financial/administrative, if applicable)</td>
+<td><code>REVIEW</code></td>
+</tr>
+<tr>
+<td>Student profile</td>
 <td><code>students</code></td>
 <td>Unit</td>
-<td>Org is controller</td>
-<td>Enrolment + 24 months, then anonymise</td>
+<td>Last enrolment ends</td>
+<td>24 months</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Medical / pastoral notes</td>
 <td><code>students</code></td>
-<td>Unit, extra permission</td>
-<td>Org is controller, <strong>special category</strong></td>
-<td>Enrolment + 12 months, then hard delete</td>
+<td>Unit + <code>students.medical.read</code></td>
+<td>Last enrolment ends</td>
+<td>12 months</td>
+<td><strong><code>DELETE</code></strong> — never anonymise</td>
 </tr>
 <tr>
-<td>Attendance records</td>
+<td>Attendance events</td>
 <td><code>attendance</code></td>
 <td>Group</td>
-<td>Org is controller</td>
-<td>24 months, then aggregate + anonymise</td>
+<td>Session date</td>
+<td>24 months</td>
+<td><code>ANONYMISE</code> to aggregate</td>
 </tr>
 <tr>
 <td>Skill progress</td>
 <td><code>skills</code></td>
 <td>Group</td>
-<td>Org is controller</td>
-<td>7 years (evidence for diplomas)</td>
+<td>Achievement date</td>
+<td>7 years</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Exam results &amp; certificates</td>
 <td><code>exams</code></td>
 <td>Course / instance</td>
-<td>Org is controller</td>
-<td>10 years — a diploma must remain verifiable</td>
+<td>Certificate issue</td>
+<td>10 years <strong>only where a retention ground applies</strong></td>
+<td><code>REVIEW</code> (§5.2)</td>
+</tr>
+<tr>
+<td>Consent records</td>
+<td><code>consent</code></td>
+<td>Instance-wide</td>
+<td>Withdrawal or expiry of purpose</td>
+<td>As long as needed to demonstrate compliance</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Audit events</td>
 <td><code>audit</code></td>
-<td>Instance-wide, <code>audit.read</code></td>
-<td>Organisation is controller</td>
-<td>24 months minimum, then rotate</td>
+<td><code>audit.read</code></td>
+<td>Event date</td>
+<td>24 months</td>
+<td><code>DELETE</code></td>
+</tr>
+<tr>
+<td>Inquiries (public forms)</td>
+<td><code>pages</code></td>
+<td>Instance-wide</td>
+<td>Submission</td>
+<td>6 months</td>
+<td><code>DELETE</code></td>
 </tr>
 <tr>
 <td>Public page content</td>
 <td><code>pages</code></td>
 <td>Instance-wide</td>
-<td>Org is controller</td>
-<td>Until deleted by org</td>
+<td>—</td>
+<td>Until deleted</td>
+<td>—</td>
 </tr>
 <tr>
-<td>Instance settings &amp; branding</td>
-<td><code>organizations</code></td>
-<td>Instance singleton</td>
-<td>Org is controller</td>
+<td>Organisation settings &amp; branding</td>
+<td><code>organization</code></td>
+<td>Singleton</td>
+<td>—</td>
 <td>Indefinite</td>
+<td>—</td>
 </tr>
 <tr>
 <td>Operational logs</td>
 <td><code>lib/logging</code></td>
-<td>None — <strong>no PII</strong></td>
-<td>n/a</td>
+<td>Operators — <strong>no PII</strong></td>
+<td>Write</td>
 <td>30 days</td>
+<td><code>DELETE</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>The retention conflict is real and must be surfaced, not
-hidden.</strong> Exam results are kept for 10 years, but the
-<code>Person</code> behind them may exercise the right to erasure. These
-cannot both be satisfied literally.</p>
-<p><strong>Decision D-007 — Erasure severs identity; it does not delete
-the record.</strong> <strong>Reason.</strong> Erasing a
-<code>Person</code> anonymises the person record and severs the link,
-while the <code>ExamResult</code> and <code>Certificate</code> survive
-as pseudonymised rows retaining only the certificate number and outcome.
-The organisation keeps a verifiable diploma register; the human is no
-longer identifiable from it. This is the standard reconciliation of
-Article 17 with a legal-retention basis. <strong>Trade-off.</strong> A
-revoked-diploma dispute after erasure can no longer be traced to a named
-individual. Accepted, and it must be stated in the organisation&#39;s
-privacy notice — a <strong>process</strong> obligation SplashTrack
-cannot solve in code. This is finding <strong>F-06</strong>.</p>
+<h3 id="51-people-with-no-membership-are-not-an-edge-case">5.1 People
+with no membership are not an edge case</h3>
+<p>The most common person in the database — a child taking lessons — has
+<strong>no membership at all</strong>. Neither do guardians, external
+examiners, or former students. A retention rule keyed on &quot;active
+membership&quot; would therefore miss the majority of data subjects, silently
+retaining them forever.</p>
+<p><strong>Decision D-066 — Person retention is triggered by the end of
+the person&#39;s <em>last relationship of any kind</em>, not by
+membership.</strong></p>
+<p>Relationships that hold a <code>Person</code>: an active
+<code>MembershipPeriod</code>; an active <code>StudentProfile</code>
+enrolment; a role assignment (instructor, planner, examiner — including
+an expired-but-within-retention exam assessment); a guardian
+relationship to a person still held; an unexpired consent record; or a
+legal retention ground on a record referencing them.</p>
+<p>When the last one lapses, the person enters <code>REVIEW</code> and,
+after the configured period, is deleted or genuinely anonymised. A
+guardian is held only while the child they are guardian <em>of</em> is
+held — which follows automatically from the rule rather than needing a
+special case.</p>
+<p><strong>Reason.</strong> Every person category must be covered by
+construction, because the one that is forgotten is the one that
+accumulates indefinitely. <strong>Trade-off.</strong> &quot;Last
+relationship&quot; is a computed condition over several modules rather than a
+column, so it belongs to the same registry that erasure uses (D-014) and
+is covered by the same test that asserts every
+<code>Person</code>-referencing table is registered.</p>
+<h3 id="52-certificates-and-the-right-to-erasure--honestly">5.2
+Certificates and the right to erasure — honestly</h3>
+<p>An erasure request does <strong>not</strong> automatically lose to a
+diploma register.</p>
+<p>The organisation must identify an actual ground for retention — a
+legal obligation, or the establishment or defence of legal claims. Many
+swim schools will have none, in which case the certificate record is
+deleted or genuinely anonymised like anything else. Where a ground does
+exist, the record is retained <strong>with that ground recorded against
+it</strong>, the data subject is told which records were kept and why,
+and the retention is revisited when the ground expires.</p>
+<p>And where a certificate number remains looked-up-able, the honest
+statement is that the record is <strong>pseudonymised, not
+anonymous</strong> — it is still personal data (D-065). Telling a parent
+otherwise would be wrong, and the privacy notice must not do so. Finding
+<strong>F-06 (revised)</strong>.</p>
 <hr />
 <h1 id="02--security--privacy-architecture">02 — Security &amp; Privacy
 Architecture</h1>
@@ -2076,9 +2328,9 @@ implementing it as a single deny-list evaluated in
 permissions × scope</h2>
 <p>With tenancy gone, authorization carries the full weight of &quot;who may
 see and do what&quot;. Inside one organisation that is a harder and more
-interesting problem than tenant isolation was, and it is where the
-brief&#39;s <em>&quot;met scoping alle rechten granulair&quot;</em> requirement
-lands.</p>
+interesting problem than a tenant boundary would have been, and it is
+where the brief&#39;s <em>&quot;met scoping alle rechten granulair&quot;</em>
+requirement lands.</p>
 <h3 id="21-the-model">2.1 The model</h3>
 <p>A grant is not a permission. <strong>A grant is a permission plus a
 scope.</strong></p>
@@ -2225,9 +2477,8 @@ into a filter:</p>
 <pre class="text"><code>resolveReach(session, &#39;students.read&#39;) → { units: [...], groups: [...], all: false }</code></pre>
 <p>Repositories accept a reach object and constrain the query with it. A
 single helper, used everywhere, means there is one place to get list
-filtering right — the same architectural benefit a central
-tenant-scoping extension would have provided, applied to the boundary
-that still exists.</p>
+filtering right — one place to get list filtering right, which is the
+boundary that actually exists in a single-organisation installation.</p>
 <p><strong>Decision D-031 — Reach resolution is centralised and
 repositories cannot be called without it.</strong>
 <strong>Reason.</strong> Scoping bugs in list endpoints are the most
@@ -2369,9 +2620,8 @@ default, including on unexpected failure.</li>
 <li><strong>Scope tests.</strong> Every module ships tests asserting
 that a <code>GROUP</code>-scoped instructor cannot read, write, or list
 outside their groups, and that a <code>UNIT</code>-scoped role cannot
-escape its subtree. These replace the old isolation suite the
-multi-tenant design would have needed, and are equally non-optional for
-Definition of Done.</li>
+escape its subtree. These replace the old scope-escape suite is
+non-optional for Definition of Done.</li>
 </ol>
 <p><strong>Decision D-032 — Scope-escape tests are mandatory per
 module.</strong> <strong>Reason.</strong> The old isolation suite
@@ -2383,10 +2633,9 @@ an untested one. <strong>Trade-off.</strong> Test-writing effort per
 module. Unavoidable; this is the boundary that now protects a child&#39;s
 records from a colleague who should not see them.</p>
 <h3 id="31-raw-sql">3.1 Raw SQL</h3>
-<p><code>$queryRaw</code> / <code>$executeRaw</code> no longer risk
-cross-tenant leaks, but they <em>do</em> bypass reach filtering. They
-still require an explicit reviewer sign-off and are flagged by a lint
-rule.</p>
+<p><code>$queryRaw</code> / <code>$executeRaw</code> bypass reach
+filtering, which is the boundary that matters here. They still require
+an explicit reviewer sign-off and are flagged by a lint rule.</p>
 <h2 id="4-application-security-controls">4. Application security
 controls</h2>
 <table>
@@ -2477,22 +2726,43 @@ authorising route, and deleted on erasure. Finding
 <hr />
 <h2 id="5-gdpr--privacy-model">5. GDPR / privacy model</h2>
 <h3 id="51-roles-under-the-gdpr">5.1 Roles under the GDPR</h3>
+<p><strong>Decision D-064 — The organisation is the controller.
+Publishing self-hosted software does not make the SplashTrack project a
+processor.</strong></p>
 <ul>
-<li>Each <strong>organisation</strong> is both the <em>controller</em>
-and the <em>operator</em> of its own deployment. It runs the software on
-its own infrastructure.</li>
-<li><strong>We are neither controller nor processor.</strong> We publish
-software; we never touch anyone&#39;s data. No data processing agreement
-exists between us (F-05, closed).</li>
-<li>The organisation still needs its own privacy notice, and its own
-agreements with <em>its</em> sub-processors (hosting provider, email
-relay). The documentation should say so without pretending to be legal
-advice.</li>
-<li><strong>Consequence for the design:</strong> every privacy control
-must work with no outside help. Retention, export and erasure are
-features the organisation operates itself, not services we perform for
+<li>The <strong>organisation</strong> running the installation is the
+<em>controller</em>: it decides the purposes and means of
+processing.</li>
+<li>The <strong>SplashTrack project</strong> publishes software. It
+processes no personal data on anyone&#39;s behalf and is therefore
+<strong>not</strong> a processor by virtue of publishing. No data
+processing agreement arises between the project and an organisation from
+use of the software alone.</li>
+<li>A <strong>third party</strong> may still be a processor
+<strong>depending on the deployment</strong>: a hosting provider, a
+managed-database vendor, an email relay, or a consultant operating the
+instance for the organisation. Those relationships need their own
+agreements, and the organisation — not us — is responsible for
 them.</li>
+<li>If the project (or anyone else) ever <em>operates</em> an instance
+on an organisation&#39;s behalf, that specific relationship makes the
+operator a processor. That is a deployment fact, not a property of the
+software (OD-14).</li>
 </ul>
+<p><strong>Reason.</strong> The earlier text called the project a
+processor, which was simply wrong: a processor processes personal data
+on the controller&#39;s instructions, and we never receive any. Getting this
+right matters because it determines who owes which documents to whom,
+and overclaiming would create obligations we cannot fulfil while
+understating a hosting provider&#39;s role would leave a real gap.
+<strong>Trade-off.</strong> The documentation must explain a distinction
+most self-hosters have not thought about, without drifting into legal
+advice. It states the roles and points to the questions; it does not
+answer them for anyone.</p>
+<p><strong>Consequence for the design:</strong> every privacy control
+must work with no outside help. Retention, export, erasure and consent
+are features the organisation operates itself, not services anyone
+performs for them.</p>
 <h3 id="52-data-minimisation-by-default">5.2 Data minimisation by
 default</h3>
 <p>Before a field is added, its owner must answer: why is it required,
@@ -2517,23 +2787,50 @@ explicitly requests it and the requester holds
 <code>students.medical.read</code>; hard-deleted (not anonymised) at 12
 months after enrolment ends; never present in logs, ever.</p>
 <h3 id="54-consent">5.4 Consent</h3>
-<p>The inherited <code>consent</code> module records consent as
-first-class evidence: what was consented to, which version of which
-text, by whom, when, and how it was withdrawn. SplashTrack needs consent
-for: photographs, publication of results in a public list, marketing
-email, and any org-defined profile field.</p>
-<p><strong>Consent for a minor is given by a guardian, and the authority
-to do so must be recorded.</strong> A consent record references both the
-<strong>subject</strong> <code>Person</code> (the child) and the
-<strong>consenting</strong> <code>Person</code> (the guardian), and is
-valid only if a <code>GUARDIAN_OF</code> relationship carrying
-<code>authority = true</code> existed at the moment it was given. The
-relationship therefore carries validity dates, and every change to it is
-audited. This is <strong>v1 (R-04)</strong> — the guardian
-<em>portal</em> is deferred, the guardian <em>authority model</em> is
-not. Designing it in later would mean rewriting every existing consent
-row and would leave the earlier ones unprovable. Finding
-<strong>F-02</strong>.</p>
+<p><strong>Decision D-063 — A consent record captures subject, actor,
+purpose, legal basis, authority evidence, timestamp and withdrawal.
+Guardian authority is <em>evidence of a claim</em>, never automatic
+legal validity.</strong></p>
+<pre class="text"><code>Consent
+  subjectPersonId      whose data this is
+  actorPersonId        who actually gave it
+  purpose              photographs · publication of results · marketing · &lt;field&gt;
+  legalBasis           CONSENT | LEGITIMATE_INTEREST | CONTRACT | LEGAL_OBLIGATION
+  consentType          SELF | ON_BEHALF_OF
+  authorityEvidenceId? → PersonRelationship, when consentType = ON_BEHALF_OF
+  textVersionId        exactly which wording was agreed to
+  givenAt              timestamp
+  withdrawnAt?         withdrawal is a first-class event, never a deletion
+  withdrawnByPersonId?</code></pre>
+<p><strong>Self-consent and consent on behalf of another are separately
+representable.</strong> An adult member consenting to their own
+photograph is <code>SELF</code>. A parent consenting for their child is
+<code>ON_BEHALF_OF</code>, and must point at the
+<code>PersonRelationship</code> that was the claimed basis for that
+authority, valid at the moment consent was given.</p>
+<p><strong>Why authority is evidence, not proof.</strong> The
+application cannot verify that someone is legally a child&#39;s guardian. It
+can only record what the organisation was told, by whom, when, and —
+through <code>PersonRelationship.evidence</code> — how that claim was
+established (a registration form, an identity check, a court document
+reference). Treating a database row as legal validity would give false
+comfort to a school facing a custody dispute. What SplashTrack
+guarantees is an <strong>auditable trail of the basis on which the
+organisation acted</strong>, which is what accountability under Article
+5(2) actually requires.</p>
+<p><strong>Reason.</strong> Consent without a recorded purpose and legal
+basis cannot be demonstrated, and consent recorded without the authority
+behind it cannot be defended. Both are ordinary demands on any system
+holding data about minors. <strong>Trade-off.</strong> More fields at
+capture time and a UI that has to ask who is consenting on whose behalf.
+That question is unavoidable — a system that does not ask it simply gets
+the answer wrong silently.</p>
+<p><strong>Not everything is consent.</strong> Attendance and progress
+records are processed to perform the teaching agreement, not on consent;
+recording them under <code>CONSENT</code> would imply they can be
+withdrawn, which would break the organisation&#39;s own records.
+<code>legalBasis</code> exists precisely so the distinction is explicit
+per purpose.</p>
 <h3 id="55-data-subject-rights">5.5 Data subject rights</h3>
 <table>
 <thead>
@@ -2596,12 +2893,60 @@ a new table. A central registry with a test asserting that
 forgetting impossible to merge. <strong>Trade-off.</strong> The registry
 is a shared file that every module edits — mild coupling, deliberately
 accepted for a compliance-critical path.</p>
-<h3 id="56-retention">5.6 Retention</h3>
-<p>Retention rules live in the <code>maintenance</code> module as
-scheduled jobs, with a dry-run mode and a report before anything is
-deleted. Defaults are stated in <code>01-domain-model.md</code> §5. Each
-organisation may <strong>shorten</strong> a retention period, never
-lengthen it beyond the platform maximum.</p>
+<h3 id="56-retention-and-erasure--policy-driven">5.6 Retention and
+erasure — policy-driven</h3>
+<p><strong>Decision D-065 (replaces D-007) — Retention and erasure are
+driven by an explicit, per-purpose policy stating the lawful basis and
+its expiry. Nothing is retained because a record happens to
+exist.</strong></p>
+<p>The earlier design said erasure &quot;severs identity and keeps the
+pseudonymised diploma&quot;, justified by a ten-year retention. That
+reasoning was wrong in two ways, and both matter:</p>
+<p><strong>Pseudonymisation is not anonymisation.</strong> A
+pseudonymised record remains personal data under the GDPR while
+re-identification is reasonably possible — including by joining it
+against other data the organisation still holds. Calling it &quot;no longer
+identifiable&quot; does not make it so. Only genuine anonymisation, or
+deletion, ends the obligation.</p>
+<p><strong>A diploma does not by itself create an Article 17
+exception.</strong> An erasure request may be refused only where a
+specific ground applies — a legal obligation to retain, or the
+establishment/exercise/defence of legal claims. That ground must be
+<em>identified and recorded</em>, not assumed from the fact that a
+certificate exists. Many swim schools will have no statutory retention
+duty at all.</p>
+<p><strong>The policy model:</strong></p>
+<pre class="text"><code>RetentionPolicy
+  dataClass          person identity · attendance · progress · exam result ·
+                     certificate · medical note · audit event · inquiry
+  purpose            why it is kept
+  lawfulBasis        and, where retention is claimed, the specific ground
+  retainFor          duration, relative to a defined trigger
+  trigger            end of enrolment · end of last membership period ·
+                     certificate issue · record creation
+  onExpiry           DELETE | ANONYMISE | REVIEW</code></pre>
+<p>Each policy is configurable by the organisation within a platform
+maximum, is shown in the privacy admin area, and is executed by the
+<code>maintenance</code> module with a dry run and a report before
+anything is removed.</p>
+<p><strong>On erasure:</strong> an erasure request evaluates every data
+class against its policy. Classes with no live retention ground are
+<strong>deleted or genuinely anonymised</strong> — not merely stripped
+of a name. Where a ground does apply, the record is retained <em>with
+its ground recorded</em>, the requester is told which records were kept
+and why, and the retention is revisited when the ground expires. Where
+genuine anonymisation of a certificate register is not achievable (a
+certificate number that can be looked up is, by design,
+re-identifiable), that must be stated honestly to the data subject
+rather than described as anonymisation.</p>
+<p><strong>Reason.</strong> The previous rule optimised for keeping a
+tidy diploma register and back-filled a legal justification. This one
+starts from the basis and lets the data follow, which is both correct
+and simpler to defend. <strong>Trade-off.</strong> The organisation must
+actually decide its retention grounds rather than inherit ours; the
+setup wizard and documentation therefore ship sensible defaults
+<strong>as proposals</strong>, clearly marked as requiring the
+organisation&#39;s own confirmation. Finding <strong>F-27</strong>.</p>
 <h3 id="57-logging-without-personal-data">5.7 Logging without personal
 data</h3>
 <p>Operational logs (pino) carry: request id, org id, person id
@@ -3242,9 +3587,10 @@ installations and are not reachable by any query.</p>
 <pre class="text"><code>Exam session  →  candidate list  →  per candidate: PASS/FAIL + remarks
                  [Record results]  →  step-up if issuing certificates
                  → certificates generated, audit events written</code></pre>
-<p>Results are append-only; a correction creates a new row referencing
-the superseded one, and the certificate is revoked and reissued rather
-than edited.</p>
+<p>Results are append-only (D-062): a correction writes a
+<strong>new</strong> result carrying <code>supersedesResultId</code>,
+and the certificate is revoked and reissued rather than edited. The
+candidate list shows the effective result and a link to its history.</p>
 <h3 id="45-onboard-a-new-student">4.5 Onboard a new student</h3>
 <pre class="text"><code>Admin → Students → New
   → search existing Person first (prevents duplicate PII)
@@ -3349,7 +3695,7 @@ Architecture</h1>
                    │ SMTP relay │
                    └────────────┘</code></pre>
 <p>One deployable application. Stateless processes — no in-process
-session store, no in-process cache holding tenant data — so horizontal
+session store, no in-process cache holding personal data — so horizontal
 scaling is a configuration change (P-08).</p>
 <h2 id="2-technology-stack">2. Technology stack</h2>
 <table>
@@ -3452,11 +3798,11 @@ indirection versus a flat root. Negligible.</p>
           api/
             v1/                external API (prepared, minimal in v1)
         modules/
-          identity/  access-control/  organizations/  audit/  consent/
+          identity/  access-control/  organization/  audit/  consent/
           pages/  profile-fields/  users/  api-credentials/
           email-templates/  notifications/  maintenance/
           people/  students/  groups/  courses/  skills/
-          attendance/  exams/  planning/
+          sessions/  attendance/  exams/  planning/
             ├ application/     services — the business logic
             ├ domain/          types, invariants
             ├ infrastructure/  repositories
@@ -4541,13 +4887,13 @@ Accepted; designing for a rejected model is premature complexity</td>
 </tr>
 <tr>
 <td>D-007</td>
-<td>Erasure severs identity; legally-retained records survive
-pseudonymised</td>
-<td>Reconciles Article 17 with 10-year diploma retention; org keeps a
-verifiable register, human is no longer identifiable</td>
-<td>A post-erasure diploma dispute can&#39;t be traced to a named person;
-must be stated in the privacy notice (F-06)</td>
-<td><code>01-domain-model.md</code> §5</td>
+<td><strong>(Superseded by D-065)</strong> Erasure severs identity;
+retained records survive pseudonymised</td>
+<td>Rested on two errors: pseudonymisation does not end the GDPR
+obligation, and a diploma does not itself create an Article 17
+exception</td>
+<td>—</td>
+<td><code>10-findings.md</code> F-06</td>
 </tr>
 <tr>
 <td>D-008</td>
@@ -5078,6 +5424,136 @@ cleanly into it</td>
 with one case per state</td>
 <td><code>13-configuration-and-setup.md</code> §6</td>
 </tr>
+<tr>
+<td>D-056</td>
+<td>Multi-tenant machinery from the template is
+<strong>removed</strong>, not left dormant</td>
+<td>Dead security code is worse than absent security code: a bypassed
+scoping extension is attack surface, maintenance load, and a false
+signal to the next reader that something is enforced</td>
+<td>Extraction work up front and real divergence from upstream, making
+cherry-picking harder</td>
+<td><code>01-domain-model.md</code> §1.1.1</td>
+</tr>
+<tr>
+<td>D-057</td>
+<td><code>ScheduledSession</code> is owned by its own
+<code>sessions</code> module</td>
+<td>&quot;One table, two owners&quot; violated the design&#39;s own isolation rule and
+would have been the first boundary to erode. A session is a domain
+concept in its own right; planning and attendance are both
+consumers</td>
+<td>One more module for a small table — module count is cheap, ownership
+ambiguity is not</td>
+<td><code>01-domain-model.md</code> §1.2</td>
+</tr>
+<tr>
+<td>D-058</td>
+<td><code>Person</code> is the canonical identity anchor,
+<strong>not</strong> the only place personal data may live;
+purpose-specific PII stays in its owning module</td>
+<td>Data protection is organised around purpose, not tables. Health data
+has a different basis, permission, retention and encryption from a name;
+putting it on <code>Person</code> would make least privilege
+impossible</td>
+<td>Personal data spans modules, so erasure and export consult a
+test-enforced registry rather than one table</td>
+<td><code>01-domain-model.md</code> §2.1</td>
+</tr>
+<tr>
+<td>D-059</td>
+<td>Leaving and returning uses <code>MembershipPeriod</code> rows and
+<code>StudentLifecycleEvent</code>s — never a second profile or a status
+flag</td>
+<td>A returning swimmer is the same human with the same history, and
+that history is the product&#39;s value. A second profile fragments and
+duplicates PII; a status flag destroys the answer to &quot;when were they a
+member?&quot;</td>
+<td>Current membership and student status are derived rather than read
+from a column</td>
+<td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-060</td>
+<td>Membership is never an implicit prerequisite for a role</td>
+<td>Membership is an administrative/financial relationship;
+authorization is a security concern. Conflating them forces fake
+memberships for volunteers and implies members have rights they were
+never granted</td>
+<td>Two things to administer where a naive model has one; the UI offers
+them together</td>
+<td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-061</td>
+<td>Attendance is an append-only event log; a correction writes a new
+event with <code>supersedesEventId</code> and never mutates a row</td>
+<td>&quot;Append-only&quot; was previously asserted while the model still allowed
+in-place updates, which would have destroyed exactly the history the
+claim promises. Attendance is evidence for absence policy, disputes and
+occasionally safeguarding</td>
+<td>Reads resolve derived state instead of a column, and the table grows
+with corrections</td>
+<td><code>01-domain-model.md</code> §3.4</td>
+</tr>
+<tr>
+<td>D-062</td>
+<td>An <code>ExamCandidate</code> has 0..N results with
+<code>supersedesResultId</code>, one effective</td>
+<td>A single-result model forces corrections to overwrite the original,
+destroying what was first decided and by whom — on a diploma outcome,
+the one thing that must stay reconstructable</td>
+<td>Reads must resolve the effective result; same derivation pattern as
+D-061 and D-005</td>
+<td><code>01-domain-model.md</code> §3.5</td>
+</tr>
+<tr>
+<td>D-063</td>
+<td>Consent records subject, actor, purpose, lawful basis, authority
+evidence, timestamp and withdrawal; guardian authority is evidence of a
+claim, not automatic legal validity</td>
+<td>The application cannot verify guardianship — it can only record what
+it was told, by whom and how the claim was established. Treating a row
+as legal validity would give false comfort in a custody dispute</td>
+<td>More fields at capture and a UI that must ask who consents on whose
+behalf — an unavoidable question</td>
+<td><code>02-security-privacy.md</code> §5.4</td>
+</tr>
+<tr>
+<td>D-064</td>
+<td>The organisation is the controller; publishing self-hosted software
+does not make the project a processor. A hosting or service provider may
+be, depending on deployment</td>
+<td>A processor processes data on the controller&#39;s instructions; we
+never receive any. Overclaiming creates obligations we cannot fulfil,
+understating a hosting provider&#39;s role leaves a real gap</td>
+<td>Documentation must explain a distinction most self-hosters have not
+considered, without drifting into legal advice</td>
+<td><code>02-security-privacy.md</code> §5.1</td>
+</tr>
+<tr>
+<td>D-065</td>
+<td>Retention and erasure are policy-driven per data class: purpose,
+lawful basis, trigger, expiry action
+(<code>DELETE</code>/<code>ANONYMISE</code>/<code>REVIEW</code>)</td>
+<td>Replaces D-007. Pseudonymisation does not end the obligation, and a
+diploma does not itself create an Article 17 exception — the ground must
+be identified and recorded, not assumed</td>
+<td>The organisation must decide its own grounds; defaults ship as
+proposals requiring confirmation (F-27)</td>
+<td><code>02-security-privacy.md</code> §5.6</td>
+</tr>
+<tr>
+<td>D-066</td>
+<td>Person retention is triggered by the end of the person&#39;s
+<strong>last relationship of any kind</strong>, not by membership</td>
+<td>The most common person in the database — a child taking lessons —
+has no membership, and neither do guardians or external examiners. A
+membership-keyed rule would silently retain the majority forever</td>
+<td>&quot;Last relationship&quot; is a computed condition across modules, covered
+by the same registry and test as erasure (D-014)</td>
+<td><code>01-domain-model.md</code> §5.1</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -5141,14 +5617,23 @@ needed between us. The organisation still needs its own privacy notice
 and, where it uses sub-processors (hosting, email), its own agreements —
 which the documentation should point out without pretending to be legal
 advice.</p>
-<h3 id="f-06--retention-and-erasure-conflict-was-unresolved">F-06 —
-Retention and erasure conflict was unresolved</h3>
+<h3 id="f-06--revised-retention-and-erasure-conflict-was-resolved-wrongly">F-06
+— <strong>(Revised)</strong> Retention and erasure conflict was resolved
+wrongly</h3>
 <p><strong>Severity: high.</strong> Exam results are retained ~10 years;
 a data subject may demand erasure. Both cannot be satisfied literally.
-<strong>Response.</strong> D-007 — erasure severs identity and
-pseudonymises the retained record. This must be disclosed in each
-organisation&#39;s privacy notice, which is a process obligation SplashTrack
-cannot solve in code.</p>
+<strong>Original response was wrong, twice.</strong> It treated
+pseudonymisation as if it ended the obligation — it does not, a
+pseudonymised record is still personal data while re-identification is
+reasonably possible — and it assumed the existence of a diploma creates
+an Article 17 exception, which it does not. <strong>Correct
+response.</strong> D-065: retention is policy-driven, per data class,
+with an explicit lawful basis and expiry action. An erasure request
+deletes or genuinely anonymises everything with no live retention
+ground; where a ground exists the record is kept <em>with that ground
+recorded</em> and the data subject is told what was kept and why. Where
+a certificate number remains looked-up-able, the privacy notice must say
+<strong>pseudonymised, not anonymous</strong>.</p>
 <h3 id="f-07--backups-are-in-gdpr-scope-and-were-not-addressed">F-07 —
 Backups are in GDPR scope and were not addressed</h3>
 <p><strong>Severity: medium.</strong> Erasure cannot practically reach
@@ -5401,6 +5886,27 @@ declare <code>minimumRestorableVersion</code>), D-049 (versioned
 encryption envelopes with retained legacy decryptors). The encryption
 case is the nastiest, because it passes every schema check — it is
 called out separately for that reason.</p>
+<h3 id="f-26--unused-multi-tenant-machinery-would-have-been-left-dormant">F-26
+— Unused multi-tenant machinery would have been left dormant</h3>
+<p><strong>Severity: medium.</strong> The plan was to simply not use the
+template&#39;s tenant scoping, platform settings and platform roles. Dormant
+security code is worse than absent security code: it is attack surface,
+it must be kept compiling through every migration, and it teaches the
+next reader that something is being enforced when nothing is.
+<strong>Response.</strong> D-056 — it is removed at extraction time, not
+disabled. Accepting the resulting divergence from the upstream template
+is the cost.</p>
+<h3 id="f-27--retention-defaults-must-not-masquerade-as-legal-advice">F-27 —
+Retention defaults must not masquerade as legal advice</h3>
+<p><strong>Severity: medium.</strong> Shipping retention periods that
+look authoritative invites an organisation to adopt them without
+deciding anything, which leaves them unable to justify their own
+processing under Article 5(2). <strong>Response.</strong> Every default
+is presented as a <strong>proposal requiring confirmation</strong> in
+the setup wizard and the privacy admin area, with the lawful basis field
+empty until the organisation fills it. The documentation states the
+roles (D-064) and the questions, and explicitly declines to answer
+them.</p>
 <h2 id="scalability-problems">Scalability problems</h2>
 <p>Covered in full in <code>07-operations.md</code> §4. Scale is defined
 <strong>per installation</strong> (<code>00-overview.md</code> §4.2),
@@ -6072,10 +6578,10 @@ locked out of your own instance</h2>
 <p>A self-hosted application must have a recovery path that does
 <strong>not</strong> depend on a network-reachable secret. Ours requires
 host access, which is proof of ownership:</p>
-<div class="sourceCode" id="cb31"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
 <p>Every one of these writes an audit event. This replaces Vaultwarden&#39;s
 &quot;disable the admin token&quot; escape hatch with something that cannot be
 reached from the internet at all.</p>
@@ -6375,9 +6881,9 @@ with an error naming the exact version they need.</p>
 <em>running</em> instance</h3>
 <p>Not offered in the UI. It is available deliberately and awkwardly,
 from the host:</p>
-<div class="sourceCode" id="cb36"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
 <p>Awkwardness is the feature — this destroys live data and should
 require intent and host access, not a button in a browser.</p>
 <hr />
@@ -6448,7 +6954,7 @@ upgrade</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb37"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
+<div class="sourceCode" id="cb38"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
 <p><strong>Decision D-045 — The application prepares and verifies
 upgrades but never performs them; the operator runs one documented
 command.</strong> <strong>Reason.</strong> It keeps the trust boundary

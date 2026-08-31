@@ -31,7 +31,7 @@
 ```
 
 One deployable application. Stateless processes — no in-process session store,
-no in-process cache holding tenant data — so horizontal scaling is a
+no in-process cache holding personal data — so horizontal scaling is a
 configuration change (P-08).
 
 ## 2. Technology stack
@@ -81,11 +81,11 @@ SplashTrack/
           api/
             v1/                external API (prepared, minimal in v1)
         modules/
-          identity/  access-control/  organizations/  audit/  consent/
+          identity/  access-control/  organization/  audit/  consent/
           pages/  profile-fields/  users/  api-credentials/
           email-templates/  notifications/  maintenance/
           people/  students/  groups/  courses/  skills/
-          attendance/  exams/  planning/
+          sessions/  attendance/  exams/  planning/
             ├ application/     services — the business logic
             ├ domain/          types, invariants
             ├ infrastructure/  repositories

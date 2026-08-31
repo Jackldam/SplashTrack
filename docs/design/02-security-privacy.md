@@ -123,8 +123,8 @@ single deny-list evaluated in `requirePermission`, not scattered per route.
 
 With tenancy gone, authorization carries the full weight of "who may see and do
 what". Inside one organisation that is a harder and more interesting problem
-than tenant isolation was, and it is where the brief's *"met scoping alle
-rechten granulair"* requirement lands.
+than a tenant boundary would have been, and it is where the brief's *"met
+scoping alle rechten granulair"* requirement lands.
 
 ### 2.1 The model
 
@@ -213,8 +213,8 @@ resolveReach(session, 'students.read') → { units: [...], groups: [...], all: f
 
 Repositories accept a reach object and constrain the query with it. A single
 helper, used everywhere, means there is one place to get list filtering right —
-the same architectural benefit a central tenant-scoping extension would have
-provided, applied to the boundary that still exists.
+one place to get list filtering right, which is the boundary that actually
+exists in a single-organisation installation.
 
 **Decision D-031 — Reach resolution is centralised and repositories cannot be
 called without it.**
@@ -309,8 +309,7 @@ replaces them is narrower but still layered:
 3. **Scope tests.** Every module ships tests asserting that a `GROUP`-scoped
    instructor cannot read, write, or list outside their groups, and that a
    `UNIT`-scoped role cannot escape its subtree. These replace the old
-   isolation suite the multi-tenant design would have needed, and are equally
-   non-optional for Definition of Done.
+   scope-escape suite is non-optional for Definition of Done.
 
 **Decision D-032 — Scope-escape tests are mandatory per module.**
 **Reason.** The old isolation suite existed because query-predicate tenancy is
@@ -324,8 +323,8 @@ see them.
 
 ### 3.1 Raw SQL
 
-`$queryRaw` / `$executeRaw` no longer risk cross-tenant leaks, but they *do*
-bypass reach filtering. They still require an explicit reviewer sign-off and
+`$queryRaw` / `$executeRaw` bypass reach filtering, which is the boundary that
+matters here. They still require an explicit reviewer sign-off and
 are flagged by a lint rule.
 
 ## 4. Application security controls
@@ -367,17 +366,35 @@ authorising route, and deleted on erasure. Finding **F-04**.
 
 ### 5.1 Roles under the GDPR
 
-- Each **organisation** is both the *controller* and the *operator* of its own
-  deployment. It runs the software on its own infrastructure.
-- **We are neither controller nor processor.** We publish software; we never
-  touch anyone's data. No data processing agreement exists between us
-  (F-05, closed).
-- The organisation still needs its own privacy notice, and its own agreements
-  with *its* sub-processors (hosting provider, email relay). The documentation
-  should say so without pretending to be legal advice.
-- **Consequence for the design:** every privacy control must work with no
-  outside help. Retention, export and erasure are features the organisation
-  operates itself, not services we perform for them.
+**Decision D-064 — The organisation is the controller. Publishing self-hosted
+software does not make the SplashTrack project a processor.**
+
+- The **organisation** running the installation is the *controller*: it decides
+  the purposes and means of processing.
+- The **SplashTrack project** publishes software. It processes no personal data
+  on anyone's behalf and is therefore **not** a processor by virtue of
+  publishing. No data processing agreement arises between the project and an
+  organisation from use of the software alone.
+- A **third party** may still be a processor **depending on the deployment**: a
+  hosting provider, a managed-database vendor, an email relay, or a consultant
+  operating the instance for the organisation. Those relationships need their
+  own agreements, and the organisation — not us — is responsible for them.
+- If the project (or anyone else) ever *operates* an instance on an
+  organisation's behalf, that specific relationship makes the operator a
+  processor. That is a deployment fact, not a property of the software (OD-14).
+
+**Reason.** The earlier text called the project a processor, which was simply
+wrong: a processor processes personal data on the controller's instructions, and
+we never receive any. Getting this right matters because it determines who owes
+which documents to whom, and overclaiming would create obligations we cannot
+fulfil while understating a hosting provider's role would leave a real gap.
+**Trade-off.** The documentation must explain a distinction most self-hosters
+have not thought about, without drifting into legal advice. It states the roles
+and points to the questions; it does not answer them for anyone.
+
+**Consequence for the design:** every privacy control must work with no outside
+help. Retention, export, erasure and consent are features the organisation
+operates itself, not services anyone performs for them.
 
 ### 5.2 Data minimisation by default
 
@@ -404,19 +421,51 @@ the requester holds `students.medical.read`; hard-deleted (not anonymised) at
 
 ### 5.4 Consent
 
-The inherited `consent` module records consent as first-class evidence: what
-was consented to, which version of which text, by whom, when, and how it was
-withdrawn. SplashTrack needs consent for: photographs, publication of results
-in a public list, marketing email, and any org-defined profile field.
+**Decision D-063 — A consent record captures subject, actor, purpose, legal
+basis, authority evidence, timestamp and withdrawal. Guardian authority is
+*evidence of a claim*, never automatic legal validity.**
 
-**Consent for a minor is given by a guardian, and the authority to do so must be
-recorded.** A consent record references both the **subject** `Person` (the child)
-and the **consenting** `Person` (the guardian), and is valid only if a
-`GUARDIAN_OF` relationship carrying `authority = true` existed at the moment it
-was given. The relationship therefore carries validity dates, and every change to
-it is audited. This is **v1 (R-04)** — the guardian *portal* is deferred, the
-guardian *authority model* is not. Designing it in later would mean rewriting
-every existing consent row and would leave the earlier ones unprovable. Finding **F-02**.
+```text
+Consent
+  subjectPersonId      whose data this is
+  actorPersonId        who actually gave it
+  purpose              photographs · publication of results · marketing · <field>
+  legalBasis           CONSENT | LEGITIMATE_INTEREST | CONTRACT | LEGAL_OBLIGATION
+  consentType          SELF | ON_BEHALF_OF
+  authorityEvidenceId? → PersonRelationship, when consentType = ON_BEHALF_OF
+  textVersionId        exactly which wording was agreed to
+  givenAt              timestamp
+  withdrawnAt?         withdrawal is a first-class event, never a deletion
+  withdrawnByPersonId?
+```
+
+**Self-consent and consent on behalf of another are separately representable.**
+An adult member consenting to their own photograph is `SELF`. A parent
+consenting for their child is `ON_BEHALF_OF`, and must point at the
+`PersonRelationship` that was the claimed basis for that authority, valid at the
+moment consent was given.
+
+**Why authority is evidence, not proof.** The application cannot verify that
+someone is legally a child's guardian. It can only record what the organisation
+was told, by whom, when, and — through `PersonRelationship.evidence` — how that
+claim was established (a registration form, an identity check, a court document
+reference). Treating a database row as legal validity would give false comfort
+to a school facing a custody dispute. What SplashTrack guarantees is an
+**auditable trail of the basis on which the organisation acted**, which is what
+accountability under Article 5(2) actually requires.
+
+**Reason.** Consent without a recorded purpose and legal basis cannot be
+demonstrated, and consent recorded without the authority behind it cannot be
+defended. Both are ordinary demands on any system holding data about minors.
+**Trade-off.** More fields at capture time and a UI that has to ask who is
+consenting on whose behalf. That question is unavoidable — a system that does not
+ask it simply gets the answer wrong silently.
+
+**Not everything is consent.** Attendance and progress records are processed to
+perform the teaching agreement, not on consent; recording them under `CONSENT`
+would imply they can be withdrawn, which would break the organisation's own
+records. `legalBasis` exists precisely so the distinction is explicit per
+purpose.
 
 ### 5.5 Data subject rights
 
@@ -443,12 +492,62 @@ merge.
 **Trade-off.** The registry is a shared file that every module edits — mild
 coupling, deliberately accepted for a compliance-critical path.
 
-### 5.6 Retention
+### 5.6 Retention and erasure — policy-driven
 
-Retention rules live in the `maintenance` module as scheduled jobs, with a
-dry-run mode and a report before anything is deleted. Defaults are stated in
-`01-domain-model.md` §5. Each organisation may **shorten** a retention period,
-never lengthen it beyond the platform maximum.
+**Decision D-065 (replaces D-007) — Retention and erasure are driven by an
+explicit, per-purpose policy stating the lawful basis and its expiry. Nothing is
+retained because a record happens to exist.**
+
+The earlier design said erasure "severs identity and keeps the pseudonymised
+diploma", justified by a ten-year retention. That reasoning was wrong in two
+ways, and both matter:
+
+**Pseudonymisation is not anonymisation.** A pseudonymised record remains
+personal data under the GDPR while re-identification is reasonably possible —
+including by joining it against other data the organisation still holds. Calling
+it "no longer identifiable" does not make it so. Only genuine anonymisation, or
+deletion, ends the obligation.
+
+**A diploma does not by itself create an Article 17 exception.** An erasure
+request may be refused only where a specific ground applies — a legal obligation
+to retain, or the establishment/exercise/defence of legal claims. That ground
+must be *identified and recorded*, not assumed from the fact that a certificate
+exists. Many swim schools will have no statutory retention duty at all.
+
+**The policy model:**
+
+```text
+RetentionPolicy
+  dataClass          person identity · attendance · progress · exam result ·
+                     certificate · medical note · audit event · inquiry
+  purpose            why it is kept
+  lawfulBasis        and, where retention is claimed, the specific ground
+  retainFor          duration, relative to a defined trigger
+  trigger            end of enrolment · end of last membership period ·
+                     certificate issue · record creation
+  onExpiry           DELETE | ANONYMISE | REVIEW
+```
+
+Each policy is configurable by the organisation within a platform maximum, is
+shown in the privacy admin area, and is executed by the `maintenance` module
+with a dry run and a report before anything is removed.
+
+**On erasure:** an erasure request evaluates every data class against its policy.
+Classes with no live retention ground are **deleted or genuinely anonymised** —
+not merely stripped of a name. Where a ground does apply, the record is retained
+*with its ground recorded*, the requester is told which records were kept and
+why, and the retention is revisited when the ground expires. Where genuine
+anonymisation of a certificate register is not achievable (a certificate number
+that can be looked up is, by design, re-identifiable), that must be stated
+honestly to the data subject rather than described as anonymisation.
+
+**Reason.** The previous rule optimised for keeping a tidy diploma register and
+back-filled a legal justification. This one starts from the basis and lets the
+data follow, which is both correct and simpler to defend.
+**Trade-off.** The organisation must actually decide its retention grounds
+rather than inherit ours; the setup wizard and documentation therefore ship
+sensible defaults **as proposals**, clearly marked as requiring the
+organisation's own confirmation. Finding **F-27**.
 
 ### 5.7 Logging without personal data
 

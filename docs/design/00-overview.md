@@ -213,8 +213,8 @@ not need rework when the feature arrives — not that it is built now.
 | R-21 | **Diagnostics page** — effective configuration, value provenance, connectivity, migration state, backup age, version and advisory status; safe to paste in a public issue |
 | R-22 | **Secure release artifacts** — signed images, SBOM, provenance, pinned dependencies, tag-only release workflow (F-18) |
 | R-23 | Audit logging of security-, privacy- and domain-significant events, readable by the organisation |
-| R-24 | GDPR rights: access, rectification, erasure, export — operated by the organisation itself |
-| R-25 | Data retention policy with automated, dry-runnable enforcement |
+| R-24 | GDPR rights: access, rectification, erasure, export — operated by the organisation itself, which is the controller (D-064) |
+| R-25 | **Policy-driven** retention and erasure: per data class a purpose, lawful basis, trigger and expiry action (`DELETE` / `ANONYMISE` / `REVIEW`), automated and dry-runnable (D-065, D-066) |
 | R-26 | Public surface cannot enumerate or expose any person, student, member, group or other private record (§3.4) |
 | R-27 | DEV and UAT environments; the same tag publishes the public image |
 | R-28 | CI blocking merges on failed tests, security checks, or a broken **restore-from-every-supported-release** matrix — every release at or above `minimumRestorableVersion` (D-047, D-048) |

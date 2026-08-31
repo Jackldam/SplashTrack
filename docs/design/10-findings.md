@@ -51,12 +51,19 @@ between us. The organisation still needs its own privacy notice and, where it
 uses sub-processors (hosting, email), its own agreements — which the
 documentation should point out without pretending to be legal advice.
 
-### F-06 — Retention and erasure conflict was unresolved
+### F-06 — **(Revised)** Retention and erasure conflict was resolved wrongly
 **Severity: high.** Exam results are retained ~10 years; a data subject may
 demand erasure. Both cannot be satisfied literally.
-**Response.** D-007 — erasure severs identity and pseudonymises the retained
-record. This must be disclosed in each organisation's privacy notice, which is
-a process obligation SplashTrack cannot solve in code.
+**Original response was wrong, twice.** It treated pseudonymisation as if it
+ended the obligation — it does not, a pseudonymised record is still personal
+data while re-identification is reasonably possible — and it assumed the
+existence of a diploma creates an Article 17 exception, which it does not.
+**Correct response.** D-065: retention is policy-driven, per data class, with an
+explicit lawful basis and expiry action. An erasure request deletes or genuinely
+anonymises everything with no live retention ground; where a ground exists the
+record is kept *with that ground recorded* and the data subject is told what was
+kept and why. Where a certificate number remains looked-up-able, the privacy
+notice must say **pseudonymised, not anonymous**.
 
 ### F-07 — Backups are in GDPR scope and were not addressed
 **Severity: medium.** Erasure cannot practically reach historical backups, and
@@ -232,6 +239,24 @@ within a major; declare `minimumRestorableVersion`), D-049 (versioned encryption
 envelopes with retained legacy decryptors). The encryption case is the nastiest,
 because it passes every schema check — it is called out separately for that
 reason.
+
+### F-26 — Unused multi-tenant machinery would have been left dormant
+**Severity: medium.** The plan was to simply not use the template's tenant
+scoping, platform settings and platform roles. Dormant security code is worse
+than absent security code: it is attack surface, it must be kept compiling
+through every migration, and it teaches the next reader that something is being
+enforced when nothing is.
+**Response.** D-056 — it is removed at extraction time, not disabled. Accepting
+the resulting divergence from the upstream template is the cost.
+
+### F-27 — Retention defaults must not masquerade as legal advice
+**Severity: medium.** Shipping retention periods that look authoritative invites
+an organisation to adopt them without deciding anything, which leaves them
+unable to justify their own processing under Article 5(2).
+**Response.** Every default is presented as a **proposal requiring confirmation**
+in the setup wizard and the privacy admin area, with the lawful basis field
+empty until the organisation fills it. The documentation states the roles
+(D-064) and the questions, and explicitly declines to answer them.
 
 ## Scalability problems
 

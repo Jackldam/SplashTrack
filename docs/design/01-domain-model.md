@@ -23,14 +23,13 @@ nothing in the workload justifies it (`07-operations.md` §4).
 Inherited from `WebAppTemplate` (already built, reused as-is):
 
 ```text
-identity            Person, UserAccount, sessions, MFA, passkeys
-access-control      Roles, permissions, access groups, assignments
-organizations       Tenants, membership, organisational units
-organization-units  Hierarchy / reach
+identity            Person, UserAccount, login sessions, MFA, passkeys
+access-control      Roles, permissions, scopes, access groups, assignments
+organization        The singleton organisation record, its settings and units
 audit               Append-only security & privacy event trail
-consent             GDPR consent records
+consent             Consent records with legal basis and authority evidence
 pages               Custom pages CMS
-profile-fields      Org-configurable person attributes
+profile-fields      Configurable person attributes
 users               Account administration
 api-credentials     Scoped machine credentials
 email-templates     Templated transactional email
@@ -38,18 +37,51 @@ notifications       Delivery
 maintenance         Scheduled jobs (retention, cleanup)
 ```
 
+**Naming.** The module is `organization`, singular, and it manages **the**
+organisation — its record, settings, branding and unit tree. It is not a tenant
+registry, and nothing in the active design uses the word *tenant*. Likewise the
+join table is `Membership`, not `OrganizationMembership`: there is only one
+organisation to be a member of.
+
 New SplashTrack domain modules (built in v1, in this order):
 
 ```text
-people              Domain view over Person: guardians, relationships, tags
-students            StudentProfile, enrolment state, student lifecycle
+people              Domain view over Person: relationships, guardians, tags
+students            StudentProfile, lifecycle, enrolment state
 groups              Group definition and membership over time
 courses             Course/programme definitions, levels, enrolment
 skills              Skill catalogue, requirements, per-student progress
-attendance          Sessions and attendance records  ← flagship
-exams               Exam sessions, candidates, examiners, results, certificates
-planning            Schedule, locations, resources, instructor assignment
+sessions            ScheduledSession — the shared scheduling primitive
+attendance          Attendance events against a session  ← flagship
+exams               Exam sessions, candidates, assessors, results, certificates
+planning            Schedule construction, locations, resources, assignment
 ```
+
+### 1.1.1 Removing what single-instance operation does not need
+
+**Decision D-056 — Multi-tenant machinery inherited from the template is
+*removed*, not left dormant.**
+
+The template carries a tenant-scoping client extension, per-row tenant columns,
+a platform-versus-organisation settings duality, and a platform role and
+bootstrap layer. In a single-organisation installation none of it has a
+function.
+
+**Reason.** Dormant code is not free. It is attack surface — a scoping extension
+that is bypassed everywhere gives a false sense of protection — plus maintenance
+load, since every migration and refactor must keep it compiling, and a source of
+confusion for anyone reading the codebase to learn how authorization actually
+works. Dead security code is worse than absent security code, because it invites
+the assumption that something is being enforced.
+
+**Trade-off.** Extraction work up front, and a real divergence from the upstream
+template that makes future cherry-picking harder. Accepted: the template is a
+starting point, not a dependency we track.
+
+Removed at extraction time: the tenant-scoping extension, tenant columns and
+their composite foreign keys, `PlatformSettings` (merged into the organisation
+singleton), `PlatformRoleAssignment`, and the platform permission namespace.
+Recorded as finding **F-26**.
 
 Deliberately **not** modules: "reporting" (a read concern satisfied by queries
 until proven otherwise), "billing" (deferred), "website" (the `pages` module
@@ -63,14 +95,16 @@ Modules form a directed acyclic graph. Arrows point *downward only*:
         planning        exams
             \            /
         attendance    skills
-              \        /
-          groups    courses
+             |          |
+          sessions   courses
               \      /
+              groups
+                 |
               students
                  |
                people
                  |
-  identity / access-control / organizations   (foundation)
+  identity / access-control / organization    (foundation)
 ```
 
 A module may depend on modules below it, never above or sideways without an
@@ -78,6 +112,22 @@ explicit published interface. `attendance` may ask `groups` who is in a group;
 `groups` may never ask `attendance` anything. Where an upward signal is needed
 (e.g. "attendance was registered, update progress"), it goes through a domain
 event, not a call.
+
+**Decision D-057 — `ScheduledSession` is owned by its own `sessions` module.**
+
+An earlier draft had `planning` writing the table and `attendance` reading it —
+"one table, two owners", which violates this document's own isolation rule and
+would have been the first boundary to erode in practice.
+
+**Reason.** A session is a real domain concept in its own right: a time, a place,
+a group, a status. Both `planning` (which creates and reschedules sessions) and
+`attendance` (which records against them) are *consumers* of it. Giving it an
+owner turns an implicit shared table into an explicit published service, and
+makes the exam module's future need for the same primitive a reuse rather than a
+duplicate.
+
+**Trade-off.** One more module for a small table. That is the correct cost:
+module count is cheap, ownership ambiguity is not.
 
 **Decision D-003 — In-process domain events for upward/sideways signals.**
 **Reason.** Keeps `attendance → skills` decoupled without a message broker.
@@ -92,13 +142,31 @@ the existing `maintenance` job runner without changing the publisher.
 ### 2.1 The identity spine (inherited, unchanged)
 
 ```text
-Organization ──< OrganizationMembership >── Person ──0..1── UserAccount
-                                              │
-                                              └──< RoleAssignment >── Role ──< RolePermission >── Permission
+Organization ──< Membership >── Person ──0..1── UserAccount
+                                  │
+                                  └──< RoleAssignment >── Role ──< RolePermission >── Permission
 ```
 
-- `Person` is the **PII anchor**. Name, date of birth, contact details live
-  here and nowhere else.
+- `Person` is the **canonical identity and biographical anchor**: name, date of
+  birth, contact details, and the identifiers by which a human is recognised.
+
+**Decision D-058 — `Person` is the canonical identity record, not the only place
+personal data may live. Purpose-specific personal data stays in the module that
+owns its purpose.**
+
+Medical and pastoral remarks belong to `students`, not to `Person`. Attendance
+belongs to `attendance`. Exam outcomes belong to `exams`.
+
+**Reason.** Data protection is organised around *purpose*, not around tables.
+Health data has a different lawful basis, a different permission, different
+retention and different encryption from a name and a date of birth; storing it
+on `Person` would drag all of that onto the identity record and make
+least-privilege impossible — everyone who may see a class list would inherit
+access to medical notes.
+**Trade-off.** Personal data is spread across modules, so erasure and export
+must consult a registry of contributing modules rather than one table. That
+registry already exists and is test-enforced (D-014); this decision makes its
+necessity explicit rather than accidental.
 - `UserAccount` holds **no credentials** — Better Auth owns those. It is the
   optional bridge between a human and a login.
 - There is no tenant column. Rows that a scoped role can reach carry `unitId`,
@@ -215,9 +283,47 @@ Every combination is valid and every one occurs in practice:
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `Person` | givenName, familyName, dateOfBirth, email?, phone? | 0..1 `UserAccount`, 0..1 `Membership`, 0..1 `StudentProfile` | The only PII anchor. One row per human per installation |
-| `Membership` | memberNumber, status, joinedAt, endedAt?, unitId? | 1 `Person` | Belonging to the organisation. **Independent of whether they take lessons** |
-| `StudentProfile` | studentNumber, status, joinedAt, leftAt?, notes?, unitId | 1 `Person`, N `Enrolment`, N `GroupMembership` | Enrolment identity. Medical/pastoral notes are **special-category data** (`02-security-privacy.md` §5.3) |
+| `Person` | givenName, familyName, dateOfBirth, email?, phone? | 0..1 `UserAccount`, 0..1 `Membership`, 0..1 `StudentProfile` | Canonical identity anchor (D-058). One row per human per installation |
+| `Membership` | memberNumber, unitId? | 1 `Person`, N `MembershipPeriod` | **One per person, for life.** The number stays the same across gaps |
+| `MembershipPeriod` | membershipId, startedAt, endedAt?, endReason? | 1 `Membership` | Belonging is a set of intervals, not a status flag |
+| `StudentProfile` | studentNumber, unitId | 1 `Person`, N `StudentLifecycleEvent`, N `Enrolment`, N `GroupMembership` | **Persistent.** Created once, never duplicated on return |
+| `StudentLifecycleEvent` | studentProfileId, type (`JOINED`/`PAUSED`/`LEFT`/`RETURNED`), occurredAt, reason? | 1 `StudentProfile` | Append-only lifecycle history; current state is derived |
+| `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, validFrom, validTo?, evidence? | Person ↔ Person | **v1.** Records the claimed authority *and how it was established* — see D-063 |
+
+**Decision D-059 — Leaving and returning is modelled with periods and lifecycle
+events, never by creating a second profile or flipping a status.**
+
+One `Membership` per person with many `MembershipPeriod` rows; one persistent
+`StudentProfile` with an append-only `StudentLifecycleEvent` history. Returning
+creates a new period and new `Enrolment` / `GroupMembership` rows — it never
+creates a second profile.
+
+**Reason.** A returning swimmer is the same human with the same history, and that
+history is the product's value: their skills, their diplomas, their previous
+groups. A second profile fragments it and duplicates PII, which then has to be
+merged by hand and re-erased twice. A status flag, meanwhile, silently destroys
+the answer to "when were they a member?" — which matters for contributions,
+insurance and retention.
+**Trade-off.** Current membership and current student status are derived rather
+than read from a column. A small derived-state helper covers it, and it is the
+same append-only reasoning used for progress and attendance (D-005).
+
+**Decision D-060 — Membership is never an implicit prerequisite for a role.**
+
+Authorization comes exclusively from role assignments and their scopes
+(`02-security-privacy.md` §2). An instructor, planner or examiner may hold a role
+with no `Membership` at all, and holding a membership grants nothing by itself.
+
+**Reason.** Membership is an *administrative and often financial* relationship;
+authorization is a *security* concern. Conflating them means a volunteer
+instructor who is not a paying member cannot be given access without inventing a
+fake membership — and worse, it creates the reverse expectation that members
+implicitly have rights. If an organisation genuinely wants "instructors must be
+members", that is a configurable business rule they enable, checked at
+assignment time, not an assumption baked into the model.
+**Trade-off.** Two things to administer where a naive model has one. The UI
+offers them together when adding a person, so the cost is conceptual, not
+clerical.
 | `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, authority, validFrom, validTo? | Person ↔ Person | **v1.** `authority` records whether this relationship may consent on behalf of the subject (R-04). Every change audited |
 
 **Decision D-053 — `Membership` and `StudentProfile` are separate tables, never
@@ -264,22 +370,48 @@ not evidence.
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `AttendanceRecord` | Written by `planning`, read by `attendance` |
-| `AttendanceRecord` | sessionId, studentProfileId, state, recordedByPersonId, recordedAt, clientEventId, note? | | `state` ∈ {PRESENT, ABSENT, EXCUSED, LATE}. `clientEventId` is a **client-generated UUID** making the write idempotent (P-02) |
+| `AttendanceEvent` | sessionId, studentProfileId, state, recordedByPersonId, recordedAt, `clientEventId`, `supersedesEventId?`, note? | | **Append-only.** `state` ∈ {PRESENT, ABSENT, EXCUSED, LATE}. A correction is a *new* event pointing at the one it replaces — the superseded row is never modified. `clientEventId` is a client-generated UUID making the write idempotent (P-02) |
+| *(derived)* `AttendanceStatus` | sessionId, studentProfileId → effective state | | The current answer per student per session: the latest event not superseded by another. Materialised only if measurement demands it |
+
+**Decision D-061 — Attendance is an append-only event log; a correction never
+mutates an existing row.**
+
+An instructor who marked a child absent and then finds them in the water writes
+a *new* event carrying `supersedesEventId`. The effective status is derived: the
+latest event for that student and session that nothing supersedes.
+
+**Reason.** "Append-only" was previously asserted while the model still allowed
+an in-place update, which would have quietly destroyed exactly the history the
+claim promises. Attendance is evidence — for absence policy, for parental
+disputes, and occasionally for safeguarding. Who said a child was present, and
+when they changed their mind, is precisely what must survive.
+**Trade-off.** Reads need a derived-state resolution instead of a direct column,
+and the table grows with corrections. Both are cheap; a `(sessionId,
+studentProfileId, recordedAt)` index answers the derivation directly.
 
 **`clientEventId` is the single most important forward-looking field in the
 schema.** It costs one indexed column now and is what makes offline-tolerant
-attendance a feature addition rather than a rewrite. A retry, a double-tap or
-a replayed offline queue all collapse to the same row.
+attendance a feature addition rather than a rewrite. A retry, a double-tap or a
+replayed offline queue all collapse to the same event.
 
 ### 3.5 Exams
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `ExamSession` | courseLevelId, locationId, scheduledAt, status | N `ExamCandidate`, N `ExamAssessor` | |
-| `ExamCandidate` | examSessionId, studentProfileId, status | 0..1 `ExamResult` | |
+| `ExamCandidate` | examSessionId, studentProfileId, status | **0..N** `ExamResult` | A candidate may have several results over time: an original, a correction, an appeal outcome |
 | `ExamAssessor` | examSessionId, personId, role | | Records **who assessed** this session — an attribution fact, not an access grant. Access comes from an `EXAM_SESSION`-scoped role assignment (D-054). Supports the external examiner with no membership (D-052) |
-| `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, remarks? | 0..1 `Certificate` | Append-only; a correction is a new row referencing the superseded one |
-| `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | A diploma is a legal-ish artefact: issue and revoke, never delete |
+| `ExamResult` | candidateId, outcome, recordedByPersonId, recordedAt, `supersedesResultId?`, reason?, remarks? | 0..1 `Certificate` | **Append-only.** A correction is a new row pointing at the one it replaces. The **effective result** is the latest non-superseded row; exactly one exists per candidate at any time |
+| `Certificate` | resultId, number, issuedAt, revokedAt?, revokeReason? | | Issued against a *specific* result. Correcting a result revokes the certificate and issues a new one — never edits it |
+
+**Decision D-062 — A candidate has 0..N results, not 0..1.**
+**Reason.** A single-result model forces a correction to overwrite the original,
+destroying the record of what was first decided and by whom — on a diploma
+outcome, the one thing that must stay reconstructable. Appeals and
+administrative corrections are normal in this domain, not exceptional.
+**Trade-off.** Every read resolves the effective result rather than following a
+single relation. One indexed lookup, and it is the same derivation pattern used
+for attendance (D-061) and skill progress (D-005) — one concept, not three.
 
 ### 3.6 Scoping invariant
 
@@ -322,34 +454,71 @@ either all landed or none did.
 
 ## 5. Data ownership
 
-"Ownership" answers three questions per data class: which module may write it,
-which organisation controls it, and who is the GDPR controller.
+"Ownership" answers four questions per data class: which module may write it,
+who may reach it, on what lawful basis it is held, and what happens when that
+basis expires.
 
-| Data class | Writing module | Scope | GDPR role | Retention default |
-|---|---|---|---|---|
-| Person PII | `identity` | Instance-wide | Organisation = controller; operator = processor | While any active membership + 24 months |
-| Login credentials | Better Auth | Instance-wide | Processor | Account lifetime |
-| Student profile & notes | `students` | Unit | Org is controller | Enrolment + 24 months, then anonymise |
-| Medical / pastoral notes | `students` | Unit, extra permission | Org is controller, **special category** | Enrolment + 12 months, then hard delete |
-| Attendance records | `attendance` | Group | Org is controller | 24 months, then aggregate + anonymise |
-| Skill progress | `skills` | Group | Org is controller | 7 years (evidence for diplomas) |
-| Exam results & certificates | `exams` | Course / instance | Org is controller | 10 years — a diploma must remain verifiable |
-| Audit events | `audit` | Instance-wide, `audit.read` | Organisation is controller | 24 months minimum, then rotate |
-| Public page content | `pages` | Instance-wide | Org is controller | Until deleted by org |
-| Instance settings & branding | `organizations` | Instance singleton | Org is controller | Indefinite |
-| Operational logs | `lib/logging` | None — **no PII** | n/a | 30 days |
+**All retention below is a *default proposal*, not a rule we impose.** Each is a
+`RetentionPolicy` the organisation confirms or changes, with `onExpiry` being
+`DELETE`, `ANONYMISE` or `REVIEW` (`02-security-privacy.md` §5.6, D-065).
 
-**The retention conflict is real and must be surfaced, not hidden.** Exam
-results are kept for 10 years, but the `Person` behind them may exercise the
-right to erasure. These cannot both be satisfied literally.
+| Data class | Writing module | Reach | Trigger | Default retention | On expiry |
+|---|---|---|---|---|---|
+| Person identity | `identity` | Instance-wide | Last relationship of any kind ends (§5.1) | 24 months | `REVIEW` → delete |
+| Login credentials | Better Auth | Instance-wide | Account closed | Immediate | `DELETE` |
+| Membership periods | `people` | Unit | Last period ends | 7 years (financial/administrative, if applicable) | `REVIEW` |
+| Student profile | `students` | Unit | Last enrolment ends | 24 months | `REVIEW` |
+| Medical / pastoral notes | `students` | Unit + `students.medical.read` | Last enrolment ends | 12 months | **`DELETE`** — never anonymise |
+| Attendance events | `attendance` | Group | Session date | 24 months | `ANONYMISE` to aggregate |
+| Skill progress | `skills` | Group | Achievement date | 7 years | `REVIEW` |
+| Exam results & certificates | `exams` | Course / instance | Certificate issue | 10 years **only where a retention ground applies** | `REVIEW` (§5.2) |
+| Consent records | `consent` | Instance-wide | Withdrawal or expiry of purpose | As long as needed to demonstrate compliance | `REVIEW` |
+| Audit events | `audit` | `audit.read` | Event date | 24 months | `DELETE` |
+| Inquiries (public forms) | `pages` | Instance-wide | Submission | 6 months | `DELETE` |
+| Public page content | `pages` | Instance-wide | — | Until deleted | — |
+| Organisation settings & branding | `organization` | Singleton | — | Indefinite | — |
+| Operational logs | `lib/logging` | Operators — **no PII** | Write | 30 days | `DELETE` |
 
-**Decision D-007 — Erasure severs identity; it does not delete the record.**
-**Reason.** Erasing a `Person` anonymises the person record and severs the
-link, while the `ExamResult` and `Certificate` survive as pseudonymised rows
-retaining only the certificate number and outcome. The organisation keeps a
-verifiable diploma register; the human is no longer identifiable from it. This
-is the standard reconciliation of Article 17 with a legal-retention basis.
-**Trade-off.** A revoked-diploma dispute after erasure can no longer be traced
-to a named individual. Accepted, and it must be stated in the organisation's
-privacy notice — a **process** obligation SplashTrack cannot solve in code.
-This is finding **F-06**.
+### 5.1 People with no membership are not an edge case
+
+The most common person in the database — a child taking lessons — has **no
+membership at all**. Neither do guardians, external examiners, or former
+students. A retention rule keyed on "active membership" would therefore miss the
+majority of data subjects, silently retaining them forever.
+
+**Decision D-066 — Person retention is triggered by the end of the person's
+*last relationship of any kind*, not by membership.**
+
+Relationships that hold a `Person`: an active `MembershipPeriod`; an active
+`StudentProfile` enrolment; a role assignment (instructor, planner, examiner —
+including an expired-but-within-retention exam assessment); a guardian
+relationship to a person still held; an unexpired consent record; or a legal
+retention ground on a record referencing them.
+
+When the last one lapses, the person enters `REVIEW` and, after the configured
+period, is deleted or genuinely anonymised. A guardian is held only while the
+child they are guardian *of* is held — which follows automatically from the
+rule rather than needing a special case.
+
+**Reason.** Every person category must be covered by construction, because the
+one that is forgotten is the one that accumulates indefinitely.
+**Trade-off.** "Last relationship" is a computed condition over several modules
+rather than a column, so it belongs to the same registry that erasure uses
+(D-014) and is covered by the same test that asserts every `Person`-referencing
+table is registered.
+
+### 5.2 Certificates and the right to erasure — honestly
+
+An erasure request does **not** automatically lose to a diploma register.
+
+The organisation must identify an actual ground for retention — a legal
+obligation, or the establishment or defence of legal claims. Many swim schools
+will have none, in which case the certificate record is deleted or genuinely
+anonymised like anything else. Where a ground does exist, the record is retained
+**with that ground recorded against it**, the data subject is told which records
+were kept and why, and the retention is revisited when the ground expires.
+
+And where a certificate number remains looked-up-able, the honest statement is
+that the record is **pseudonymised, not anonymous** — it is still personal data
+(D-065). Telling a parent otherwise would be wrong, and the privacy notice must
+not do so. Finding **F-06 (revised)**.
