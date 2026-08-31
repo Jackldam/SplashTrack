@@ -1,0 +1,489 @@
+{
+  "sessionKey": "agent:main:subagent:b0537699-8557-41eb-8d77-b7e358a975e1",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01DphFFgLcJRxzz8j92Zf86j",
+          "name": "Read",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "file_path": "/root/projects/SplashTrack/docs/design/11-revision-single-tenant.md"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01DphFFgLcJRxzz8j92Zf86j",
+          "type": "tool_result",
+          "content": "1\t# 11 — Revision: from multi-tenant to single-tenant\n2\t\n3\t> ## ⚠️ HISTORY — NOT AN IMPLEMENTATION SOURCE\n4\t> This chapter records **how the design changed** (multi-tenant → single-tenant) and why.\n5\t> It is kept for traceability of reasoning only. **Do not implement from\n6\t> it and do not cite it as a requirement.** The active chapters (00–10, 13,\n7\t> 14) are consolidated and authoritative; if this note appears to\n8\t> contradict them, they are right and this note is stale.\n9\t\n10\t**Date:** 2026-08-31 · **Requested by:** Jack · **Status:** applied to the whole\n11\tdesign set.\n12\t\n13\t> *\"Belangrijk is dat dit project dus niet multi org moet zijn, elke org moet\n14\t> z'n eigen omgeving draaien. Daarbij komt dat we met scoping alle rechten\n15\t> granulair kunnen zetten.\"*\n16\t\n17\t## What changed\n18\t\n19\tTwo instructions, one structural and one about authorization.\n20\t\n21\t**1. Single-tenant deployment.** Every organisation runs its own instance:\n22\town application process, own database, own storage, own domain. There is no\n23\tshared runtime and no shared data anywhere.\n24\t\n25\t**2. Granular scoping.** Rights are set per scope. Authorization is now\n26\t`permission × scope`, where scope is `ORGANIZATION`, `UNIT`, `GROUP`, `COURSE`,\n27\t`SELF` or `RELATED`.\n28\t\n29\t## Why this is a better design, honestly assessed\n30\t\n31\t**It removes a whole vulnerability class.** Row-level tenancy protects data\n32\twith a `where` clause. Every query is one forgotten predicate away from a\n33\tcross-customer leak, forever, on every feature anyone ever writes. Deployment\n34\tisolation removes the possibility rather than defending against it. For a\n35\tsystem holding health data about children, that is the right trade.\n36\t\n37\t**It deletes a lot of code.** Gone: the scoping extension, `organizationId` on\n38\t~20 tables, composite tenant foreign keys, the cross-tenant test suite, tenant\n39\tcache keys, subdomain tenant resolution, and the platform-support PII\n40\trestriction. Roughly a third of the original security architecture existed to\n41\tdefend a boundary that no longer exists. That is a direct win against the\n42\tbrief's *\"minimale hoeveelheid code\"*.\n43\t\n44\t**It simplifies GDPR.** Each organisation's data is physically separate. The\n45\tcontroller/processor split is cleaner, a data processing agreement maps to a\n46\tdeployment, and an erasure request touches one database.\n47\t\n48\t## What it costs — stated plainly\n49\t\n50\t**Fleet operations become the dominant problem.** 100 customers means 100\n51\tdatabases, 100 backup schedules, 100 migration targets, 100 certificates. Done\n52\tby hand this collapses at around the fifth customer. Provisioning must be\n53\tscripted (D-028), rollouts must be waved and halt on failure, and version skew\n54\tmust be bounded and monitored. **This work has to exist before the second\n55\tcustomer, not after.** Finding F-13.\n56\t\n57\t**The dangerous principal moved.** There is no platform super administrator any\n58\tmore — but whoever can deploy can reach every instance. Per-instance\n59\tcredentials, required reviewers and audited deploys are now load-bearing\n60\tcontrols. Finding F-14.\n61\t\n62\t**A per-customer cost floor appears.** Dedicated database, storage, certificate\n63\tand monitoring per organisation. This constrains pricing and may make very\n64\tsmall clubs unprofitable. Commercial decision, flagged as OD-11.\n65\t\n66\t**Cross-organisation features become impossible by design.** A swimmer moving\n67\tbetween schools cannot carry their history through the database. If that is\n68\tever needed it must be a signed, portable certificate artefact — cheap to\n69\tdesign now, awkward later. OD-12.\n70\t\n71\t**The isolation problem did not disappear; it moved down a level.** An\n72\tinstructor must not browse another location's students. That is now enforced by\n73\tscope filtering, which has *exactly* the same failure mode as tenant filtering:\n74\ta missed `where` silently returns too much. So the tenancy tests are not simply\n75\tdeleted — they are replaced by mandatory scope-escape tests (D-032), and reach\n76\tbecomes a required repository argument (D-031). Finding F-15.\n77\t\n78\t## Decision changes\n79\t\n80\t| ID | Before | After |\n81\t|---|---|---|\n82\t| D-004 | `Person` spans organisations | One `Person` per human per instance |\n83\t| D-006 | Denormalise `organizationId` everywhere | **Withdrawn** — constant column, dead weight |\n84\t| D-011 | Platform support cannot read tenant PII | **Withdrawn** — no platform holds tenant data |\n85\t| D-012 | Single DB, shared schema, row-level tenancy | **Revised** — one instance per organisation |\n86\t| D-015 | Subdomain tenant resolution | **Withdrawn** — each instance has its own domain |\n87\t| D-016 | Closed theming token set | Unchanged, same reasoning |\n88\t| D-017 | Public surface cannot touch person tables | Unchanged, and now carrying more weight |\n89\t\n90\t## New decisions\n91\t\n92\t| ID | Decision |\n93\t|---|---|\n94\t| D-027 | `Organization` survives as an enforced singleton |\n95\t| D-028 | Provisioning is code in the repository, not a runbook |\n96\t| D-029 | No shared control plane in v1 |\n97\t| D-030 | Authorization is always resource-referenced |\n98\t| D-031 | Reach resolution is centralised and required by repositories |\n99\t| D-032 | Scope-escape tests are mandatory per module |\n100\t\n101\t## New findings\n102\t\n103\t| ID | Finding |\n104\t|---|---|\n105\t| F-01 | **Closed** — cross-organisation `Person` hole dissolved |\n106\t| F-13 | Fleet operations are the dominant risk, and were not in the brief |\n107\t| F-14 | The fleet operator is the new most-dangerous principal |\n108\t| F-15 | Scope filtering has the same failure mode tenancy did |\n109\t| F-16 | Per-customer cost floor was not considered |\n110\t\n111\t## New open decisions\n112\t\n113\t- **OD-3 (expanded)** — hosting target *and* who operates a customer's instance\n114\t- **OD-11** — per-customer cost floor and minimum viable price\n115\t- **OD-12** — is cross-instance functionality ever required?\n116\t",
+          "name": "Read"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209975827,
+      "__openclaw": {
+        "id": "0ead06a0-293c-4761-89d4-d8d940f06495",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "0ead06a0-293c-4761-89d4-d8d940f06495"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01A2QnPKrojdgcDczvuWVpAK",
+          "name": "Read",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "file_path": "/root/projects/SplashTrack/docs/design/12-revision-open-source.md"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01A2QnPKrojdgcDczvuWVpAK",
+          "type": "tool_result",
+          "content": "1\t# 12 — Revision: open-source, self-hosted product\n2\t\n3\t> ## ⚠️ HISTORY — NOT AN IMPLEMENTATION SOURCE\n4\t> This chapter records **how the design changed** (single-tenant → open-source self-hosted) and why.\n5\t> It is kept for traceability of reasoning only. **Do not implement from\n6\t> it and do not cite it as a requirement.** The active chapters (00–10, 13,\n7\t> 14) are consolidated and authoritative; if this note appears to\n8\t> contradict them, they are right and this note is stale.\n9\t\n10\t**Date:** 2026-08-31 · **Requested by:** Jack · **Supersedes the operational\n11\thalf of `11-revision-single-tenant.md`.**\n12\t\n13\t> *\"Instances are wrong on the organizations own infrastructure. Our final\n14\t> product should be a docker container that has the complete application and\n15\t> it's fully open source so any party can download and leverage this web app.\"*\n16\t\n17\t## The model, stated once\n18\t\n19\tWe publish an open-source Docker image and a reference `docker-compose.yml`.\n20\tAny organisation downloads it, runs it on infrastructure it owns, and operates\n21\tit itself. **We host nothing and hold no access to any deployment.**\n22\t\n23\t## What this removes\n24\t\n25\tThe single-tenant revision deleted the tenancy machinery. This one deletes the\n26\toperations:\n27\t\n28\t- Fleet manifest, waved rollouts, version-skew monitoring\n29\t- Per-customer provisioning script (D-028 revised — setup happens in-app)\n30\t- Per-instance deploy credentials\n31\t- The fleet-operator threat model (F-14, closed)\n32\t- Per-customer cost floor (F-16, closed)\n33\t- The processor relationship and every data processing agreement (F-05, closed)\n34\t\n35\tTogether the two revisions removed roughly half the original design. What is\n36\tleft is a product, a release process, and documentation.\n37\t\n38\t## What this adds\n39\t\n40\t**Our obligation shifts from operating to shipping responsibly.** Five new\n41\tduties:\n42\t\n43\t1. **The artifact must actually work** (D-033). One app image plus a compose\n44\t   file with Postgres. No default credentials — secrets generate on first run.\n45\t   In-app setup wizard. Automatic forward-only migrations. Non-root, read-only\n46\t   filesystem, SBOM.\n47\t2. **Upgrades must never strand anyone** (§2). Semantic versioning, skipped\n48\t   versions explicitly supported, migration chains never squashed within a\n49\t   major, release notes written for an IT generalist.\n50\t3. **Security advisories must reach operators** (D-034). Published advisories\n51\t   and an in-app warning when the running version has a known one. No telemetry\n52\t   beyond that — a privacy-first product does not phone home about a school.\n53\t4. **The release pipeline is now critical infrastructure** (F-18). A compromise\n54\t   ships to every operator, who trusts it because it is official. Signed images,\n55\t   provenance, pinned dependencies, tag-only release workflow that no\n56\t   contributor — Lucky included — can modify.\n57\t5. **Documentation is a feature, not an afterthought** (F-17). For self-hosted\n58\t   software, install and upgrade docs are as load-bearing as the code.\n59\t\n60\t## The honest downside\n61\t\n62\t**We can patch nothing and see nothing.** The realistic failure mode is not a\n63\tclever attack — it is a swim school running a three-year-old version on an\n64\tunmaintained server, holding children's health data. That risk is inherent to\n65\tthe model and cannot be engineered away from our side (F-13, F-17). We can only\n66\tmake upgrading easy, make advisories loud, and be honest in the documentation\n67\tthat operating it is their responsibility.\n68\t\n69\tGiven the alternative — us holding health data about thousands of children — it\n70\tis the right trade. But it should be chosen with eyes open, not framed as pure\n71\tsimplification.\n72\t\n73\t## Open decisions this creates\n74\t\n75\t| ID | Question |\n76\t|---|---|\n77\t| OD-13 | Which licence? **My recommendation: AGPL-3.0 + DCO.** Irreversible once contributions arrive |\n78\t| OD-14 | Will there ever be a hosted offering? Decide the licence as if yes, build as if no |\n79\t| OD-15 | Minimum operator skill level? Sets the packaging and documentation bar |\n80\t\n81\t## Decisions changed\n82\t\n83\t| ID | Now |\n84\t|---|---|\n85\t| D-012 | **(Final)** Open-source, self-hosted Docker image per organisation |\n86\t| D-028 | **(Revised)** No provisioning script; in-app first-run setup |\n87\t| D-029 | **(Reaffirmed)** No control plane, ever — now by construction |\n88\t| D-033 | **(New)** One app image + reference compose file including Postgres |\n89\t| D-034 | **(New)** No telemetry; opt-out version check only |\n90\t",
+          "name": "Read"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209976089,
+      "__openclaw": {
+        "id": "7d65f9a3-5a75-4901-82c4-64bbc118b900",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "7d65f9a3-5a75-4901-82c4-64bbc118b900"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Now let me systematically cross-check every identifier register against in-text citations."
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209980117,
+      "__openclaw": {
+        "id": "a4ea4b9f-777c-40de-a316-2b3d43775a6c",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "a4ea4b9f-777c-40de-a316-2b3d43775a6c"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_017Qj9gShuMoWuUzAJyqrdPm",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"=== D-xxx DEFINED in 09-decision-register (table col 1) ===\"\ngrep -oE '^\\| D-[0-9]{3}' 09-decision-register.md | grep -oE 'D-[0-9]{3}' | sort -u | tr '\\n' ' '; echo\necho\necho \"=== All D-xxx cited anywhere, with counts per id ===\"\ngrep -ohE 'D-[0-9]{3}' *.md | sort | uniq -c | sort -k2\n"
+          }
+        },
+        {
+          "tool_use_id": "toolu_017Qj9gShuMoWuUzAJyqrdPm",
+          "type": "tool_result",
+          "content": "=== D-xxx DEFINED in 09-decision-register (table col 1) ===\nD-001 D-002 D-003 D-004 D-005 D-006 D-007 D-008 D-009 D-010 D-011 D-012 D-013 D-014 D-015 D-016 D-017 D-018 D-019 D-020 D-021 D-022 D-023 D-024 D-025 D-026 D-027 D-028 D-029 D-030 D-031 D-032 D-033 D-034 D-035 D-036 D-037 D-038 D-039 D-040 D-041 D-042 D-043 D-044 D-045 D-046 D-047 D-048 D-049 D-050 D-051 D-052 D-053 D-054 D-055 D-056 D-057 D-058 D-059 D-060 D-061 D-062 D-063 D-064 D-065 D-066 \n\n=== All D-xxx cited anywhere, with counts per id ===\n      6 D-001\n      2 D-002\n      2 D-003\n      3 D-004\n      8 D-005\n      3 D-006\n      6 D-007\n      3 D-008\n      5 D-009\n      5 D-010\n      2 D-011\n     12 D-012\n      9 D-013\n      5 D-014\n      2 D-015\n      5 D-016\n      7 D-017\n      2 D-018\n      3 D-019\n      4 D-020\n      2 D-021\n      2 D-022\n      3 D-023\n      2 D-024\n      5 D-025\n      2 D-026\n      3 D-027\n      9 D-028\n      6 D-029\n      4 D-030\n      8 D-031\n      8 D-032\n      4 D-033\n      9 D-034\n      6 D-035\n      3 D-036\n      5 D-037\n      4 D-038\n      3 D-039\n      5 D-040\n      3 D-041\n      3 D-042\n      4 D-043\n      4 D-044\n      2 D-045\n      3 D-046\n      7 D-047\n      9 D-048\n      3 D-049\n      2 D-050\n      3 D-051\n      7 D-052\n      2 D-053\n      4 D-054\n      4 D-055\n      5 D-056\n      2 D-057\n      3 D-058\n      2 D-059\n      2 D-060\n      4 D-061\n      3 D-062\n      3 D-063\n      4 D-064\n      7 D-065\n      3 D-066",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209982231,
+      "__openclaw": {
+        "id": "2e0d2f22-5eea-4e97-8868-e830d3602162",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "2e0d2f22-5eea-4e97-8868-e830d3602162"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_017jeaDvMcwdzdn5z44HHPMp",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"=== F-xx defined as headings/rows in 10-findings ===\"\ngrep -nE '^### F-[0-9]+' 10-findings.md\necho\necho \"=== all F-xx occurrences by file ===\"\ngrep -ohE 'F-[0-9]{2}' *.md | sort | uniq -c\necho\necho \"--- F-15 mentions ---\"\ngrep -rn 'F-15' *.md\necho \"--- F-14 mentions ---\"\ngrep -rn 'F-14' *.md"
+          }
+        },
+        {
+          "tool_use_id": "toolu_017jeaDvMcwdzdn5z44HHPMp",
+          "type": "tool_result",
+          "content": "=== F-xx defined as headings/rows in 10-findings ===\n8:### F-01 — ~~`Person` is cross-organisation~~ **(dissolved by single-tenancy)**\n18:### F-02 — **(Resolved into v1)** Consent for minors was not specified\n28:### F-03 — **(Resolved)** External examiners were not modelled\n39:### F-04 — Photographs of minors were not called out\n47:### F-05 — **(Closed)** No Data Processing Agreement is mentioned\n54:### F-06 — **(Revised)** Retention and erasure conflict was resolved wrongly\n68:### F-07 — Backups are in GDPR scope and were not addressed\n77:### F-08 — No specified behaviour for a student who leaves and returns\n86:### F-09 — \"API-first where logical\" vs \"minimal amount of code\"\n95:### F-10 — \"Publieke website\" vs \"privacy by default\"\n102:### F-11 — \"Lucky develops autonomously\" vs \"least privilege\"\n108:### F-12 — The existing SplashTrack repo contradicts the brief's own requirement\n130:### F-13 — **(Revised)** We cannot patch what we do not operate\n142:### F-14 — **(Closed)** Fleet-operator threat model\n146:### F-16 — **(Closed)** Per-customer cost floor\n150:### F-17 — Outdated self-hosted instances are the biggest residual risk\n159:### F-18 — Supply-chain compromise now ships to every operator\n168:### F-19 — A public repository makes leaked secrets permanent\n177:### F-20 — Public issues will contain other people's personal data\n184:### F-21 — \"Open source\" is not yet a licence decision\n192:### F-22 — Better Auth is a young dependency on a critical path\n209:### F-23 — The backup download is a complete exfiltration primitive\n218:### F-24 — Losing the recovery token makes backups permanently useless\n229:### F-25 — \"Old backups still restore\" fails silently and late\n243:### F-26 — Unused multi-tenant machinery would have been left dormant\n252:### F-27 — Retention defaults must not masquerade as legal advice\n\n=== all F-xx occurrences by file ===\n      2 F-01\n      2 F-02\n      1 F-03\n      2 F-04\n      3 F-05\n      3 F-06\n      2 F-07\n      1 F-08\n      1 F-09\n      1 F-10\n      1 F-11\n      1 F-12\n      9 F-13\n      8 F-14\n      3 F-15\n      6 F-16\n      6 F-17\n      8 F-18\n      1 F-19\n      2 F-20\n      1 F-21\n      3 F-22\n      3 F-23\n      3 F-24\n      2 F-25\n      2 F-26\n      3 F-27\n\n--- F-15 mentions ---\n10-findings.md:15:**Replaced by F-15** — the same *shape* of risk now lives one level down, in\n11-revision-single-tenant.md:76:becomes a required repository argument (D-031). Finding F-15.\n11-revision-single-tenant.md:108:| F-15 | Scope filtering has the same failure mode tenancy did |\n--- F-14 mentions ---\n03-deployment-model.md:42:| Fleet-operator threat model (F-14) | No principal has access to any customer instance |\n02-security-privacy.md:630:| **Operator with fleet deploy rights** | The genuinely dangerous principal now. Per-instance credentials in protected environments, required reviewers, all deploys audited — finding **F-14** |\n11-revision-single-tenant.md:60:controls. Finding F-14.\n11-revision-single-tenant.md:107:| F-14 | The fleet operator is the new most-dangerous principal |\n08-open-decisions.md:55:   service you run, you are the processor and F-13/F-14 apply in full. If\n08-open-decisions.md:220:reintroduces the processor role, DPAs, fleet operations (F-13/F-14) and the\n12-revision-open-source.md:31:- The fleet-operator threat model (F-14, closed)\n10-findings.md:142:### F-14 — **(Closed)** Fleet-operator threat model",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209984274,
+      "__openclaw": {
+        "id": "fbdcd6fc-1076-4a85-aed0-46255d2fae96",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "fbdcd6fc-1076-4a85-aed0-46255d2fae96"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01FuzpLsbNfcS6nPoEP6NkSY",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"=== Full-form 'Decision D-xxx' authoritative statements, by id ===\"\ngrep -nE 'Decision \\*{0,2}D-[0-9]{3}' *.md | sed 's/:.*\\(D-[0-9][0-9][0-9]\\).*/ -> \\1/' | awk -F' -> ' '{print $2\"  \"$1}' | sort\n"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01FuzpLsbNfcS6nPoEP6NkSY",
+          "type": "tool_result",
+          "content": "=== Full-form 'Decision D-xxx' authoritative statements, by id ===\nD-001  00-overview.md\nD-002  01-domain-model.md\nD-003  01-domain-model.md\nD-004  01-domain-model.md\nD-005  01-domain-model.md\nD-006  01-domain-model.md\nD-007  02-security-privacy.md\nD-008  02-security-privacy.md\nD-009  02-security-privacy.md\nD-010  02-security-privacy.md\nD-012  03-deployment-model.md\nD-013  02-security-privacy.md\nD-014  02-security-privacy.md\nD-016  03-deployment-model.md\nD-017  03-deployment-model.md\nD-018  04-ux.md\nD-019  04-ux.md\nD-020  05-technical.md\nD-021  05-technical.md\nD-022  06-delivery.md\nD-023  06-delivery.md\nD-024  06-delivery.md\nD-025  06-delivery.md\nD-026  07-operations.md\nD-030  02-security-privacy.md\nD-031  02-security-privacy.md\nD-032  02-security-privacy.md\nD-033  03-deployment-model.md\nD-034  03-deployment-model.md\nD-035  02-security-privacy.md\nD-036  13-configuration-and-setup.md\nD-037  13-configuration-and-setup.md\nD-038  13-configuration-and-setup.md\nD-039  13-configuration-and-setup.md\nD-040  14-backup-restore-upgrade.md\nD-041  14-backup-restore-upgrade.md\nD-042  14-backup-restore-upgrade.md\nD-043  14-backup-restore-upgrade.md\nD-044  14-backup-restore-upgrade.md\nD-045  14-backup-restore-upgrade.md\nD-046  14-backup-restore-upgrade.md\nD-047  14-backup-restore-upgrade.md\nD-048  14-backup-restore-upgrade.md\nD-049  14-backup-restore-upgrade.md\nD-050  00-overview.md\nD-051  00-overview.md\nD-052  00-overview.md\nD-053  01-domain-model.md\nD-054  02-security-privacy.md\nD-055  13-configuration-and-setup.md\nD-056  01-domain-model.md\nD-057  01-domain-model.md\nD-058  01-domain-model.md\nD-059  01-domain-model.md\nD-060  01-domain-model.md\nD-061  01-domain-model.md\nD-062  01-domain-model.md\nD-063  02-security-privacy.md\nD-064  02-security-privacy.md\nD-066  01-domain-model.md",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209991988,
+      "__openclaw": {
+        "id": "b910715e-0373-4f87-a944-cf304a4d9186",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "b910715e-0373-4f87-a944-cf304a4d9186"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_0133Ef3PWwVJRPzogG5hCTgb",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"=== R-xx defined in 00 ===\"; grep -oE '^\\| R-[0-9]{2}' 00-overview.md | grep -oE 'R-[0-9]{2}' | sort -u | tr '\\n' ' '; echo\necho \"=== all R-xx cited ===\"; grep -rnoE 'R-[0-9]{2}' *.md | sort -t: -k3 | awk -F: '{print $3\"  \"$1\":\"$2}' | sort\necho\necho \"=== OD defined in 08 ===\"; grep -nE '^### OD-' 08-open-decisions.md | sed 's/ —.*//'\necho \"=== all OD cited (file:line) ===\"; grep -rnoE 'OD-[0-9]{1,2}' *.md | awk -F: '{print $3\"  \"$1\":\"$2}' | sort -V"
+          }
+        },
+        {
+          "tool_use_id": "toolu_0133Ef3PWwVJRPzogG5hCTgb",
+          "type": "tool_result",
+          "content": "=== R-xx defined in 00 ===\nR-01 R-02 R-03 R-04 R-05 R-06 R-07 R-08 R-09 R-10 R-11 R-12 R-13 R-14 R-15 R-16 R-17 R-18 R-19 R-20 R-21 R-22 R-23 R-24 R-25 R-26 R-27 R-28 R-29 \n=== all R-xx cited ===\nR-00  03-deployment-model.md:135\nR-00  05-technical.md:43\nR-00  05-technical.md:44\nR-00  05-technical.md:45\nR-00  05-technical.md:47\nR-01  00-overview.md:227\nR-01  02-security-privacy.md:292\nR-02  00-overview.md:228\nR-02  02-security-privacy.md:83\nR-02  04-ux.md:62\nR-02  05-technical.md:137\nR-02  09-decision-register.md:43\nR-03  00-overview.md:229\nR-04  00-overview.md:230\nR-04  00-overview.md:269\nR-04  01-domain-model.md:331\nR-04  10-findings.md:22\nR-05  00-overview.md:231\nR-06  00-overview.md:232\nR-07  00-overview.md:233\nR-08  00-overview.md:234\nR-09  00-overview.md:235\nR-10  00-overview.md:236\nR-11  00-overview.md:237\nR-12  00-overview.md:238\nR-13  00-overview.md:244\nR-14  00-overview.md:245\nR-15  00-overview.md:246\nR-15  00-overview.md:283\nR-16  00-overview.md:247\nR-17  00-overview.md:248\nR-18  00-overview.md:249\nR-19  00-overview.md:250\nR-20  00-overview.md:211\nR-20  00-overview.md:251\nR-21  00-overview.md:252\nR-22  00-overview.md:253\nR-23  00-overview.md:254\nR-24  00-overview.md:255\nR-25  00-overview.md:256\nR-26  00-overview.md:257\nR-27  00-overview.md:258\nR-28  00-overview.md:259\nR-29  00-overview.md:260\nR-29  08-open-decisions.md:20\n\n=== OD defined in 08 ===\n9:### OD-1\n24:### OD-2\n37:### OD-3\n65:### OD-4\n76:### OD-5\n90:### OD-6\n102:### OD-7\n115:### OD-8\n133:### OD-9\n143:### OD-10\n158:### OD-11\n178:### OD-12\n194:### OD-13\n216:### OD-14\n229:### OD-15\n=== all OD cited (file:line) ===\nOD-1  00-overview.md:209\nOD-1  00-overview.md:260\nOD-1  08-open-decisions.md:9\nOD-2  08-open-decisions.md:24\nOD-3  08-open-decisions.md:37\nOD-3  08-open-decisions.md:108\nOD-3  08-open-decisions.md:171\nOD-3  11-revision-single-tenant.md:113\nOD-4  00-overview.md:123\nOD-4  00-overview.md:268\nOD-4  08-open-decisions.md:65\nOD-5  00-overview.md:269\nOD-5  08-open-decisions.md:76\nOD-6  02-security-privacy.md:31\nOD-6  08-open-decisions.md:90\nOD-7  02-security-privacy.md:101\nOD-7  02-security-privacy.md:353\nOD-7  08-open-decisions.md:102\nOD-7  09-decision-register.md:21\nOD-7  09-decision-register.md:43\nOD-7  13-configuration-and-setup.md:197\nOD-8  08-open-decisions.md:115\nOD-9  08-open-decisions.md:133\nOD-10  08-open-decisions.md:143\nOD-11  08-open-decisions.md:158\nOD-11  11-revision-single-tenant.md:64\nOD-11  11-revision-single-tenant.md:114\nOD-12  00-overview.md:274\nOD-12  08-open-decisions.md:178\nOD-12  11-revision-single-tenant.md:69\nOD-12  11-revision-single-tenant.md:115\nOD-13  03-deployment-model.md:121\nOD-13  03-deployment-model.md:125\nOD-13  08-open-decisions.md:194\nOD-13  08-open-decisions.md:222\nOD-13  10-findings.md:189\nOD-13  12-revision-open-source.md:77\nOD-14  00-overview.md:125\nOD-14  00-overview.md:280\nOD-14  02-security-privacy.md:384\nOD-14  08-open-decisions.md:42\nOD-14  08-open-decisions.md:161\nOD-14  08-open-decisions.md:216\nOD-14  10-findings.md:148\nOD-14  12-revision-open-source.md:78\nOD-15  08-open-decisions.md:229\nOD-15  12-revision-open-source.md:79",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788209995041,
+      "__openclaw": {
+        "id": "7fc6ea97-587f-4cbd-83cd-647db9b791c7",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "7fc6ea97-587f-4cbd-83cd-647db9b791c7"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01VWt47YPSY6Zc3ppkewu6Bz",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"### multi-tenant / platform / fleet / processor residue in ACTIVE chapters (00-10,13,14)\"\nfor f in 00-overview.md 01-domain-model.md 02-security-privacy.md 03-deployment-model.md 04-ux.md 05-technical.md 06-delivery.md 07-operations.md 08-open-decisions.md 09-decision-register.md 10-findings.md 13-configuration-and-setup.md 14-backup-restore-upgrade.md; do\n  grep -nIE 'super_admin|super administrator|platform maximum|Platform[A-Z]|fleet|Fleet|tenant|Tenant|processor' \"$f\" | sed \"s|^|$f:|\"\ndone"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01VWt47YPSY6Zc3ppkewu6Bz",
+          "type": "tool_result",
+          "content": "### multi-tenant / platform / fleet / processor residue in ACTIVE chapters (00-10,13,14)\n00-overview.md:5:> application. There are no multi-tenant or platform-operator assumptions left in\n00-overview.md:20:- **Obsolete multi-tenant functionality is removed, not retained unused**\n00-overview.md:29:  platform super administrator, database-backed runtime settings, and the\n00-overview.md:165:Its **multi-tenant-specific** parts are a different matter. Tenant models,\n00-overview.md:391:**There is no platform super administrator.** Earlier drafts carried one from the\n00-overview.md:392:multi-tenant design. It is removed: there is no platform. The highest authority\n01-domain-model.md:41:organisation — its record, settings, branding and unit tree. It is not a tenant\n01-domain-model.md:42:registry, and nothing in the active design uses the word *tenant*. Likewise the\n01-domain-model.md:62:**Decision D-056 — Multi-tenant machinery inherited from the template is\n01-domain-model.md:65:The template carries a tenant-scoping client extension, per-row tenant columns,\n01-domain-model.md:81:Removed at extraction time: the tenant-scoping extension, tenant columns and\n01-domain-model.md:82:their composite foreign keys, `PlatformSettings` (merged into the organisation\n01-domain-model.md:83:singleton), `PlatformRoleAssignment`, and the platform permission namespace.\n01-domain-model.md:176:- There is no tenant column. Rows that a scoped role can reach carry `unitId`,\n01-domain-model.md:422:There is no tenant column. Instead, every entity that can be *reached* by a\n02-security-privacy.md:32:- **MFA is mandatory** for `platform.super_admin` and organisation\n02-security-privacy.md:126:than a tenant boundary would have been, and it is where the brief's *\"met\n02-security-privacy.md:242:**There is no platform super administrator, and no platform.** The instance\n02-security-privacy.md:370:software does not make the SplashTrack project a processor.**\n02-security-privacy.md:375:  on anyone's behalf and is therefore **not** a processor by virtue of\n02-security-privacy.md:378:- A **third party** may still be a processor **depending on the deployment**: a\n02-security-privacy.md:384:  processor. That is a deployment fact, not a property of the software (OD-14).\n02-security-privacy.md:386:**Reason.** The earlier text called the project a processor, which was simply\n02-security-privacy.md:387:wrong: a processor processes personal data on the controller's instructions, and\n02-security-privacy.md:531:Each policy is configurable by the organisation within a platform maximum, is\n02-security-privacy.md:630:| **Operator with fleet deploy rights** | The genuinely dangerous principal now. Per-instance credentials in protected environments, required reviewers, all deploys audited — finding **F-14** |\n03-deployment-model.md:3:> **Revised twice.** Multi-tenant → single-tenant → **self-hosted open source**.\n03-deployment-model.md:4:> See `11-revision-single-tenant.md` and `12-revision-open-source.md`.\n03-deployment-model.md:22:its own data. There is no processor relationship, no data processing agreement,\n03-deployment-model.md:39:| Fleet manifest, waved rollouts, version-skew monitoring | We have no fleet |\n03-deployment-model.md:42:| Fleet-operator threat model (F-14) | No principal has access to any customer instance |\n03-deployment-model.md:46:Combined with the single-tenant revision, **the entire operational half of the\n03-deployment-model.md:80:Unchanged from the single-tenant revision. `Organization` is an enforced\n03-deployment-model.md:88:This replaces fleet management entirely. Our obligations shift from *operating*\n03-deployment-model.md:132:`PlatformSettings` and `OrganizationBranding` collapse into a single `Branding`\n03-deployment-model.md:151:change into a per-customer regression risk across the fleet.\n03-deployment-model.md:204:Public pages are cached (ISR or equivalent). The tenant-in-cache-key hazard\n06-delivery.md:24:on every future feature, and it is what keeps a fleet of instances maintainable\n07-operations.md:46:and they cannot demonstrate it if only the processor can see the evidence.\n07-operations.md:57:  denials, any `platform.super_admin` use, repeated failed logins for one\n07-operations.md:97:| FM-6 | **Fleet version skew / migration fails mid-rollout** | Some instances on the old version; one instance broken | Waves, bounded skew, halt-on-failure, per-instance restore (F-13) |\n07-operations.md:124:| **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. Sharding is moot: the fleet is already partitioned by organisation |\n08-open-decisions.md:48:certificate automation and the whole fleet model.\n08-open-decisions.md:55:   service you run, you are the processor and F-13/F-14 apply in full. If\n08-open-decisions.md:56:   customers self-host, the fleet problem largely disappears but so does your\n08-open-decisions.md:117:**Why it changed.** This was deferred under the multi-tenant assumption, where\n08-open-decisions.md:118:per-tenant IdP configuration meant N configurations in one shared application —\n08-open-decisions.md:167:a multi-tenant design would not have (F-16). That sets a floor on pricing and\n08-open-decisions.md:220:reintroduces the processor role, DPAs, fleet operations (F-13/F-14) and the\n09-decision-register.md:19:| D-011 | **(Withdrawn)** No platform-support role restriction needed | There is no platform holding tenant data. Each instance has its own operator whose reach ends at that deployment | Support across customers requires per-instance access grants rather than one support role | `03-deployment-model.md` §1.1 |\n09-decision-register.md:20:| D-012 | **(Final)** Open-source, self-hosted: one Docker image per organisation, run on their own infrastructure | The organisation becomes sole controller and operator — no processor relationship, no third party holding children's health data, no cross-customer path. Open source makes the privacy claims verifiable rather than asserted | We can patch nothing and see nothing. Influence is limited to safe defaults, easy upgrades and honest advisories (F-13, F-17) | `03-deployment-model.md` §1 |\n09-decision-register.md:23:| D-015 | **(Withdrawn)** No subdomain tenant resolution | Each instance has its own domain; there is no tenant to resolve. Wildcard DNS and wildcard TLS are no longer required | Per-instance DNS and certificate provisioning instead — automated by D-028 | `03-deployment-model.md` §1.1 |\n09-decision-register.md:24:| D-016 | Theming is a closed, validated token set — never arbitrary CSS | Even within one organisation, admin-supplied CSS is a stored-XSS vector against its own users, and makes every UI change a per-customer regression risk across the fleet | No arbitrary visual design; the brief's full branding list still fits | `03-deployment-model.md` §4 |\n09-decision-register.md:34:| D-026 | Organisations can read their own audit trail | They are the GDPR controller; they cannot demonstrate accountability on evidence only the processor can see | The audit UI becomes a real product surface with its own performance and authorization needs | `07-operations.md` §1.2 |\n09-decision-register.md:64:| D-056 | The template's reusable parts are retained; its multi-tenant-specific models, middleware, authorization paths and schema elements are **actively removed during extraction**, incrementally and covered by tests | Dead security code is worse than absent security code: a bypassed scoping extension is attack surface, maintenance load, and a false signal to the next reader that something is enforced. Nothing is preserved merely because it already exists | Extraction work up front and real divergence from upstream, making cherry-picking harder | `00-overview.md` §2.1, `01-domain-model.md` §1.1.1 |\n09-decision-register.md:72:| D-064 | The organisation is the controller; publishing self-hosted software does not make the project a processor. A hosting or service provider may be, depending on deployment | A processor processes data on the controller's instructions; we never receive any. Overclaiming creates obligations we cannot fulfil, understating a hosting provider's role leaves a real gap | Documentation must explain a distinction most self-hosters have not considered, without drifting into legal advice | `02-security-privacy.md` §5.1 |\n10-findings.md:11:automatic tenant-scoping extension. With one instance per organisation\n10-findings.md:48:Self-hosting removes the processor relationship: the organisation is both\n10-findings.md:51:uses sub-processors (hosting, email), its own agreements — which the\n10-findings.md:117:| **Scope escape on a list query** (instructor sees students outside their groups) | High | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). *This replaces cross-tenant read as the top internal risk* |\n10-findings.md:132:instance stays vulnerable until its operator upgrades. We have no fleet to\n10-findings.md:142:### F-14 — **(Closed)** Fleet-operator threat model\n10-findings.md:243:### F-26 — Unused multi-tenant machinery would have been left dormant\n10-findings.md:244:**Severity: medium.** The plan was to simply not use the template's tenant\n13-configuration-and-setup.md:275:`PlatformBootstrap` is the template's existing enforced-singleton first-run",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210011097,
+      "__openclaw": {
+        "id": "89c262c8-ca12-476c-b564-c7d3d8b73360",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "89c262c8-ca12-476c-b564-c7d3d8b73360"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_018dWmxnJ8H8xZxW2tHX3LbV",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"### D-027 / D-028 / D-029 / D-011 / D-015 in 03\"; grep -n 'D-027\\|D-028\\|D-029\\|D-011\\|D-015' 03-deployment-model.md\necho; echo \"### 03 section headings\"; grep -nE '^#{1,4} ' 03-deployment-model.md\necho; echo \"### AttendanceRecord vs AttendanceEvent\"; grep -rn 'AttendanceRecord\\|AttendanceEvent' *.md\necho; echo \"### isolation tests vs scope-escape tests\"; grep -rn 'isolation test\\|Organisation isolation\\|scope-escape' *.md"
+          }
+        },
+        {
+          "tool_use_id": "toolu_018dWmxnJ8H8xZxW2tHX3LbV",
+          "type": "tool_result",
+          "content": "### D-027 / D-028 / D-029 / D-011 / D-015 in 03\n40:| Provisioning script for customer instances (D-028) | The operator runs `docker compose up`; first-run setup happens in-app |\n67:  enrolment, set organisation name and branding. Replaces D-028's script.\n81:singleton (D-027); `OrganizationUnit` provides the internal hierarchy that the\n\n### 03 section headings\n1:# 03 — Distribution Model, Theming & Public Website\n6:## 1. Distribution model — open-source, self-hosted container\n35:### 1.1 What this deletes — again\n49:### 1.2 What the artifact must be\n78:### 1.3 Structure inside an instance\n86:## 2. Release and upgrade model\n102:### 2.1 Telemetry — the honest position\n117:## 3. Open-source considerations\n129:## 4. Theming architecture\n164:## 5. Public website architecture\n166:### 5.1 Three surfaces, one deployment\n184:### 5.2 CMS scope — deliberately small\n195:### 5.3 Public forms\n202:### 5.4 Caching\n\n### AttendanceRecord vs AttendanceEvent\n01-domain-model.md:209:  ├──< ScheduledSession ──< AttendanceRecord >── StudentProfile\n01-domain-model.md:237:`AttendanceRecord` against it. This is the only shared table in the design and\n01-domain-model.md:376:| `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `AttendanceRecord` | Written by `planning`, read by `attendance` |\n01-domain-model.md:377:| `AttendanceEvent` | sessionId, studentProfileId, state, recordedByPersonId, recordedAt, `clientEventId`, `supersedesEventId?`, note? | | **Append-only.** `state` ∈ {PRESENT, ABSENT, EXCUSED, LATE}. A correction is a *new* event pointing at the one it replaces — the superseded row is never modified. `clientEventId` is a client-generated UUID making the write idempotent (P-02) |\n01-domain-model.md:449:| Session attendance | `ScheduledSession` | All its `AttendanceRecord` rows — **one transaction per group registration** |\n\n### isolation tests vs scope-escape tests\n02-security-privacy.md:312:   scope-escape suite is non-optional for Definition of Done.\n02-security-privacy.md:585:│   deny by default · scope-escape tests per module (D-032)       │\n02-security-privacy.md:621:| **Instructor browses students they don't teach** | `GROUP`-scoped grants; reach-filtered lists; scope-escape tests. **This is now the primary internal threat** |\n07-operations.md:94:| FM-3 | **Scope-escape bug** (missed reach filter on a list query) | Serious — one organisation's staff see records they should not, e.g. another location's students | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). Cross-*organisation* exposure is impossible by deployment (D-012 revised) |\n06-delivery.md:68:| **Organisation isolation tests** | Yes | Dedicated suite; a module without them fails DoD |\n06-delivery.md:191:tests → docs are all present; isolation tests exist; the privacy questionnaire\n10-findings.md:117:| **Scope escape on a list query** (instructor sees students outside their groups) | High | Reach is a required repository argument (D-031); scope-escape tests per module (D-032). *This replaces cross-tenant read as the top internal risk* |\n11-revision-single-tenant.md:75:deleted — they are replaced by mandatory scope-escape tests (D-032), and reach",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210013280,
+      "__openclaw": {
+        "id": "4e251e57-c018-41b3-8df3-5e702ac5963d",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "4e251e57-c018-41b3-8df3-5e702ac5963d"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_011sxVA2vYnSnyHCSYxNHmwP",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"### D-007 citations\"; grep -rn 'D-007' *.md\necho; echo \"### FM- references\"; grep -rn 'FM-[0-9]' *.md | grep -v '^07-operations.md:9[0-9]\\|^07-operations.md:10[0-4]'\necho; echo \"### 09 Where column values\"; grep -oE '`[0-9]{2}-[a-z-]*\\.md` §[0-9.]+(, §[0-9.]+)?' 09-decision-register.md | sort -u"
+          }
+        },
+        {
+          "tool_use_id": "toolu_011sxVA2vYnSnyHCSYxNHmwP",
+          "type": "tool_result",
+          "content": "### D-007 citations\n04-ux.md:176:records will be retained (D-007) before confirming.\n02-security-privacy.md:476:| Erasure | `person-erasure` transaction: anonymise `Person`, sever pointers, hard-delete special-category data, retain pseudonymised legal records (D-007) | Org admin with `privacy.erase`, step-up, and a confirmation naming the retained records |\n02-security-privacy.md:497:**Decision D-065 (replaces D-007) — Retention and erasure are driven by an\n08-open-decisions.md:189:start (they are already immutable, numbered records — D-007). That covers the\n09-decision-register.md:15:| D-007 | **(Superseded by D-065)** Erasure severs identity; retained records survive pseudonymised | Rested on two errors: pseudonymisation does not end the GDPR obligation, and a diploma does not itself create an Article 17 exception | — | `10-findings.md` F-06 |\n09-decision-register.md:73:| D-065 | Retention and erasure are policy-driven per data class: purpose, lawful basis, trigger, expiry action (`DELETE`/`ANONYMISE`/`REVIEW`) | Replaces D-007. Pseudonymisation does not end the obligation, and a diploma does not itself create an Article 17 exception — the ground must be identified and recorded, not assumed | The organisation must decide its own grounds; defaults ship as proposals requiring confirmation (F-27) | `02-security-privacy.md` §5.6 |\n\n### FM- references\n03-deployment-model.md:205:(previously FM-6) is gone. Portal pages are never cached across users.\n\n### 09 Where column values\n`00-overview.md` §1.1\n`00-overview.md` §2.1\n`00-overview.md` §2.3\n`00-overview.md` §3.4\n`00-overview.md` §5.2\n`01-domain-model.md` §1\n`01-domain-model.md` §1.1.1\n`01-domain-model.md` §1.2\n`01-domain-model.md` §2.1\n`01-domain-model.md` §2.1, §3.1\n`01-domain-model.md` §2.3\n`01-domain-model.md` §3.1\n`01-domain-model.md` §3.4\n`01-domain-model.md` §3.5\n`01-domain-model.md` §3.6\n`01-domain-model.md` §5.1\n`02-security-privacy.md` §1.2\n`02-security-privacy.md` §1.2.1\n`02-security-privacy.md` §1.3\n`02-security-privacy.md` §2.1\n`02-security-privacy.md` §2.2\n`02-security-privacy.md` §2.3\n`02-security-privacy.md` §3\n`02-security-privacy.md` §4\n`02-security-privacy.md` §5.1\n`02-security-privacy.md` §5.4\n`02-security-privacy.md` §5.5\n`02-security-privacy.md` §5.6\n`03-deployment-model.md` §1\n`03-deployment-model.md` §1.1\n`03-deployment-model.md` §1.2\n`03-deployment-model.md` §2.1\n`03-deployment-model.md` §4\n`03-deployment-model.md` §5.1\n`04-ux.md` §1\n`04-ux.md` §5.1\n`05-technical.md` §2\n`05-technical.md` §3\n`06-delivery.md` §1\n`06-delivery.md` §2.1\n`06-delivery.md` §4.3\n`07-operations.md` §1.2\n`13-configuration-and-setup.md` §2\n`13-configuration-and-setup.md` §3.1\n`13-configuration-and-setup.md` §4\n`13-configuration-and-setup.md` §6\n`14-backup-restore-upgrade.md` §2\n`14-backup-restore-upgrade.md` §3.2\n`14-backup-restore-upgrade.md` §3.3\n`14-backup-restore-upgrade.md` §4.3\n`14-backup-restore-upgrade.md` §4.3.1\n`14-backup-restore-upgrade.md` §5\n`14-backup-restore-upgrade.md` §6",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210019640,
+      "__openclaw": {
+        "id": "e895aa76-486d-4cc7-a002-0f0ea7d7d0f2",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "e895aa76-486d-4cc7-a002-0f0ea7d7d0f2"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01Kpd2eQ2A4HxNuJpS9J6Vcm",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"### section headings per file (for cross-ref validation)\"\nfor f in 00-overview.md 01-domain-model.md 02-security-privacy.md 07-operations.md 13-configuration-and-setup.md 14-backup-restore-upgrade.md; do echo \"--- $f\"; grep -nE '^#{2,4} ' $f; done"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01Kpd2eQ2A4HxNuJpS9J6Vcm",
+          "type": "tool_result",
+          "content": "### section headings per file (for cross-ref validation)\n--- 00-overview.md\n13:## Review status\n35:## Document set\n76:## 1. Product vision\n100:### 1.1 Domain scope — swim education first\n119:### 1.2 What SplashTrack is not\n131:## 2. Starting position\n135:### 2.1 `Jackldam/WebAppTemplate` — the technical base\n182:### 2.2 `Jackldam/SplashTrack` — the domain reference\n193:### 2.3 D-001 — build from the template, port the domain as concepts\n216:## 3. Core requirements\n221:### 3.1 Build now — v1\n262:### 3.2 Architecturally prepare — not built in v1\n276:### 3.3 Deliberately deferred\n285:### 3.4 The anonymous-access rule\n306:## 4. Non-functional requirements\n313:### 4.1 Software targets — verified in CI on the reference deployment\n329:### 4.2 Per-instance capacity\n350:### 4.3 Availability, RPO and RTO — operator guidance\n368:## 5. User types\n389:### 5.1 Three clarifications that shape the model\n410:### 5.2 External examiners\n--- 01-domain-model.md\n3:## 1. Functional modules\n21:### 1.1 Module map\n60:### 1.1.1 Removing what single-instance operation does not need\n94:### 1.2 Dependency rule\n144:## 2. Domain model\n146:### 2.1 The identity spine (inherited, unchanged)\n198:### 2.2 The swim domain\n219:### 2.3 Why these boundaries\n257:## 3. Key entities and relations\n263:### 3.1 People — three distinct concepts\n352:### 3.2 Teaching structure\n364:### 3.3 Skills and progress\n372:### 3.4 Attendance\n401:### 3.5 Exams\n420:### 3.6 Scoping invariant\n443:## 4. Aggregate and transaction boundaries\n459:## 5. Data ownership\n486:### 5.1 People with no membership are not an edge case\n514:### 5.2 Certificates and the right to erasure — honestly\n--- 02-security-privacy.md\n7:## 1. Security architecture — foundations\n9:### 1.1 Non-negotiable rules\n22:### 1.2 Authentication\n70:### 1.2.1 Identity providers are configured in the application, not in env vars\n103:### 1.3 Session security at the poolside — a domain-specific control\n122:## 2. Authorization — permissions × scope\n129:### 2.1 The model\n156:### 2.2 The authorization question\n205:### 2.3 Reach — the read side\n227:### 2.4 Starter roles\n248:### 2.5 Permission catalogue\n289:### 2.6 Access groups\n298:## 3. Defence in depth without tenancy\n324:### 3.1 Raw SQL\n330:## 4. Application security controls\n365:## 5. GDPR / privacy model\n367:### 5.1 Roles under the GDPR\n399:### 5.2 Data minimisation by default\n412:### 5.3 Special-category data\n422:### 5.4 Consent\n470:### 5.5 Data subject rights\n495:### 5.6 Retention and erasure — policy-driven\n552:### 5.7 Logging without personal data\n562:## 6. Trust boundaries\n601:### 6.1 The boundaries stated as rules\n616:### 6.2 Abuse scenarios considered\n--- 07-operations.md\n3:## 1. Logging, auditing and observability\n14:### 1.1 Operational logging rules\n22:### 1.2 Audit trail\n51:### 1.3 Observability\n62:## 2. Backup and restore\n88:## 3. Failure modes\n106:## 4. Scalability risks\n--- 13-configuration-and-setup.md\n8:## 1. The requirement, stated precisely\n21:## 2. Prior art — how Vaultwarden does it, and what to take from it\n37:### 2.1 What to copy, and what to reject\n70:## 3. The three configuration layers\n76:### 3.1 Layer 1 — Bootstrap (environment, restart required)\n115:### 3.2 Layer 2 — Runtime settings (database, in-app, live)\n137:### 3.3 Layer 3 — Organisation content\n148:## 4. Applying changes without a restart\n180:## 5. Secrets in the database\n202:## 6. Start-up, setup, restore and migration — one sequence\n260:### 6.1 The setup wizard\n291:## 7. Break-glass: locked out of your own instance\n322:## 8. Diagnostics page\n--- 14-backup-restore-upgrade.md\n8:## 1. The requirement, and one hard limit\n31:## 2. The Recovery Kit\n67:## 3. Backup\n69:### 3.1 On demand, from the admin UI\n81:### 3.2 Scheduled, unattended\n95:### 3.3 The download is a security event\n108:## 4. Restore\n110:### 4.1 Where\n122:### 4.2 What happens\n138:### 4.3 Restoring an OLD backup into a NEW version — the core promise\n174:### 4.3.1 What this obliges us to do — the actual cost\n225:### 4.3.2 Compatibility rules, stated as a table\n242:### 4.4 Restoring onto a *running* instance\n257:## 5. Migration\n285:## 6. Upgrade\n287:### 6.1 What the application can and cannot do\n319:### 6.2 Never strand a self-hoster\n328:## 7. What this adds to the settings registry",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210020516,
+      "__openclaw": {
+        "id": "2acdeccf-1cb0-49d0-9488-f00a6f414000",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "2acdeccf-1cb0-49d0-9488-f00a6f414000"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01RMPp7wP4onJBKVbqpURMTR",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"--- 02:205-226 reach\"; sed -n '205,226p' 02-security-privacy.md\necho; echo \"--- 02:305-316 defence\"; sed -n '305,316p' 02-security-privacy.md\necho; echo \"--- 01:257-262\"; sed -n '257,262p' 01-domain-model.md\necho; echo \"--- RELATED / P-04 / OD-5\"; grep -rn 'RELATED' 00-overview.md 02-security-privacy.md | head -20"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01RMPp7wP4onJBKVbqpURMTR",
+          "type": "tool_result",
+          "content": "--- 02:205-226 reach\n### 2.3 Reach — the read side\n\nFor lists and searches, the inverse question is asked once and turned into a\nfilter:\n\n```text\nresolveReach(session, 'students.read') → { units: [...], groups: [...], all: false }\n```\n\nRepositories accept a reach object and constrain the query with it. A single\nhelper, used everywhere, means there is one place to get list filtering right —\none place to get list filtering right, which is the boundary that actually\nexists in a single-organisation installation.\n\n**Decision D-031 — Reach resolution is centralised and repositories cannot be\ncalled without it.**\n**Reason.** Scoping bugs in list endpoints are the most likely remaining data\nexposure, because a missed filter silently returns everything. Making reach a\nrequired repository argument turns a silent over-fetch into a type error.\n**Trade-off.** Repository signatures are noisier. Worth it — this is now the\nhighest-risk code path in the application.\n\n\n--- 02:305-316 defence\n   enforced by infrastructure rather than by code.\n2. **Scope enforcement.** `requirePermission(..., resourceRef)` for writes and\n   single-resource reads; `resolveReach()` for lists. Deny by default, including\n   on unexpected failure.\n3. **Scope tests.** Every module ships tests asserting that a `GROUP`-scoped\n   instructor cannot read, write, or list outside their groups, and that a\n   `UNIT`-scoped role cannot escape its subtree. These replace the old\n   scope-escape suite is non-optional for Definition of Done.\n\n**Decision D-032 — Scope-escape tests are mandatory per module.**\n**Reason.** The old isolation suite existed because query-predicate tenancy is\neasy to get wrong. Scope filtering has the identical failure mode — a missed\n\n--- 01:257-262\n## 3. Key entities and relations\n\nOnly fields that carry architectural or privacy meaning are listed. `id`,\n`id`, `createdAt`, `updatedAt` are implied on every entity; `unitId` is implied\non every entity that participates in unit-scoped reach.\n\n\n--- RELATED / P-04 / OD-5\n00-overview.md:245:| R-14 | Scoped permission authorization (`ORGANIZATION` / `UNIT` / `GROUP` / `COURSE` / `EXAM_SESSION` / `SELF` / `RELATED`), deny by default, enforced server-side (`02-security-privacy.md` §2.1–2.2) |\n00-overview.md:269:| P-04 | Guardian **portal** | The relationship and consent authority are built in v1 (R-04); only the login surface and its `RELATED` scope axis are deferred (OD-5) |\n02-security-privacy.md:150:| `RELATED` | Persons the holder is related to | Guardian → their children (v2 portal, table exists in v1) |\n02-security-privacy.md:177:| `RELATED` | Records whose subject is a person the holder has an active relationship with (P-04) |\n02-security-privacy.md:240:| Guardian | `RELATED` | Consent on behalf of their child (v1); portal access deferred (P-04) |\n02-security-privacy.md:584:│   ORGANIZATION ▸ UNIT ▸ GROUP ▸ COURSE ▸ SELF ▸ RELATED         │",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210060471,
+      "__openclaw": {
+        "id": "67997c74-2693-433c-90f5-5c3e542ae67e",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "67997c74-2693-433c-90f5-5c3e542ae67e"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolcall",
+          "id": "toolu_01JXbsHwZGUQJ9azWqbac4Fb",
+          "name": "Bash",
+          "caller": {
+            "type": "direct"
+          },
+          "arguments": {
+            "command": "cd /root/projects/SplashTrack/docs/design\necho \"--- 30 seconds claims\"; grep -rn 'thirty seconds\\|30 seconds\\|group of 30\\|group of ~12\\|30 ×\\|30 students' *.md\necho; echo \"--- 'verified in CI' / CI claims in 00\"; sed -n '313,328p' 00-overview.md\necho; echo \"--- SECRET_KEY / generated on first run\"; grep -rn 'SECRET_KEY\\|generated on first run\\|generate on first run\\|generates its own secrets\\|secrets generate' *.md"
+          }
+        },
+        {
+          "tool_use_id": "toolu_01JXbsHwZGUQJ9azWqbac4Fb",
+          "type": "tool_result",
+          "content": "--- 30 seconds claims\n00-overview.md:317:| Attendance write latency | p95 < 300 ms server-side for a group of 30 | Load test in CI against a seeded instance |\n00-overview.md:318:| Group skill matrix (30 × 40) | p95 < 500 ms, no N+1 | Query-count assertion in CI |\n07-operations.md:120:| **Derived progress queries** — \"current level\" computed from an append-only log | A student with years of history, or a group matrix view over 30 students × 40 skills | `StudentProgressSummary` materialised on write. **Prepared, not built** (D-005) |\n04-ux.md:94:**Target: under 30 seconds for a group of ~12, on a tablet, with wet hands.**\n10-findings.md:266:1. **Derived progress state.** The group skill matrix (30 students × 40 skills)\n\n--- 'verified in CI' / CI claims in 00\n### 4.1 Software targets — verified in CI on the reference deployment\n\n| Area | Target | Verified by |\n|---|---|---|\n| Attendance write latency | p95 < 300 ms server-side for a group of 30 | Load test in CI against a seeded instance |\n| Group skill matrix (30 × 40) | p95 < 500 ms, no N+1 | Query-count assertion in CI |\n| Page interactive, portal on a 4G tablet | p95 < 2.5 s | Playwright trace budget |\n| Cold start to serving | < 60 s including migrations | CI container test |\n| Accessibility | WCAG 2.2 AA, including against configured brand colours | axe in E2E; contrast validated at save time |\n| Browser support | Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari first-class | Playwright matrix |\n| Localisation | NL default, EN available; no hardcoded UI strings | Lint rule + missing-key check |\n| Restore from every supported release (≥ `minimumRestorableVersion`) | Succeeds and migrates forward | Restore matrix job (D-047, D-048) |\n| Dependency risk | No known high/critical CVEs at merge | `npm audit` + Dependabot gate |\n| Secret exposure | Zero secrets in the repository | Secret scanning + push protection |\n| Resource footprint | Runs within 1 vCPU / 1 GB RAM for a small organisation | Documented and measured on the reference deployment |\n\n\n--- SECRET_KEY / generated on first run\n14-backup-restore-upgrade.md:39:│  database dump                                │ + │  wraps SECRET_KEY  │\n14-backup-restore-upgrade.md:52:**The token is `SECRET_KEY`** (§5 of `13-configuration-and-setup.md`), wrapped\n13-configuration-and-setup.md:84:SECRET_KEY        master key for encrypting secrets at rest (§5)\n13-configuration-and-setup.md:183:key derived from `SECRET_KEY`, using the pattern `WebAppTemplate` already\n13-configuration-and-setup.md:190:- Losing `SECRET_KEY` means every stored secret becomes unreadable and must be\n13-configuration-and-setup.md:192:- A database backup without `SECRET_KEY` is therefore *safer* to move around,\n13-configuration-and-setup.md:194:- Rotating `SECRET_KEY` requires a re-encryption command, which ships with the\n03-deployment-model.md:64:- **No default credentials, ever.** Secrets are generated on first run and\n12-revision-open-source.md:44:   file with Postgres. No default credentials — secrets generate on first run.\n09-decision-register.md:48:| D-040 | Recovery is two artefacts: an encrypted backup file **and** a recovery token (the wrapped `SECRET_KEY`), shown once and printable | A backup here is a complete copy of children's personal and health data; an unencrypted dump on a NAS is the most likely breach in the product. Encrypting makes the file inert alone, so it is safe to store casually — the safe path becomes the easy path | Lose the token and the backup is permanently unrecoverable. Obliges print-at-setup, explicit acknowledgement, step-up re-display, and a diagnostics check (F-24) | `14-backup-restore-upgrade.md` §2 |\n10-findings.md:174:image generates its own secrets on first run so no example value is ever\n10-findings.md:219:**Severity: high (operational).** The token is `SECRET_KEY`. Without it the",
+          "is_error": false,
+          "name": "Bash"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "tool_use",
+      "timestamp": 1788210062376,
+      "__openclaw": {
+        "id": "f0f8f78a-9b1e-4423-95e1-7b188c8ff24a",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "f0f8f78a-9b1e-4423-95e1-7b188c8ff24a"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "I read all 15 chapters and cross-checked every D-/F-/R-/OD-/FM- identifier and section reference with ripgrep. **21 findings**, ranked.\n\n---\n\n# BLOCKERS\n\n## B-1 — `ScheduledSession` ownership: D-057 is contradicted twice in its own chapter\n**`01-domain-model.md:120-131` vs `01-domain-model.md:234-239` and `:376`**\n\n> **:120** `**Decision D-057 — `ScheduledSession` is owned by its own `sessions` module.**` … `An earlier draft had `planning` writing the table and `attendance` reading it — \"one table, two owners\", which violates this document's own isolation rule and would have been the first boundary to erode in practice.`\n\n> **:234** `**`ScheduledSession` is the join point between planning and attendance.** Planning produces sessions; attendance consumes them. One table, two module owners — `planning` writes it, `attendance` reads it and writes `AttendanceRecord` against it. **This is the only shared table in the design and it is deliberate**`\n\n> **:376** `| `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `AttendanceRecord` | **Written by `planning`, read by `attendance`** |`\n\n§2.3 states verbatim the design D-057 was written to reject, and calls it deliberate. An implementer reading §2.3/§3.4 builds no `sessions` module and puts the write path in `planning` — the exact \"first boundary to erode\". D-057 wins (it is in the register, in the module list at `:54`, and is the later decision). §2.3's paragraph and §3.4's Notes column must be rewritten to \"owned by `sessions`; `planning` and `attendance` are both consumers\".\n\n## B-2 — \"All configuration via environment variables\" survives as a non-negotiable image property\n**`03-deployment-model.md:71` vs `13-configuration-and-setup.md:59,97` and `00-overview.md:248`**\n\n> **03:71** `- **All configuration via environment variables**, documented in one place. No configuration file editing required for a standard install.`\n\n> **13:59** `**Decision D-036 — Configuration lives in the database and is administered in-app behind normal authentication**`\n> **00:248 (R-17)** `a database-backed settings registry is the home of all configuration. An application-owned environment variable is permitted **only** when its value must be known before the database can be read`\n\nThis is listed under \"**Non-negotiable properties of the image**\". It is the single sentence most likely to be read as a build instruction, and it inverts the whole of chapter 13. D-036/D-037 win. Replace with \"Five bootstrap environment variables (13 §3.1); all other configuration is database-backed and edited in-app.\"\n\n## B-3 — `SECRET_KEY` has three mutually exclusive lifecycles\n**`13-configuration-and-setup.md:84` vs `03-deployment-model.md:64-65` vs `10-findings.md:174`**\n\n> **13:84** `SECRET_KEY        master key for encrypting secrets at rest (§5)` — listed as a **Layer 1 bootstrap environment variable, operator-supplied, restart required**\n\n> **03:64** `- **No default credentials, ever.** Secrets are generated on first run and written to the data volume; the app refuses to start with a placeholder value.`\n\n> **10:174** `the image generates its own secrets on first run so no example value is ever plausible as a real one`\n\nMeanwhile D-040 (`14:52`) makes this key the **recovery token**, displayed once by the setup wizard (`13:270`). Env-var-supplied, self-generated-to-volume, and wizard-displayed are three different implementations with three different failure modes — and this is the key that gates every backup restore (F-24) and every encrypted medical column (D-013). An implementer must not have to guess. Resolution: the app generates `SECRET_KEY` on first run *if unset*, persists it where §3.1 says state lives, and displays it as the recovery token; `03:64` and `13 §3.1` must both say that in the same words, once, in one place.\n\n## B-4 — The data-subject-rights table still specifies the erasure behaviour D-065 declares wrong\n**`02-security-privacy.md:476` vs `02-security-privacy.md:497-542`, same ch\n…(truncated)…"
+        }
+      ],
+      "api": "anthropic-messages",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "stopReason": "end_turn",
+      "timestamp": 1788210201876,
+      "__openclaw": {
+        "id": "e6d1f601-7969-47b3-9e52-9266e8db52af",
+        "importedFrom": "claude-cli",
+        "cliSessionId": "e3c3658f-ba0f-4d49-aa2e-faf564305d24",
+        "externalId": "e6d1f601-7969-47b3-9e52-9266e8db52af",
+        "truncated": true,
+        "reason": "display-cap"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "I'll start by surveying the design directory structure and reading all chapters.\n\nI'll read all chapters now.\n\nNow let me systematically cross-check every identifier register against in-text citations.\n\nI read all 15 chapters and cross-checked every D-/F-/R-/OD-/FM- identifier and section reference with ripgrep. **21 findings**, ranked.\n\n---\n\n# BLOCKERS\n\n## B-1 — `ScheduledSession` ownership: D-057 is contradicted twice in its own chapter\n**`01-domain-model.md:120-131` vs `01-domain-model.md:234-239` and `:376`**\n\n> **:120** `**Decision D-057 — `ScheduledSession` is owned by its own `sessions` module.**` … `An earlier draft had `planning` writing the table and `attendance` reading it — \"one table, two owners\", which violates this document's own isolation rule and would have been the first boundary to erode in practice.`\n\n> **:234** `**`ScheduledSession` is the join point between planning and attendance.** Planning produces sessions; attendance consumes them. One table, two module owners — `planning` writes it, `attendance` reads it and writes `AttendanceRecord` against it. **This is the only shared table in the design and it is deliberate**`\n\n> **:376** `| `ScheduledSession` | groupId, locationId, startsAt, endsAt, status | N `AttendanceRecord` | **Written by `planning`, read by `attendance`** |`\n\n§2.3 states verbatim the design D-057 was written to reject, and calls it deliberate. An implementer reading §2.3/§3.4 builds no `sessions` module and puts the write path in `planning` — the exact \"first boundary to erode\". D-057 wins (it is in the register, in the module list at `:54`, and is the later decision). §2.3's paragraph and §3.4's Notes column must be rewritten to \"owned by `sessions`; `planning` and `attendance` are both consumers\".\n\n## B-2 — \"All configuration via environment variables\" survives as a non-negotiable image property\n**`03-deployment-model.md:71` vs `13-configuration-and-setup.md:59,97` and `00-overview.md:248`**\n\n> **03:71** `- **All configuration via environment variables**, documented in one place. No configuration file editing required for a standard install.`\n\n> **13:59** `**Decision D-036 — Configuration lives in the database and is administered in-app behind normal authentication**`\n> **00:248 (R-17)** `a database-backed settings registry is the home of all configuration. An application-owned environment variable is permitted **only** when its value must be known before the database can be read`\n\nThis is listed under \"**Non-negotiable properties of the image**\". It is the single sentence most likely to be read as a build instruction, and it inverts the whole of chapter 13. D-036/D-037 win. Replace with \"Five bootstrap environment variables (13 §3.1); all other configuration is database-backed and edited in-app.\"\n\n## B-3 — `SECRET_KEY` has three mutually exclusive lifecycles\n**`13-configuration-and-setup.md:84` vs `03-deployment-model.md:64-65` vs `10-findings.md:174`**\n\n> **13:84** `SECRET_KEY        master key for encrypting secrets at rest (§5)` — listed as a **Layer 1 bootstrap environment variable, operator-supplied, restart required**\n\n> **03:64** `- **No default credentials, ever.** Secrets are generated on first run and written to the data volume; the app refuses to start with a placeholder value.`\n\n> **10:174** `the image generates its own secrets on first run so no example value is ever plausible as a real one`\n\nMeanwhile D-040 (`14:52`) makes this key the **recovery token**, displayed once by the setup wizard (`13:270`). Env-var-supplied, self-generated-to-volume, and wizard-displayed are three different implementations with three different failure modes — and this is the key that gates every backup restore (F-24) and every encrypted medical column (D-013). An implementer must not have to guess. Resolution: the app generates `SECRET_KEY` on first run *if unset*, persists it where §3.1 says state lives, and displays it as the recovery token; `03:64` and `13 §3.1` must both say that in the sam\n…(truncated)…"
+        }
+      ],
+      "stopReason": "stop",
+      "api": "cli",
+      "provider": "claude-cli",
+      "model": "claude-opus-5",
+      "timestamp": 1788210202159,
+      "idempotencyKey": "cli-assistant:0e3d5ade-764c-4be1-ac49-252e1c23f048",
+      "__openclaw": {
+        "id": "a110e96b-9058-4871-95f8-9ff7fa2f8ba4",
+        "idempotencyKey": "cli-assistant:0e3d5ade-764c-4be1-ac49-252e1c23f048",
+        "recordTimestampMs": 1788210202201,
+        "transcriptPosition": {
+          "source": "kcgHB1AR0cgip485bsV143Y4KQ21a8ej0JGiDK0c3rQ",
+          "rawSeq": 2
+        },
+        "seq": 2,
+        "truncated": true,
+        "reason": "display-cap"
+      }
+    }
+  ],
+  "truncated": true,
+  "droppedMessages": true,
+  "contentTruncated": true,
+  "contentRedacted": false,
+  "bytes": 69137,
+  "pendingInputs": {
+    "items": [],
+    "total": 0
+  }
+}
