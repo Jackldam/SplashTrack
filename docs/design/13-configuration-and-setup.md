@@ -86,12 +86,15 @@ DATA_DIR          uploads/assets path (optional, sane default)
 PORT              listen port (optional, sane default)
 ```
 
+That is the current set, not a quota. It may grow when a value genuinely meets
+the criterion below, and it should stay small because few values do.
+
 Separately, and **not** application-owned: standard runtime and platform
 variables an operator may need (`TZ`, `NODE_ENV`, proxy settings, a custom CA
 bundle, container resource limits). We document them where relevant but do not
 own or invent them.
 
-**Decision D-037 (revised) — Environment holds only what must be known before
+**Decision D-037 — Environment holds only what must be known before
 the database is readable, or what selects where state lives. Everything else
 belongs in the settings registry. Adding a variable requires an ADR stating why
 it cannot live in the database.**
@@ -137,14 +140,8 @@ Branding, pages, skill catalogues, roles: already database-backed domain data
 (§4 and §5 of `03-deployment-model.md`). Mentioned only to note it is *not* part
 of the settings registry — content and configuration stay separate.
 
-**Decision D-037 — The environment-variable surface is capped at five keys.**
-**Reason.** A self-hoster should never have to grep a `.env.template` with two
-hundred entries to find why email is not sending. Capping the surface forces
-every new option into the in-app registry by default.
-**Trade-off.** Some settings that are conventionally env vars (SMTP host, log
-level) move into the database and therefore cannot be changed while the
-database is down. Acceptable — if the database is down, email settings are not
-the problem being solved.
+The rule governing what may live in the environment is stated once, in §3.1
+(D-037). It is not restated here.
 
 ---
 

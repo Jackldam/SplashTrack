@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>SplashTrack — Design Review (rev. 4)</title>
+  <title>SplashTrack — Design Review (rev. 5)</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -137,19 +137,20 @@ h2.done::after{content:"✓";color:var(--ok);font-size:.8em;margin-left:.5em}
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">SplashTrack — Design Review (rev. 4)</h1>
+<h1 class="title">SplashTrack — Design Review (rev. 5)</h1>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
 <li><a href="#splashtrack--design--architecture" id="toc-splashtrack--design--architecture">SplashTrack — Design &amp;
 Architecture</a>
 <ul>
-<li><a href="#wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01" id="toc-wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01">Wat er
-veranderde in rev. 4 (je review van hoofdstuk 01)</a></li>
+<li><a href="#wat-er-veranderde-in-rev-5" id="toc-wat-er-veranderde-in-rev-5">Wat er veranderde in rev. 5</a></li>
 </ul></li>
 <li><a href="#splashtrack--product-vision-requirements--scope" id="toc-splashtrack--product-vision-requirements--scope">SplashTrack —
 Product Vision, Requirements &amp; Scope</a>
 <ul>
+<li><a href="#review-status" id="toc-review-status">Review
+status</a></li>
 <li><a href="#document-set" id="toc-document-set">Document set</a></li>
 <li><a href="#1-product-vision" id="toc-1-product-vision">1. Product
 vision</a></li>
@@ -340,89 +341,48 @@ the settings registry</a></li>
 </nav>
 <h1 id="splashtrack--design--architecture">SplashTrack — Design &amp;
 Architecture</h1>
-<p><strong>Versie:</strong> 2026-08-31 (rev. 4) ·
-<strong>Branch:</strong> <code>design/architecture-phase</code> · PR #14
-<strong>Status:</strong> hoofdstukken 00–10, 13 en 14 zijn
-geconsolideerd en leidend. Hoofdstuk 11 en 12 zijn historie, geen
-implementatiebron.</p>
-<h2 id="wat-er-veranderde-in-rev-4-je-review-van-hoofdstuk-01">Wat er
-veranderde in rev. 4 (je review van hoofdstuk 01)</h2>
+<p><strong>Versie:</strong> 2026-08-31 (rev. 5) ·
+<strong>Branch:</strong> <code>design/architecture-phase</code> · PR
+#14</p>
+<p><strong>Hoofdstuk 00: AKKOORD.</strong> Hoofdstukken 01–14 blijven in
+review.</p>
+<h2 id="wat-er-veranderde-in-rev-5">Wat er veranderde in rev. 5</h2>
 <table>
 <thead>
 <tr>
-<th>#</th>
-<th>Correctie</th>
+<th>Punt</th>
 <th>Verwerkt</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>1</td>
-<td>Tenant-semantiek weg; <code>Membership</code> i.p.v.
-<code>OrganizationMembership</code></td>
-<td>Module heet <code>organization</code> (enkelvoud) en beheert
-<em>de</em> organisatie; alle tenant-taal uit actieve hoofdstukken</td>
+<td>Numerieke env-limiet weg uit R-17</td>
+<td>R-17 herschreven naar het bootstrap-noodzaakcriterium; geen maximum.
+Runtime/platform-variabelen (<code>TZ</code>, <code>NODE_ENV</code>,
+proxy, CA-pad) tellen expliciet niet mee</td>
 </tr>
 <tr>
-<td>2</td>
-<td>Ongebruikte multi-tenant code verwijderen, niet laten staan</td>
-<td><strong>D-056</strong> + <strong>F-26</strong></td>
+<td>Dubbele D-037 opgeruimd</td>
+<td>De oude normatieve versie (&quot;capped at five keys&quot;) in <code>13</code>
+§3.3 is verwijderd; er is nu precies één normatieve regel, in
+<code>13</code> §3.1</td>
 </tr>
 <tr>
-<td>3</td>
-<td><code>ScheduledSession</code> één eigenaar</td>
-<td><strong>D-057</strong> — nieuwe <code>sessions</code> module</td>
+<td>&quot;Multi-tenant machinerie wordt simpelweg niet gebruikt&quot; weg</td>
+<td><code>00</code> §2.1 herschreven: herbruikbare delen blijven,
+tenant-specifieke modellen/middleware/authz-paden/schema worden
+<strong>actief verwijderd bij extractie</strong>, incrementeel en met
+tests gedekt</td>
 </tr>
 <tr>
-<td>4</td>
-<td><code>Person</code> = canonical anchor, niet enige plek voor
-PII</td>
-<td><strong>D-058</strong></td>
+<td>D-056 aangescherpt</td>
+<td>Expliciet &quot;incrementeel en test-gedekt&quot; in <code>01</code> §1.1.1 en
+in het register</td>
 </tr>
 <tr>
-<td>5</td>
-<td>Leave-and-return expliciet</td>
-<td><strong>D-059</strong> — <code>MembershipPeriod</code> +
-<code>StudentLifecycleEvent</code></td>
-</tr>
-<tr>
-<td>6</td>
-<td>Membership geen impliciete eis voor rollen</td>
-<td><strong>D-060</strong></td>
-</tr>
-<tr>
-<td>7</td>
-<td>Attendance écht append-only</td>
-<td><strong>D-061</strong> — <code>AttendanceEvent</code> met
-<code>supersedesEventId</code></td>
-</tr>
-<tr>
-<td>8</td>
-<td>ExamCandidate → 0..N resultaten</td>
-<td><strong>D-062</strong> — <code>supersedesResultId</code>, één
-effectief resultaat</td>
-</tr>
-<tr>
-<td>9</td>
-<td>Guardian authority als evidence; consent met legal basis</td>
-<td><strong>D-063</strong></td>
-</tr>
-<tr>
-<td>10</td>
-<td>GDPR-rollen corrigeren</td>
-<td><strong>D-064</strong> — project is géén processor</td>
-</tr>
-<tr>
-<td>11</td>
-<td>Retention/erasure policy-driven; pseudonimisering ≠
-anonimisering</td>
-<td><strong>D-065</strong> (vervangt D-007) + <strong>F-06
-herzien</strong></td>
-</tr>
-<tr>
-<td>12</td>
-<td>Retention voor Persons zonder Membership</td>
-<td><strong>D-066</strong> — trigger is &quot;laatste relatie eindigt&quot;</td>
+<td>Reviewstatus hoofdstuk 00</td>
+<td>Reviewblok bovenaan <code>00</code> met status AKKOORD en de vier
+bevestigde punten</td>
 </tr>
 </tbody>
 </table>
@@ -441,6 +401,30 @@ as an implementation instruction. If they appear to contradict an active
 chapter, the active chapter is correct and the revision note is
 stale.</p>
 </blockquote>
+<h2 id="review-status">Review status</h2>
+<p><strong>Chapter 00 — Status: AKKOORD</strong> (Jack, 2026-08-31)</p>
+<ul>
+<li>The product direction is <strong>accepted</strong>.</li>
+<li><strong><code>WebAppTemplate</code> is the implementation
+foundation</strong> (D-001); the existing SplashTrack repository serves
+only as a domain reference.</li>
+<li><strong>Obsolete multi-tenant functionality is removed, not retained
+unused</strong> (D-056) — incrementally, covered by tests, for a smaller
+attack surface and less maintenance debt.</li>
+<li><strong>Environment configuration follows the bootstrap-necessity
+criterion</strong> (D-037), not an arbitrary count: a variable is
+permitted only when its value must be known before the database can be
+read, or when it determines where persistent state lives. Everything
+else is database-backed.</li>
+<li>Chapter 00 is now <strong>consistent with the later single-instance,
+self-hosted architecture</strong>: one organisation per installation, no
+shared control plane, no platform super administrator, database-backed
+runtime settings, and the security-first / GDPR-by-design requirements
+intact.</li>
+</ul>
+<p>Chapters 01–14 remain <strong>under review</strong>; approving
+chapter 00 approves nothing else, and the open decisions in
+<code>08-open-decisions.md</code> remain open.</p>
 <h2 id="document-set">Document set</h2>
 <table>
 <thead>
@@ -703,8 +687,23 @@ migration-against-populated- database job</strong>.</p>
 <p><strong>Assessment: the single most valuable asset in the
 project.</strong> It answers, with tested code, most of the non-domain
 requirements — the tedious, security-critical part that is easy to get
-wrong. Its multi-tenant machinery is simply not used; that
-<em>removes</em> work rather than adding it.</p>
+wrong.</p>
+<p><strong>How it is adopted (D-056).</strong> The template is the
+implementation foundation, and its reusable parts are retained where
+applicable: security and authentication primitives, the authorization
+framework, GDPR tooling, audit infrastructure, branding and CMS, the
+testing setup and the operational components.</p>
+<p>Its <strong>multi-tenant-specific</strong> parts are a different
+matter. Tenant models, middleware, authorization paths, schema elements
+and any other code that has no purpose in a single-instance architecture
+are <strong>identified and actively removed during extraction</strong> —
+not carried along unused. Nothing is preserved merely because it already
+exists.</p>
+<p>Removal is <strong>incremental and covered by tests</strong>, so that
+reusable functionality is not broken on the way out. The objective is a
+smaller attack surface, less complexity and less maintenance debt —
+dormant security code is worse than absent security code, because it
+suggests an enforcement that is not happening.</p>
 <p>Quality signal: the schema comments document real incidents. One
 foreign-key comment explains that a <code>Restrict</code> constraint
 once caused a GDPR Article 17 erasure to roll back entirely, and why the
@@ -855,8 +854,16 @@ administrator, forced MFA, optional restore (D-039)</td>
 <tr>
 <td>R-17</td>
 <td><strong>In-app configuration</strong> — a database-backed settings
-registry; at most five environment variables; no container restart for a
-runtime setting (D-036, D-037, D-038)</td>
+registry is the home of all configuration. An application-owned
+environment variable is permitted <strong>only</strong> when its value
+must be known before the database can be read, or when it determines
+where persistent state lives; adding one requires an ADR justifying why
+it cannot be database-backed. <strong>No numeric maximum is
+imposed.</strong> Standard runtime/platform variables (<code>TZ</code>,
+<code>NODE_ENV</code>, proxy settings, custom CA/trust-store paths,
+container runtime settings) are not SplashTrack application
+configuration and are not counted. No container restart for a runtime
+setting (D-036, D-037, D-038)</td>
 </tr>
 <tr>
 <td>R-18</td>
@@ -1389,7 +1396,12 @@ track.</p>
 columns and their composite foreign keys, <code>PlatformSettings</code>
 (merged into the organisation singleton),
 <code>PlatformRoleAssignment</code>, and the platform permission
-namespace. Recorded as finding <strong>F-26</strong>.</p>
+namespace.</p>
+<p><strong>Removal is incremental and test-covered.</strong> Each
+removal is its own change with the existing suites green before and
+after, so that reusable functionality — authentication, authorization,
+GDPR tooling, audit, branding, CMS — is not broken on the way out.
+Recorded as finding <strong>F-26</strong>.</p>
 <p>Deliberately <strong>not</strong> modules: &quot;reporting&quot; (a read
 concern satisfied by queries until proven otherwise), &quot;billing&quot;
 (deferred), &quot;website&quot; (the <code>pages</code> module plus theming
@@ -5198,9 +5210,11 @@ small bootstrap layer</td>
 </tr>
 <tr>
 <td>D-037</td>
-<td><strong>(Revised)</strong> Environment holds only what must be known
-before the database is readable, or what selects where state lives;
-adding a variable requires an ADR</td>
+<td>Environment holds only what must be known before the database is
+readable, or what selects where state lives; adding a variable requires
+an ADR. <strong>No numeric cap.</strong> Runtime/platform variables
+(<code>TZ</code>, <code>NODE_ENV</code>, proxy, CA path) are not
+application configuration</td>
 <td>A hard numeric cap would be an arbitrary rule that could later block
 necessary pre-database or platform configuration (TLS trust store,
 proxy, read-only paths). The criterion is what matters: if a value can
@@ -5426,14 +5440,18 @@ with one case per state</td>
 </tr>
 <tr>
 <td>D-056</td>
-<td>Multi-tenant machinery from the template is
-<strong>removed</strong>, not left dormant</td>
+<td>The template&#39;s reusable parts are retained; its
+multi-tenant-specific models, middleware, authorization paths and schema
+elements are <strong>actively removed during extraction</strong>,
+incrementally and covered by tests</td>
 <td>Dead security code is worse than absent security code: a bypassed
 scoping extension is attack surface, maintenance load, and a false
-signal to the next reader that something is enforced</td>
+signal to the next reader that something is enforced. Nothing is
+preserved merely because it already exists</td>
 <td>Extraction work up front and real divergence from upstream, making
 cherry-picking harder</td>
-<td><code>01-domain-model.md</code> §1.1.1</td>
+<td><code>00-overview.md</code> §2.1, <code>01-domain-model.md</code>
+§1.1.1</td>
 </tr>
 <tr>
 <td>D-057</td>
@@ -6384,16 +6402,18 @@ APP_URL           the public origin (also the WebAuthn relying-party origin)
 SECRET_KEY        master key for encrypting secrets at rest (§5)
 DATA_DIR          uploads/assets path (optional, sane default)
 PORT              listen port (optional, sane default)</code></pre>
+<p>That is the current set, not a quota. It may grow when a value
+genuinely meets the criterion below, and it should stay small because
+few values do.</p>
 <p>Separately, and <strong>not</strong> application-owned: standard
 runtime and platform variables an operator may need (<code>TZ</code>,
 <code>NODE_ENV</code>, proxy settings, a custom CA bundle, container
 resource limits). We document them where relevant but do not own or
 invent them.</p>
-<p><strong>Decision D-037 (revised) — Environment holds only what must
-be known before the database is readable, or what selects where state
-lives. Everything else belongs in the settings registry. Adding a
-variable requires an ADR stating why it cannot live in the
-database.</strong></p>
+<p><strong>Decision D-037 — Environment holds only what must be known
+before the database is readable, or what selects where state lives.
+Everything else belongs in the settings registry. Adding a variable
+requires an ADR stating why it cannot live in the database.</strong></p>
 <p><strong>Reason.</strong> A hard numeric cap would be an arbitrary
 architectural rule that could later block genuinely necessary
 pre-database or platform configuration — a TLS trust store, a proxy, a
@@ -6430,15 +6450,8 @@ content</h3>
 domain data (§4 and §5 of <code>03-deployment-model.md</code>).
 Mentioned only to note it is <em>not</em> part of the settings registry
 — content and configuration stay separate.</p>
-<p><strong>Decision D-037 — The environment-variable surface is capped
-at five keys.</strong> <strong>Reason.</strong> A self-hoster should
-never have to grep a <code>.env.template</code> with two hundred entries
-to find why email is not sending. Capping the surface forces every new
-option into the in-app registry by default. <strong>Trade-off.</strong>
-Some settings that are conventionally env vars (SMTP host, log level)
-move into the database and therefore cannot be changed while the
-database is down. Acceptable — if the database is down, email settings
-are not the problem being solved.</p>
+<p>The rule governing what may live in the environment is stated once,
+in §3.1 (D-037). It is not restated here.</p>
 <hr />
 <h2 id="4-applying-changes-without-a-restart">4. Applying changes
 without a restart</h2>

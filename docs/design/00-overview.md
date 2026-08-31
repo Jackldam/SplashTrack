@@ -10,6 +10,28 @@
 > instruction. If they appear to contradict an active chapter, the active
 > chapter is correct and the revision note is stale.
 
+## Review status
+
+**Chapter 00 — Status: AKKOORD** (Jack, 2026-08-31)
+
+- The product direction is **accepted**.
+- **`WebAppTemplate` is the implementation foundation** (D-001); the existing
+  SplashTrack repository serves only as a domain reference.
+- **Obsolete multi-tenant functionality is removed, not retained unused**
+  (D-056) — incrementally, covered by tests, for a smaller attack surface and
+  less maintenance debt.
+- **Environment configuration follows the bootstrap-necessity criterion**
+  (D-037), not an arbitrary count: a variable is permitted only when its value
+  must be known before the database can be read, or when it determines where
+  persistent state lives. Everything else is database-backed.
+- Chapter 00 is now **consistent with the later single-instance, self-hosted
+  architecture**: one organisation per installation, no shared control plane, no
+  platform super administrator, database-backed runtime settings, and the
+  security-first / GDPR-by-design requirements intact.
+
+Chapters 01–14 remain **under review**; approving chapter 00 approves nothing
+else, and the open decisions in `08-open-decisions.md` remain open.
+
 ## Document set
 
 | # | Deliverable | Where |
@@ -132,8 +154,25 @@ database job**.
 
 **Assessment: the single most valuable asset in the project.** It answers, with
 tested code, most of the non-domain requirements — the tedious,
-security-critical part that is easy to get wrong. Its multi-tenant machinery is
-simply not used; that *removes* work rather than adding it.
+security-critical part that is easy to get wrong.
+
+**How it is adopted (D-056).** The template is the implementation foundation,
+and its reusable parts are retained where applicable: security and
+authentication primitives, the authorization framework, GDPR tooling, audit
+infrastructure, branding and CMS, the testing setup and the operational
+components.
+
+Its **multi-tenant-specific** parts are a different matter. Tenant models,
+middleware, authorization paths, schema elements and any other code that has no
+purpose in a single-instance architecture are **identified and actively removed
+during extraction** — not carried along unused. Nothing is preserved merely
+because it already exists.
+
+Removal is **incremental and covered by tests**, so that reusable functionality
+is not broken on the way out. The objective is a smaller attack surface, less
+complexity and less maintenance debt — dormant security code is worse than
+absent security code, because it suggests an enforcement that is not
+happening.
 
 Quality signal: the schema comments document real incidents. One foreign-key
 comment explains that a `Restrict` constraint once caused a GDPR Article 17
@@ -206,7 +245,7 @@ not need rework when the feature arrives — not that it is built now.
 | R-14 | Scoped permission authorization (`ORGANIZATION` / `UNIT` / `GROUP` / `COURSE` / `EXAM_SESSION` / `SELF` / `RELATED`), deny by default, enforced server-side (`02-security-privacy.md` §2.1–2.2) |
 | R-15 | **Configurable OAuth 2.0 / OIDC identity providers** (Microsoft Entra, Google, Keycloak, Okta, generic), administered in-app (D-035) |
 | R-16 | **First-run setup wizard** — organisation, first administrator, forced MFA, optional restore (D-039) |
-| R-17 | **In-app configuration** — a database-backed settings registry; at most five environment variables; no container restart for a runtime setting (D-036, D-037, D-038) |
+| R-17 | **In-app configuration** — a database-backed settings registry is the home of all configuration. An application-owned environment variable is permitted **only** when its value must be known before the database can be read, or when it determines where persistent state lives; adding one requires an ADR justifying why it cannot be database-backed. **No numeric maximum is imposed.** Standard runtime/platform variables (`TZ`, `NODE_ENV`, proxy settings, custom CA/trust-store paths, container runtime settings) are not SplashTrack application configuration and are not counted. No container restart for a runtime setting (D-036, D-037, D-038) |
 | R-18 | **Encrypted backup and restore** — the Recovery Kit: encrypted archive plus a printable recovery token (D-040) |
 | R-19 | **Recovery and break-glass** — host-level CLI for lockout, MFA reset, settings reset; all audited (`13-…` §7) |
 | R-20 | **Migrations and upgrades** — automatic forward-only migration on start, automatic pre-migration backup, restore-then-migrate so an old backup runs on a new version (D-043 – D-048) |

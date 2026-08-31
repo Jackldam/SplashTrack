@@ -81,7 +81,11 @@ starting point, not a dependency we track.
 Removed at extraction time: the tenant-scoping extension, tenant columns and
 their composite foreign keys, `PlatformSettings` (merged into the organisation
 singleton), `PlatformRoleAssignment`, and the platform permission namespace.
-Recorded as finding **F-26**.
+
+**Removal is incremental and test-covered.** Each removal is its own change with
+the existing suites green before and after, so that reusable functionality —
+authentication, authorization, GDPR tooling, audit, branding, CMS — is not
+broken on the way out. Recorded as finding **F-26**.
 
 Deliberately **not** modules: "reporting" (a read concern satisfied by queries
 until proven otherwise), "billing" (deferred), "website" (the `pages` module
