@@ -258,6 +258,34 @@ in the setup wizard and the privacy admin area, with the lawful basis field
 empty until the organisation fills it. The documentation states the roles
 (D-064) and the questions, and explicitly declines to answer them.
 
+### F-28 — The relicensing window closes at the first external contribution
+**Severity: high, and time-bounded rather than technical.** The licence was
+changed from GPL-3.0 to AGPL-3.0 on 2026-09-01 (D-067). That was only possible
+because every commit in the repository traced to a single rightsholder. **The
+moment one genuine third-party contribution is merged, the licence is frozen**
+unless that person agrees to a change — and in practice contributors disappear,
+so "frozen" means permanent.
+
+The design had treated the licence as an open question (OD-13) while the
+repository had in fact been carrying GPL-3.0 the whole time, and had already
+accepted pull requests. The gap between "we will decide this later" and "this is
+already decided, wrongly, and is about to become unchangeable" was invisible
+because nobody looked at the repository root.
+
+**Response.**
+1. `CONTRIBUTING.md` ships with a **DCO sign-off** requirement (`Signed-off-by:`
+   on every commit), enforced by a CI check, **before** the repository invites
+   contributions. The DCO does not permit relicensing on its own — it records
+   provenance and the right to contribute. It is what makes the contributor
+   history auditable if a future licence question ever arises.
+2. The `AGPL-3.0` header and the licence file are treated as part of the release
+   artefact and checked in CI, so a future refactor cannot quietly drop them.
+3. **Generalised lesson, worth more than this instance:** a design document that
+   opens a decision must first check whether the decision has already been made
+   somewhere in the repository. Several other entries in `08-open-decisions.md`
+   deserve the same test — an open decision that is silently already implemented
+   is more dangerous than an unmade one, because nobody is looking for it.
+
 ## Scalability problems
 
 Covered in full in `07-operations.md` §4. Scale is defined **per installation**

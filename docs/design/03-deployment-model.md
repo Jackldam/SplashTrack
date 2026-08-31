@@ -118,11 +118,11 @@ Accepted; that information is not ours.
 
 | Concern | Position |
 |---|---|
-| **Licence** | To be chosen — see OD-13. The choice materially affects whether a competitor may run SplashTrack as a paid hosted service |
+| **Licence** | **AGPL-3.0** (D-067, closes OD-13). Chosen over the GPL-3.0 the repository already carried because GPL copyleft triggers on distribution, not network use — and SplashTrack is software that is *run as a service*. AGPL §13 is what stops a competitor hosting a modified SplashTrack for swim schools while publishing nothing |
 | **Security by design, not obscurity** | The source is public, so every control in this design must hold against an attacker who has read it. Nothing here relies on secrecy — which was already true, and is now enforced |
 | **Supply chain** | Pinned dependencies, lockfile, Dependabot, `npm audit` gate, signed images, published SBOM, provenance attestation. A compromised dependency now ships to every self-hoster (F-18) |
 | **Secrets** | No secret may ever be committed. Push protection and secret scanning are mandatory, and a leaked secret in history is permanent in a public repo |
-| **Contributions** | `CONTRIBUTING.md`, DCO or CLA (OD-13), and a rule that security-relevant changes require maintainer review regardless of author |
+| **Contributions** | `CONTRIBUTING.md` with a **DCO sign-off** requirement (F-28), and a rule that security-relevant changes require maintainer review regardless of author. The DCO must be in place before the first genuine external contribution: after that point, relicensing needs every contributor's agreement — the constraint that nearly cost us D-067 |
 | **Issue hygiene** | Public issues may contain a self-hoster's logs or screenshots. The template must warn against pasting personal data, and maintainers redact |
 | **Documentation is a feature** | For a self-hosted product, install and upgrade documentation is as load-bearing as the code. It ships in the repo and is versioned with it |
 

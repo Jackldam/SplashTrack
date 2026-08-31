@@ -191,25 +191,46 @@ transfer case without any cross-instance data path.
 
 ---
 
-### OD-13 — Which open-source licence?
+### OD-13 — Which open-source licence? — **RESOLVED (2026-09-01): AGPL-3.0**
 
-**Why it matters.** "Fully open source" is a direction, not a licence, and the
-choice is effectively irreversible once third-party contributions arrive.
-**Options.**
-- **AGPL-3.0** — anyone running a modified SplashTrack as a network service must
-  publish their modifications. Protects against a competitor building a closed
-  paid hosted version on your work. Some organisations' policies forbid AGPL.
-- **Apache-2.0** — maximum adoption, explicit patent grant. Anyone may run a
-  paid hosted SplashTrack without giving anything back.
-- **MIT** — simplest, same trade-off as Apache without the patent clause.
-**Also needed:** DCO or CLA for contributions, and a decision on trademark use
-of the name.
-**Cost of delay.** High and rising — relicensing after external contributions
-requires every contributor's agreement.
-**My recommendation: AGPL-3.0 + DCO.** It matches the intent (any party may
-download and use it), keeps improvements flowing back, and preserves the option
-of selling a hosted version yourself later. If broad enterprise adoption matters
-more than reciprocity, Apache-2.0 instead — but decide deliberately.
+**Status: CLOSED.** Decided by Jack on 2026-09-01. See **D-067**.
+
+**What the design assumed, and what was actually true.** This decision was
+written as though the licence were still unchosen. It was not: the repository
+already carried **GNU GPL-3.0** at its root, and had done so since before the
+design phase began. The open decision was therefore not "pick a licence" but
+"keep GPL-3.0 or move to AGPL-3.0", and nobody had noticed the difference.
+
+That difference is the whole point. **GPL-3.0 is not triggered by network
+use.** A competitor may take SplashTrack, modify it, run it as a paid hosted
+service for swim schools, and publish nothing. Since SplashTrack is designed to
+be *run as a service* by whoever deploys it, GPL-3.0's copyleft almost never
+fires — the software is used over a network, not distributed. AGPL-3.0 §13
+closes exactly that gap.
+
+**Resolution.** `LICENSE` replaced with the verbatim GNU AGPL-3.0 text
+(19 November 2007), obtained from `https://www.gnu.org/licenses/agpl-3.0.txt`.
+
+**Why this was still possible.** Relicensing requires the agreement of every
+copyright holder. Every commit in the repository's history — across the
+identities `Jack den Ouden`, `Jack`, `Jackldam`, and the assistant/agent
+identities operating under Jack's direction — traces to a single rightsholder.
+There is no external contributor whose consent would have been required. Had
+one genuine third-party contribution landed first, this change would have been
+blocked or would have needed that person's agreement. The cost-of-delay warning
+in the original entry was accurate, and the window was closed with days, not
+weeks, to spare.
+
+**Still open, and deliberately kept out of this decision:**
+- **DCO for contributions** — see `CONTRIBUTING.md` and F-28. Needed before the
+  next external pull request, not before the next commit.
+- **Trademark use of the name "SplashTrack"** — a licence governs the code, not
+  the name. Undecided; low urgency; no code depends on it.
+
+**Known trade-off, accepted.** Some organisations' procurement policies refuse
+AGPL software outright. For swim schools and sports associations this is
+unlikely to bind; for a municipal or hospital-adjacent buyer it might. That
+adoption cost was accepted deliberately in exchange for reciprocity.
 
 ---
 
