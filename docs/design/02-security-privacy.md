@@ -145,9 +145,17 @@ of:
 | `UNIT` | One `OrganizationUnit` **and its descendants** | "Planner for Locatie Zuidbad" |
 | `GROUP` | One specific group | "Instructor of Groep A1" |
 | `COURSE` | One course across groups | "Examiner for Diploma B" |
-| `EXAM_SESSION` | **One single exam session** | "External examiner, Saturday 14 March" |
+| `SESSION` | **Participation in one scheduled session (lesson, aftest or exam session) and its roster, for a bounded window** | "Independent aftest assessor, Groep A1's Thursday aftest" · "Substitute instructor, one evening" · "External examiner, Saturday 14 March" |
 | `SELF` | The holder's own records | Every authenticated person, implicitly |
-| `RELATED` | Persons the holder is related to | Guardian → their children (v2 portal, table exists in v1) |
+
+**`RELATED` is not in this enum.** OD-5 (`08-open-decisions.md`) decided on
+2026-09-01 to remove it entirely rather than reserve it unimplemented: it was
+simultaneously mandated for v1 (R-14), deferred to the guardian portal (P-04),
+and *granted* by the starter-role catalogue below — an administrator could
+assign a scope whose enforcement nobody had written, and it would look like it
+worked. A guardian's consent authority in v1 is expressed through the `consent`
+module and `PersonRelationship` (§5.4), not through an authorization scope. The
+enum member returns with the portal that needs it.
 
 The same person may hold several assignments simultaneously: instructor of two
 groups, planner for one location, and a member of the organisation. Their
@@ -172,23 +180,46 @@ Coverage is defined per scope type, once, and nowhere else:
 | `UNIT` | The unit **and all its descendants**, and every group, session, student and exam session beneath them |
 | `GROUP` | That group, its scheduled sessions, and the students in it *for the period of their membership* |
 | `COURSE` | That course, its levels, its enrolments, and **all** its exam sessions |
-| `EXAM_SESSION` | **That one exam session only** — its candidates and their results. Nothing else, not the course, not the students' other records |
+| `SESSION` | **That one session's roster only** — the students on it, for the window the grant is valid, and (for an exam or aftest session) the assessment/results being recorded there. Nothing else, not the course, not the students' other records |
 | `SELF` | Records whose subject is the holder |
-| `RELATED` | Records whose subject is a person the holder has an active relationship with (P-04) |
 
 Only `UNIT` walks a tree. Every other scope covers exactly what it names.
 
-**Decision D-054 — `EXAM_SESSION` is a first-class scope type; there is no
-"scope-like" access that lives outside the enum.**
-**Reason.** An external examiner attends one session. `COURSE` scope would grant
-them every exam session of that course, past and future, which over-grants on
-exactly the records that matter most — a child's diploma outcome. Rather than
-inventing a special case for examiners, the scope enum gains one member and the
-general mechanism handles it. Every grant in the system is then expressible as
-`(permission, scopeType, scopeId)` with no exceptions.
-**Trade-off.** One more scope type to implement and test, and `ExamAssessor`
-(`01-domain-model.md` §3.5) becomes a projection of a role assignment rather
-than an independent access mechanism — it records *who assessed*, not *who may*.
+**Decision D-054 — (Superseded by D-068) `EXAM_SESSION` was a first-class scope
+type covering only exam sessions.** Retained here as history: the reasoning —
+that a special case must not live outside the scope enum — is what D-068
+generalises.
+
+**Decision D-068 — `SESSION` is a first-class scope type: reach follows
+assignment to a specific session's roster, for a bounded window, and replaces
+`EXAM_SESSION`.**
+**Reason.** Four real cases share one shape, and the design had modelled only
+one of them: an independent *aftest* assessor is by definition **not** the
+child's instructor and therefore holds no `GROUP` grant covering that child
+(F-41); a substitute instructor covering one evening is in the same position; the
+receiving instructor of a make-up lesson (`SessionRosterEntry`,
+`01-domain-model.md` §3.2) needs to read a guest student for one session; and an
+external examiner attends one exam session, which is the case D-054 already
+solved narrowly. `COURSE` scope over-grants every one of these — an assessor
+would gain every future aftest and exam of that course, past and future, on
+exactly the records that matter most: a child's diploma outcome. One scope type
+generalises all four rather than adding three more special cases, and every
+grant in the system stays expressible as `(permission, scopeType, scopeId)`
+with no exceptions.
+
+Coverage is resolved from `SessionRosterEntry` / the exam session's candidate
+list at the time of the check, not cached at grant time, so a student added to
+or removed from the roster changes reach immediately. The grant itself carries
+its own `validFrom`/`validTo` — typically the session's date, occasionally a
+short window around it for preparation and follow-up.
+
+**Trade-off.** One more scope type to implement and test, evaluated against a
+roster rather than a static membership — a small amount of extra resolution
+logic reach checks for every other scope avoid. `ExamAssessor`
+(`01-domain-model.md` §3.5) and its aftest equivalent become projections of a
+role assignment rather than an independent access mechanism — they record *who
+assessed*, not *who may*. **Blocks D-085** (`15-assessment-and-fees.md` §3):
+the four-eyes gate on exam candidacy cannot ship without this.
 
 **Decision D-030 — Authorization is always resource-referenced; a bare
 permission check is not sufficient.**
@@ -233,11 +264,17 @@ highest-risk code path in the application.
 | Planner | `UNIT` or `ORGANIZATION` | Schedules, groups, locations, instructor assignment |
 | Instructor | `GROUP` (one per group taught) | Attendance, skill sign-off, read student basics |
 | Internal examiner | `COURSE`, time-bounded | Assesses any exam session of that course |
-| External examiner | `EXAM_SESSION`, always with an expiry | One session only. A `Person` with no membership (D-052) |
+| External examiner | `SESSION`, always with an expiry | One exam session only. A `Person` with no membership (D-052) |
+| Independent aftest assessor | `SESSION`, always with an expiry | Grades one *aftest*, held by an instructor who is not the student's own (D-085, `15-assessment-and-fees.md` §3) |
 | Member Administrator | `UNIT` or `ORGANIZATION` | People, **memberships** and student administration, enrolments — three distinct concepts (`01-domain-model.md` §3.1) |
 | Content Editor | `ORGANIZATION` | Public pages and branding. **No person data** |
 | Read-only Viewer | `UNIT` | Oversight and reporting |
-| Guardian | `RELATED` | Consent on behalf of their child (v1); portal access deferred (P-04) |
+
+**No Guardian role in v1.** A guardian's authority to consent on a child's
+behalf is a `PersonRelationship` fact (§5.4), not an authorization grant — there
+is no `RELATED` scope to hold one (OD-5, above). A guardian who is also a
+member has whatever role that membership carries; a guardian who is not gets no
+account. This returns with the guardian portal.
 
 **There is no platform super administrator, and no platform.** The instance
 administrator is the highest authority and their reach ends at this
@@ -416,8 +453,17 @@ medical remarks, allergies, physical limitations relevant to water safety.
 
 Rules: separate permission pair (D-010); column-encrypted (D-013); every read
 audited; excluded from all exports unless the export explicitly requests it and
-the requester holds `students.medical.read`; hard-deleted (not anonymised) at
-12 months after enrolment ends; never present in logs, ever.
+the requester holds `students.medical.read`; hard-deleted (not anonymised) from
+**live storage** at 12 months after enrolment ends; never present in logs, ever.
+
+**The 12-month figure is a live-storage promise, not a total one.** A deleted
+row can still be present in an already-taken encrypted backup until that
+backup ages out (D-042, `14-backup-restore-upgrade.md` §3.2/§5.2) — up to the
+backup retention window plus, for pre-migration backups, three further
+upgrades. The organisation's own privacy notice must state both figures and
+the resulting **backup horizon** (the latest date at which a deleted note can
+still exist, encrypted, in a backup archive) rather than implying that "hard
+deleted" means gone everywhere the moment the row is removed. Finding **F-59**.
 
 ### 5.4 Consent
 
@@ -473,7 +519,7 @@ purpose.
 |---|---|---|
 | Access / inzage | Generates a structured export (JSON + human-readable PDF) of everything about one Person within one org | Org admin with `privacy.export`, step-up required |
 | Rectification | Ordinary edit on `Person` / profile; all edits audited | Member administrator |
-| Erasure | `person-erasure` transaction: anonymise `Person`, sever pointers, hard-delete special-category data, retain pseudonymised legal records (D-007) | Org admin with `privacy.erase`, step-up, and a confirmation naming the retained records |
+| Erasure | `person-erasure` transaction: anonymise `Person`, sever pointers, hard-delete special-category data, retain pseudonymised legal records with their ground stated (D-065) | Org admin with `privacy.erase`, step-up, and a confirmation naming the retained records |
 | Portability | Same export as access, machine-readable | As access |
 | Restriction | `Person` flagged; writes blocked, reads audited | Org admin |
 | Objection | Marketing/consent withdrawal is self-service where an account exists | Data subject or guardian |
@@ -482,6 +528,20 @@ The template already implements the erasure transaction and knows where the
 sharp edges are (its `OrganizationBranding.updatedByPersonId` comment
 documents a real Article 17 rollback incident). SplashTrack extends the same
 transaction with the domain tables rather than inventing a parallel path.
+
+**Access/inzage is staged, not fully specified — Finding F-88.** The export
+above discloses more than the requesting organisation may realise: guardian
+details, instructor names on sign-offs, staff-authored notes and audit actor
+ids are other people's personal data with no preview or redaction pass, while
+erasure next door requires one. Separately, medical data is included only when
+the *requester* (the staff member running the export) holds
+`students.medical.read` — but the entitled party in an Article 15 request is
+the **data subject**, so a member administrator without that permission
+produces an export that looks complete and is silently missing the health
+data. **Required before this ships:** reuse the erasure preview pattern for
+export, including what is disclosed about third parties, and make the export
+**fail loudly** (refuse, naming the missing permission) rather than silently
+omitting a category. Not designed further here.
 
 **Decision D-014 — Erasure is a single transaction with an explicit table
 registry.**
@@ -581,7 +641,7 @@ different retention and different readers.
                 │  requirePermission(perm, resourceRef)  /  resolveReach()
 ┌───────────────▼─────────────────────────────────────────────────┐
 │ BOUNDARY 2 — Scope enforcement  (the boundary that now matters) │
-│   ORGANIZATION ▸ UNIT ▸ GROUP ▸ COURSE ▸ SELF ▸ RELATED         │
+│   ORGANIZATION ▸ UNIT ▸ GROUP ▸ COURSE ▸ SESSION ▸ SELF         │
 │   deny by default · scope-escape tests per module (D-032)       │
 └───────────────┬─────────────────────────────────────────────────┘
                 │
