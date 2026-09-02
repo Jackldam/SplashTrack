@@ -239,14 +239,22 @@ audit event, short-lived single-use signed link, and the archive encrypted at
 rest so the artefact is inert without the recovery token (D-040).
 
 ### F-24 — Losing the recovery token makes backups permanently useless
-**Severity: high (operational).** The token is `SECRET_KEY`. Without it the
-backup cannot be decrypted and the encrypted columns inside it cannot be read.
-There is no reset — that is the point of encryption, but it is a foot-gun aimed
-directly at a volunteer administrator.
+**Severity: high (operational).** *(Corrected with D-114 and D-166 — this
+paragraph previously read "the token **is** `SECRET_KEY`", a scheme
+`14-…` §2.1 deleted, and it is the finding the operator documentation is written
+from.)* The token is a **passphrase over the archive's key record** (D-114): it
+unwraps the backup master key, and with D-166 it also unwraps the archived
+`SECRET_KEY`, which is what makes the Recovery Kit two artefacts rather than
+three. Losing it therefore loses **every archive** and the only recovery path for
+the key material inside them — the encrypted columns, the stored secrets and the
+TOTP enrolments alike. There is no reset; that is the point of encryption, and it
+is a foot-gun aimed directly at a volunteer administrator.
 **Response.** Shown once at setup with an explicit print step and a required
-"I have stored this" acknowledgement; re-displayable later under step-up
-authentication; surfaced in diagnostics as an acknowledged/not-acknowledged
-check; and stated plainly in the installation documentation next to the backup
+"I have stored this" acknowledgement naming both what it decrypts and what it
+recovers; re-displayable later under step-up authentication, high-severity
+audited and notified (D-115); surfaced in diagnostics as an
+acknowledged/not-acknowledged check **plus the key-custody check** of `13-…` §8;
+and stated plainly in the installation documentation next to the backup
 instructions rather than buried in a security appendix.
 
 ### F-25 — "Old backups still restore" fails silently and late
@@ -973,8 +981,10 @@ under D-065 — and the maintenance job destroys the evidence legitimately.
 application role a non-superuser; and a retention floor enforced by the settings
 classification (D-150). The related retention *mismatch* — audit at 24 months
 against exam results at 10 years, so the record of who recorded a diploma
-outcome dies eight years before the outcome — is a hand-off to `01-…` §5 and
-`07-…` §1.2 (§4 below).
+outcome dies eight years before the outcome — was left as a hand-off and is
+**settled by D-168**: the floor is computed from the classes the events
+evidence. D-168 also supplies what made parts 1 and 3 of D-149 contradictory in
+the first place (F-137).
 
 ### F-117 — MFA verification was unthrottled, and the MFA mandate may have been a checkbox
 **Severity: high.** (Reviewer B-16.) Rate limiting covered login, password reset,

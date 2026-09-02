@@ -806,9 +806,10 @@ after the fact.
 
 ### 2.6 No amplification, no scope escape by grant
 
-**Decision D-139 — A granter may grant only permissions they themselves hold,
-only at or below their own scope, and only for a validity window within their
-own. Enforced in the grant service, not in the UI.**
+**Decision D-139 (as completed by D-170) — A granter may grant only permissions
+they themselves hold, only over resources their own grant of that permission
+covers, and only for a validity window within their own. Enforced in the grant
+service, not in the UI.**
 
 Three invariants, checked on every path that creates or modifies a
 `RoleAssignment`, an `AccessGroup` assignment, or a `Role`'s permission set:

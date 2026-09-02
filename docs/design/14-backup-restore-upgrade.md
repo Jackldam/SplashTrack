@@ -256,8 +256,10 @@ class of failure, costs nothing the design relies on (D-046's
 recording the applied-migration list), and removes the need to ship and version
 `pg_dump`/`pg_restore` binaries whose output format is tied to a server version
 the operator controls. It is more code than shelling out to `pg_dump`, and it
-must be kept in step with the schema — which is exactly what the restore matrix
-(§4.3.1) tests on every pull request anyway.
+must be kept in step with the schema. **The control that keeps it in step is
+§3.1.1's round-trip test** (D-169) — this sentence previously named the restore
+matrix (D-047), which has since moved out of v1, leaving the justification
+resting on something that no longer runs.
 
 **Reason.** The v1 choice should be the one where the dangerous case cannot be
 expressed, not the one where it must be filtered. Filtering an attacker-supplied

@@ -261,3 +261,48 @@ this design (the high-risk permission set), not a graded ladder, and inventing a
 second gradation would create a new thing to maintain as permissions are added —
 which is the maintenance cost D-130's trade-off column already names. Two tiers,
 one existing set.
+
+---
+
+## Consistency sweep after the six commits
+
+Checked and fixed, because the dominant defect this review round found is
+register rows that say "fixed" over chapters that were never touched:
+
+- **No duplicate decision or finding ids.** D-166–D-173 and F-135–F-144 are all
+  new; the highest before this pass were D-165 and F-134.
+- **One home per rule.** The D-150 register row no longer restates the bounds or
+  the invariant list; `13-…` §3.2 no longer carries its fourth copy; `01-…` §5
+  and `07-…` §1 point at D-168 for the audit floor instead of naming a number;
+  `02-…` §1.2, §1.3 and OD-6's table point at §4.1.2 for the timeouts.
+- **D-139's headline** still read "at or below their own scope" after invariant 2
+  was rewritten — corrected.
+- **D-095's justification sentence** still cited the restore matrix that left
+  v1 — corrected to cite §3.1.1's round-trip test.
+- **F-24 was rewritten.** It is technically S-17, which was not on my list, but
+  it is the finding the operator documentation is written from and it still said
+  *"the token **is** `SECRET_KEY`"* — a scheme `14-…` §2.1 deleted. Leaving it
+  would have left two normative accounts of the artefact D-166 redefines, and
+  the brief for defect 1 requires the key material to be *unambiguously* part of
+  the Kit. The D-040 register row was corrected in the same pass. The rest of
+  S-17 (the register/finding audit generally) was not swept.
+
+## Adjacent, deliberately not taken
+
+- **S-2** — the backup master key is *also* derivable as
+  `HKDF(SECRET_KEY, "backup-master-v1")`, so `SECRET_KEY` alone unwraps every
+  archive ever written, including ones written after a token rotation. D-166 is
+  written so it does not depend on that derivation and does not make it worse,
+  but the derivation is still there in `13-…` §3.1.1 and `14-…` §2. It is the
+  single largest remaining hole in the crypto envelope and it was not on my
+  list.
+- **B-20** — the envelope's `v1` format tag collides with the inherited
+  `secret-crypto.ts` `FORMAT = "v1"`, which is a different four-field layout.
+  Interacts with D-097's golden vectors; must be settled before the first
+  encrypted byte.
+- **B-6** — `appendAuditEvent` opens its own transaction, so "one audit event
+  per aggregate write" cannot be atomic with the write it records. Same
+  mechanism as D-168 and it bites at the same time.
+- **S-9** — audit-on-read of the protected class versus the poolside deny-on-any
+  -failure rule. Not core-retrofit in the same sense, but it composes with
+  D-148 and D-126.
