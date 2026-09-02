@@ -277,3 +277,184 @@ incumbent is pen and paper". Alternatively, weaken OD-16's claim to a hand-off
 outstanding work rather than completed work.
 
 ---
+### C-7 — D-158 requires role-scoped settings; the settings registry that must carry them defines `scope` as the single value `instance-wide`
+
+**Severity: high.**
+
+Side A — `09-decision-register.md`, D-158 (added today), decision and "Where":
+
+> Session idle and absolute timeouts are **role-scoped** `bounded` settings,
+> administrator-editable at runtime with no restart. … | A global single timeout
+> cannot express the per-role table, **so the setting is role-scoped — one more
+> dimension in the settings registry**. … | `02-security-privacy.md` §4.1
+> (D-150), **`13-configuration-and-setup.md` §3.2** |
+
+echoed in `08-open-decisions.md` OD-6:
+
+> **Per-role, not global.** The two defaults differ by role, so the setting is
+> role-scoped; a single global number cannot express the table above.
+
+Side B — `13-configuration-and-setup.md` §3.2, the registry definition (not
+touched by 29a0021):
+
+> ```text
+> key            organization.name
+> category       Organisation | Email | Authentication | Security | Privacy | …
+> type           string | number | boolean | enum | json | secret
+> default        the built-in value
+> validation     Zod schema
+> **scope          instance-wide**
+> appliesLive    true | false  (see §4)
+> permission     which permission may change it
+> sensitive      whether the value is encrypted and masked
+> class          free | bounded | invariant   (D-150)
+> ```
+>
+> The registry is **the single source of truth**: it generates the admin UI, the
+> validation, the API surface, the documentation table, and the diagnostics page.
+
+**Why it matters.** This is the most implementer-visible defect in today's
+changes. D-158 explicitly says the new dimension goes "in the settings
+registry", and names §3.2 as its home — but §3.2 states `scope` as a single
+literal value with no alternatives, and §3.2 also claims to be the single source
+of truth that *generates* the admin UI and API. Someone building the registry
+from §3.2 produces a schema in which `session.idleTimeout` can hold exactly one
+number. They then reach D-158 and either bolt a role dimension on outside the
+registry (breaking the single-source-of-truth claim and the generated UI), or
+collapse the per-role table to one global value (re-creating the defect OD-6's
+closure says a global number cannot express). Neither is what either document
+wants, and nothing in the design set says which to do.
+
+Note also that §3.2's own restatement of the `bounded` bounds — "session idle ≤
+8 h, audit retention ≥ 12 months, rate limits ≥ a stated minimum, backup
+retention ≤ the shortest special-category retention" — is a **fourth** normative
+copy of that list (with 02 §4.1, OD-6's table and D-158), and it silently omits
+the absolute-lifetime bound that C-1 shows the other three disagree about.
+
+**Recommended resolution.** Extend §3.2's registry sketch to admit a
+`scope  instance-wide | per-role` (or a `dimension` field) and say which
+settings use it, in the same change that resolves C-1. State the bounds in one
+place and have §3.2 and §4.1 point at it.
+
+---
+
+### C-8 — R-32 (billing-lite) is stated as an unconditional v1 requirement in two places while `15-…` §6.2 now makes half of it conditional on OD-18
+
+**Severity: medium.**
+
+Side A — `15-assessment-and-fees.md` §6.2 (added today):
+
+> **Conditional on OD-18, raised 2026-09-02.** … If it stays authoritative for
+> membership, **this subsection does not ship**: `Membership` and
+> `MembershipPeriod` become a read-only projection of that system and periodic
+> contribution charges are its job, not SplashTrack's
+
+and `08-open-decisions.md` OD-18, middle row:
+
+> | **Incumbent stays authoritative; SplashTrack imports periodically** |
+> `Membership`/`MembershipPeriod` become a **read-only projection**;
+> **contributie tracking leaves v1**; **no membership editing UI** | …
+
+Side B — `00-overview.md` §3.1, R-32, unqualified:
+
+> | R-32 | **Billing-lite** — fee types, charges, payments, a balance view per
+> payer and per student, CSV export. No document carrying an amount leaves the
+> system (§1.2, `15-…`) |
+
+and `00-overview.md` §3.5's "moved into v1" table, whose stated *reason* is now
+the thing OD-18 puts in question:
+
+> | **Billing-lite** — fee types, charges, payments, balance view, CSV export |
+> R-32 | **Without it the school keeps its existing system and does dual entry**,
+> which is the most common reason vertical software is abandoned |
+
+`04-ux.md` §5 carries the same unconditional framing in its Balance row (R-32),
+and `04-ux.md` §1's navigation sketch lists `Fees ← balances, charges, payments
+(R-32)` with no caveat.
+
+**Why it matters.** OD-18 is described by its own chapter as "the most expensive
+item currently open" and "high and rising" cost of delay, and its consequence is
+that a named subsection of chapter 15 does not ship. The v1 requirements table
+is the artefact a scoper and an implementer plan against, and it does not carry
+the condition. The §3.5 rationale is a sharper problem: it justifies R-32 by
+saying the alternative is dual entry with an existing system — and OD-16 has now
+established that an existing system *is* in place, which is why OD-18 exists.
+The requirement may well survive, but its justification and its scope are now
+open and the overview presents both as settled.
+
+This is a fix that was applied in one chapter and not propagated, not a
+disagreement about the underlying facts.
+
+**Recommended resolution.** Mark R-32 in §3.1 and §3.5 as split: exam fees
+unconditional (§6.3), membership/periodic contribution charges conditional on
+OD-18 (§6.2). Add the same one-clause caveat to `04-ux.md` §5's Balance row.
+
+---
+
+### C-9 — `15-…` §9 still lists OD-17 as open and the grade scale as "assumed" and "unasked"
+
+**Severity: low.**
+
+Side A — `15-assessment-and-fees.md` §9 "Dependencies and open items", item 5:
+
+> 5. **(Open — OD-17, `08-open-decisions.md`)** The grade scale is **assumed** to
+>    be the five ordinal values given. Whether a school may ever define its own
+>    scale is supported by the model (`GradeScale` is org-owned) and **unasked as
+>    a requirement**.
+
+Side B — `08-open-decisions.md` OD-17:
+
+> ### OD-17 — **(CLOSED 2026-09-02)** Is the five-value grade scale the only one a school will ever use?
+> **Answer, from Jack: yes — *onvoldoende / matig / voldoende / goed / zeer goed*
+> is the scale.** … Recorded as **D-160**.
+
+**Why it matters.** Low: nothing is built differently, because D-160 keeps the
+generic tables exactly as §9 assumes. But §9 is chapter 15's own open-items
+checklist — the list someone works through before building the module — and it
+says a closed question is open and that the requirement was never asked when it
+was asked and answered. Every other item in that list is correctly marked
+"(Resolved)", so the one stale entry is the one a reader trusts.
+
+**Recommended resolution.** Rewrite item 5 as "(Resolved — OD-17, D-160)" with
+the confirmed scale and the note that versioning is still required.
+
+---
+
+### C-10 — D-159's "English without exception" versus D-160's seeded Dutch grade codes
+
+**Severity: low** (reads as an unstated boundary rather than a flat
+contradiction, but the two decisions were written on the same day and never
+reconciled).
+
+Side A — `09-decision-register.md` D-159:
+
+> Schema identifiers, column names, API field names and code are English
+> **without exception**.
+
+Side B — `15-assessment-and-fees.md` §2.1, the `GradeValue` sketch, and D-160
+which seeds it:
+
+> ```text
+> GradeValue           scaleId, code, rank, label
+>                      **ONVOLDOENDE=1 · MATIG=2 · VOLDOENDE=3 · GOED=4 · ZEER_GOED=5**
+> ```
+
+with §2.2's normative pass rule written against one of them:
+
+> - *"Alles moet minimaal voldoende zijn"* → `scheme.**passFloorGradeId =
+>   VOLDOENDE**`, every `SchemeCriterion.minimumGradeId` NULL.
+
+**Why it matters.** These are `code` column *values*, not identifiers, so D-159
+arguably does not reach them — but D-159 says "without exception" and nothing in
+either decision draws that line. Chapter 15 also writes `VOLDOENDE` as a
+symbolic constant in a rule expression, which is the form that most looks like
+an identifier. A module author following D-159 literally will rename these and
+break §2.2's worked example; one following chapter 15 will seed Dutch codes and
+believe D-159 was violated.
+
+**Recommended resolution.** One clause in D-159 stating whether the rule covers
+seeded data values and enum members, or a sentence in D-160 stating that these
+codes are data and deliberately Dutch. Resolve together with C-3, which is the
+same boundary applied to `AFTEST`.
+
+---
