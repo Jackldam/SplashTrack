@@ -1080,3 +1080,138 @@ absent requirement; `Lane` returns in v2 with the rest of scheduling.
 **C-4, C-5, C-10, C-12 and C-14 together are under two days and close five real
 failures.** They should not wait for a scope conversation, a chapter rewrite or
 this document's approval.
+
+---
+
+## Total
+
+### The arithmetic
+
+**Baseline.** rev7-realism R-1's reconstructed line-item table, *After §3.5.1*
+column. Its rows sum to **56.0**; R-1 prints it as *~55*. I use the exact sum so
+the deltas below are checkable.
+
+| | Weeks |
+|---|---|
+| Baseline (R-1, after §3.5.1) | **56.0** |
+| − List A (14 cuts) | −11.0 |
+| + List C (15 additions) | +6.3 |
+| − D-083's NRZ seed-and-fork machinery, dissolved with F-44 | −0.25 |
+| **= Proposed v1, pre-uplift** | **51.05 ≈ 51.0** |
+
+Both realist rounds add **20–30%** for integration, debugging and rework on a
+greenfield with a new authorization model. Applying it once, at the end:
+
+| | Weeks |
+|---|---|
+| Proposed v1 at +20% | 61.3 |
+| Proposed v1 at +30% | 66.4 |
+| **Proposed v1** | **~61–66 engineer-weeks** |
+| *For comparison: R-1's estimate of v1 as it stands today* | *~66–72* |
+| *For comparison: `00-…` §3.5.3's published figure* | *~18–20 — refuted* |
+
+**Read that comparison twice, because it is the finding.** Fourteen cuts taken
+under the most permissive scope licence this project has ever had — *nobody but
+the author will ever install v1* — buy about **five to six weeks net**. List C
+spends most of what List A recovers, and it has to, because the things List C
+buys are the things without which there is no Tuesday evening.
+
+### Where the 51 weeks actually sit
+
+| Block | Weeks (pre-uplift) | Share |
+|---|---|---|
+| **Foundation and platform** — extraction and the D-056 removals 3.5 · scope model + `coversResource` 2.2 · settings 1.0 · boot predicates 0.75 · backup/restore/Recovery Kit 3.0 · migration/upgrade 1.75 · retention 1.0 · consent 1.5 · crypto envelope 0.75 · audit chain + checkpointing 0.75 · break-glass + backup-age 0.5 · CI 0.75 · release + DEV deploy 1.0 | **18.45** | 36% |
+| **Domain modules** (11, at `06-delivery.md` §4.4's Definition of Done, fees reduced to exam fees, GDPR screen removed) | **21.0** | 41% |
+| **Domain additions from List C** | **5.6** | 11% |
+| **Waiting list · group moves · print · NRZ export** | **3.0** | 6% |
+| **Design system, wireframes, WCAG, i18n (NL only)** | **2.25** | 4% |
+| **Branding + inquiry form** | **1.0** | 2% |
+| **− F-44 seed/fork** | −0.25 | |
+| **Total** | **51.05** | |
+
+**The platform is no longer the problem and cutting it further does not help.**
+Every remaining platform week is in List B — it is retrofit-hostile, or the law
+requires it, or it is the one copy of the club's data. The weight is now
+**eleven domain modules at the design's own Definition of Done**: *"data model →
+service → UI → tests → docs are all present; scope-escape tests exist for the
+module … Backend without UI is not a slice."*
+
+### Sanity check: "one engineer, evenings and weekends"
+
+15 hours a week is **0.375** of a 40-hour engineer-week.
+
+| Scope | Engineer-weeks | Calendar time at 15 h/wk |
+|---|---|---|
+| v1 as it stands today (R-1) | 66–72 | **176–192 weeks ≈ 3.4–3.7 years** |
+| **v1 as proposed here** | **61–66** | **163–176 weeks ≈ 3.1–3.4 years** |
+| A **pilot cut** — everything above minus `assessment`, `exams`, exam fees, the NRZ export and the GDPR tooling | 51–56 | **136–149 weeks ≈ 2.6–2.9 years** |
+| **What one season actually buys** — 40 calendar weeks × 15 h | **15** | 40 weeks |
+
+**This proposal does not pass its own sanity check, and no version of it does.**
+
+The foundation alone — stripped to only what List B genuinely forces, with every
+single item in List A already gone — is **~16.5 engineer-weeks**. That exceeds a
+one-season budget **before the first domain module is written**, before anyone
+can register attendance, before the product does anything an instructor would
+notice. That is the number that decides this project, and no further round of
+scope-cutting reaches it, because the next thing to cut is List B and List B is
+the part that is cheaper to build than to add.
+
+**So the remaining levers are three, and all three are Jack's call, not mine:**
+
+1. **Accept the timeline and stage the release.** Take the pilot cut. Every
+   retrofit-hostile item in List B ships in the pilot — it must, because the
+   pilot holds the club's real data from day one — and `assessment`, `exams`,
+   fees and the GDPR tooling follow. Roughly 2.5 years of evenings to a Tuesday
+   evening at his own club, and it is a real product at the end.
+2. **Change the hours.** At 30 h/week the proposed v1 is ~20 months and the
+   pilot is ~17. Nothing else in this document moves the date as much as this
+   line does.
+3. **Change the Definition of Done — the only lever left inside the scope.**
+   `06-delivery.md` §4.4's *"Backend without UI is not a slice"* applied to all
+   eleven modules is a large fraction of the 21 weeks. Several modules
+   (`courses`, `fees`, the administrative half of `exams`) could ship against a
+   generated CRUD surface rather than a designed one, with designed screens
+   reserved for the four an instructor touches weekly. That is plausibly 3–4
+   weeks and it is the only cut left that does not weaken a control. It is also
+   the one I am least able to size from documents, because it depends on how
+   much of the template's admin scaffolding is reusable.
+
+**What I will not recommend.** Cutting anything in List B to make the date. The
+failure mode that ends this project is not a late v1 — it is a v1 that shipped
+on time into a real club, wrote 200 children's records into shapes that cannot
+be corrected without inventing history, and then had to be rebuilt. Every item
+in List B is on that list precisely because "we will add it in v2" is not
+available for it.
+
+### The one cut I am least sure about
+
+**A-1 — deferring contribution tracking.**
+
+rev7-realism R-11 argued for it from a premise **Jack destroyed on the same day
+I am writing this**: R-11's case was that the incumbent stays authoritative, so
+building contributie in SplashTrack *creates* the dual entry the requirement
+exists to prevent. OD-18 closed the other way — SplashTrack **takes over**
+membership administration. So I am keeping a cut whose original justification is
+gone, on a replacement argument that is weaker and shorter-lived: *for one
+season, at one club, run by the person who also wrote both systems, dual entry
+is an annoyance rather than an abandonment risk.*
+
+**Why it might be wrong.** `00-…` §3.5.2's sentence — *"without it the school
+keeps its existing system and does dual entry, which is the most common reason
+vertical software is abandoned"* — was written about a school, and Jack's answer
+today ("SplashTrack will eventually hold all the club's digital needs") reads
+like an instruction to stop maintaining the incumbent sooner rather than later.
+If the club's answer to "when do we switch off the old system" is *"at the end
+of this v1"* rather than *"in v2"*, then A-1 is the wrong cut: contributie has
+to be in the release that retires the incumbent, and building it later means the
+switch-off waits for v2 anyway.
+
+**What would settle it, in one question:** *does the incumbent membership system
+stay live and authoritative for contributie through the whole of v1's first
+season, or is v1 expected to replace it?* If the answer is "it stays", A-1
+stands as written. If the answer is "it goes", move contribution tracking back
+into v1 at **+1.5 w** — and take the extra week out of C-11 (absence
+self-report, which has an acceptable zero-week form) and A-13's inquiry form.
+
+Everything else in this document I would defend without hedging.
