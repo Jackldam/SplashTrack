@@ -1470,31 +1470,43 @@ are stated once in `02-…` §4.1.2 with §1.2, §1.3, OD-6 and `13-…` §3.2 p
 at it. `05-technical.md` §5.1 becomes "three template capabilities to adopt",
 which recasts the work item as narrowing bounds and adding one key.
 
-### F-145 — Keeping medical remarks forces a question the design has not answered: who reads them at the poolside?
-**Severity: high, and it is a design question rather than a defect.** D-176 keeps
-medical remarks in v1 for child safety — *"if a child has epilepsy I want to know,
-for safety"*. But the catalogue gates them behind `students.medical.read`, which
-D-148 treats as protected, read-audited, export-excluded free text, and which no
-starter role grants to an instructor.
+### F-145 — **(RESOLVED 2026-09-03)** Keeping medical remarks forces a question the design had not answered: who reads them at the poolside?
+**Severity: was high.** D-176 keeps medical remarks in v1 for child safety — *"if
+a child has epilepsy I want to know, for safety"*. But the catalogue gates them
+behind `students.medical.read`, which D-148 treats as protected, read-audited,
+export-excluded free text, and which no starter role grants to an instructor.
+Both could not be true: an instructor who cannot see it is worse off than with
+the paper list, and a note every instructor can read is protected only on paper.
 
-Both cannot be true. If the instructor standing at the water cannot see it, the
-control has made the child less safe than the paper list it replaced. If every
-instructor can read every medical note, the protection is decorative.
+**My proposal was a closed vocabulary of safety flags. Jack rejected it**, and
+gave the requirement instead:
 
-**Proposed resolution, requiring the domain expert's confirmation before it is
-built.** Split the datum by what each reader actually needs:
+> The field must be **freely writable**. Formulate it as *everything we need in
+> order to keep it safe for the pupils*. And because it must be GDPR compliant
+> it has to be **voluntary and withdrawable**.
 
-| | Who sees it | What it contains |
-|---|---|---|
-| **Safety flag** | every instructor teaching that child, on the session roster | a short, structured, pre-agreed marker — *epilepsy*, *severe allergy*, *deaf in one ear* — and what to do |
-| **Medical remark** | `students.medical.read` holders only, read-audited | the free-text detail, history, guardian's account |
+**He is right and the closed vocabulary was wrong.** An enumerated list of
+conditions is a list of the ones somebody thought of. The real poolside sentence
+is *"has absence seizures, looks like daydreaming, get her out of the water"* —
+which no vocabulary contains, and which is the whole reason the field exists.
+A dropdown would have produced a field that is safe to store and useless to read.
 
-The flag is what the poolside needs and is far less sensitive; the remark is what
-a full record needs and stays protected. Making the flag a **closed vocabulary**
-rather than free text is the point: it stays glanceable at the poolside, it does
-not become a second uncontrolled note field, and its retention is defensible.
+**Resolution: D-177.** One free-text safety field, consent-based, reach-limited,
+read-audited, never exported. The full shape is in the decision. The two things
+that make it defensible rather than reckless:
 
-**Open until Jack confirms:** the vocabulary, and whether guardians are the ones
-who set a flag at registration or whether staff transcribe it. Do not build
-either half before that answer.
+1. **Consent is its lawful basis** (Art. 9(2)(a) explicit consent), so the field
+   is voluntary by construction and withdrawal genuinely deletes it — which is
+   what Jack asked for, and is *stronger* than the vital-interests basis the
+   design could have claimed.
+2. **Reach limits who reads it**, not permission alone: the instructors teaching
+   that child, this season. Not every instructor in the club.
 
+**What this costs, stated plainly:** the most sensitive free text in the system
+is now readable by the least privileged role, at the busiest moment, on a shared
+tablet. That is the deliberate trade — a child's safety against data
+minimisation — and it is recorded as such rather than discovered later.
+
+**Still open, and it does not block the model:** whether the withdrawal of a
+safety consent should notify the instructors who had been relying on it. My
+instinct is yes and quietly; Jack decides.
