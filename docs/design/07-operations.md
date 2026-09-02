@@ -8,7 +8,7 @@ Conflating them is a common and expensive mistake.
 | System | Question it answers | Contains PII? | Reader | Retention |
 |---|---|---|---|---|
 | **Operational logs** (pino) | "Is the system healthy? Why did this request fail?" | **No** — ids only | Operators | 30 days |
-| **Audit trail** (`AuditEvent`) | "Who did what to whom, when?" | Yes, by design | Holders of `audit.read` in this installation | ≥ 24 months |
+| **Audit trail** (`AuditEvent`) | "Who did what to whom, when?" | Yes, by design | Holders of `audit.read` in this installation | **Computed floor — stated once in `02-security-privacy.md` §3.2.1 (D-168)**, not a flat number here |
 | **Metrics** | "How is it behaving over time?" | No | Operators | 13 months |
 
 ### 1.1 Operational logging rules
@@ -185,7 +185,7 @@ bite.
 | Risk | When it bites | Prepared response |
 |---|---|---|
 | **Derived progress queries** — "current level" computed from an append-only log | A student with years of history, or a group matrix view over 30 students × 40 skills | `StudentProgressSummary` materialised on write. **Prepared, not built** (D-005) |
-| **Audit table growth** | Fastest-growing table; audit UI queries slow first | Time-based partitioning + retention rotation; index on (org, timestamp, actor) |
+| **Audit table growth** | Fastest-growing table; audit UI queries slow first | Time-based partitioning + **checkpointed prefix rotation (D-168)**; index on (org, timestamp, actor). Chain verification is paged by `sequence`, never a full-table read — the inherited `readAuditChain()` materialises every row and is unrunnable at this size |
 | **Attendance table growth** | ~50,000 attendance-bearing sessions/year in a large organisation | Partition by period; aggregate + anonymise at 24 months — the retention policy doubles as a growth control |
 | **Seasonal peak** | Enrolment season and exam periods concentrate load | Stateless processes scale horizontally; no in-process state anywhere (P-08) |
 | **Single Postgres instance per organisation** | Write saturation within one organisation — unlikely at swim-school scale | Read replica for reporting first. **Sharding does not arise:** one installation holds one organisation's data, so there is nothing to partition across. (This row previously read "the fleet is already partitioned by organisation" — there is no fleet; we operate nothing, F-14 is closed) |

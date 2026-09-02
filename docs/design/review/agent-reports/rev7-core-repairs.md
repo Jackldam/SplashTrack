@@ -102,3 +102,43 @@ inherited `secret-crypto.ts` copies already use for a different four-field
 layout) is adjacent to this and squarely in the same mechanism, but it is not on
 the list I was given and it interacts with D-097's golden vectors. It is worth a
 decision before the first encrypted byte is written.
+
+---
+
+## Defect 3 — B-17 / S-7 / S-18: audit checkpointing · **closed** · D-168, F-137
+
+**What was wrong.** Confirmed as reported, and the two halves compound: the
+mechanism ranked #2 by retrofit cost had no decision and no phase, while the
+retention policy that *was* specified guarantees it breaks. I verified the
+template side rather than taking it on report — `audit-service.ts:107` walks
+from `AUDIT_GENESIS_HASH` over `readAuditChain()`'s full ascending read, and the
+module's own comment concedes the chain is unkeyed and that tail truncation
+still verifies.
+
+**What I wrote.** D-168, in `02-…` §3.2.1 — the home of D-149, so the rule stays
+in one place and chapters 01, 06, 07 and 13 point at it:
+
+- Prefix-only pruning; a deletion without a checkpoint *is* the tampering
+  signal.
+- `AuditCheckpoint` written in the same transaction as the delete, chained to
+  its predecessor, MAC'd under `HKDF(SECRET_KEY,"audit-anchor-v1")`.
+- `audit:verify` walks segment by segment, paged by sequence, and reports
+  "intact across N pruned segments" — green, and still able to detect an
+  interior deletion.
+- The genesis constant decided now: `genesis:splashtrack:audit:v1`.
+- Phase 1, stated in `06-delivery.md` §5's phase list.
+
+**Where I went beyond the reviewer.** S-18 asked me either to settle the
+retention floor or record why the partial state is accepted. I settled it, and
+the settlement is forced by the chain rather than chosen: F-133's recommended
+fix — per-event-class retention keyed to the class evidenced — deletes a
+**sparse interior subset**, which no checkpoint can anchor. So the floor is one
+instance-wide value, **computed** as `max(12 months, the longest retention among
+the evidenced classes)`, which with 7–10 year exam records is the number F-133
+wanted anyway. That closes S-18 and removes the fourth normative copy of the
+number from `07-…` §1 and `01-…` §5.
+
+**What I refused to overstate.** The MAC key derives from `SECRET_KEY`, so an
+administrator with host access can forge a checkpoint. The decision says so, and
+also says what S-7 asked for: the `INSERT`-only role bounds an external SQL
+primitive, not the compromised administrator D-149 is written against.

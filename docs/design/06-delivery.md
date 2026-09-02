@@ -284,7 +284,7 @@ doing it late**:
 | # | Item | Why this rank |
 |---|---|---|
 | 1 | **Encryption envelope and key derivation** | Every encrypted byte written before the envelope exists has to be found and re-wrapped, and the key split decides whether a restore preserves MFA enrolments. Nothing that stores a secret may be written first |
-| 2 | **Audit chain-aware rotation and checkpointing** | The chain is append-only at the database level. Deciding rotation after two years of events means retroactively rewriting a tamper-evidence claim |
+| 2 | **Audit chain-aware rotation and checkpointing** (specified in `02-security-privacy.md` §3.2.1, D-168 — it previously had no decision, no spec and no phase) | The chain is append-only at the database level. Deciding rotation after two years of events means retroactively rewriting a tamper-evidence claim — and the first legitimate retention run breaks the chain permanently if checkpointing is not there first |
 | 3 | **The scope model** | It changes the signature of the guard **every module calls**. Any domain module built first has to be rewritten — and worse, its scope-escape tests were written against the wrong question |
 | 4 | **Append-only event models** with `clientEventId` / `supersedes*Id` | Converting a mutable column into an event log after data exists means inventing the history you destroyed |
 | 5 | **Settings** | Every feature that reads configuration before the settings page exists reads it another way, and must be ported |
@@ -299,9 +299,12 @@ doing it late**:
   the layout (flat root, `05-technical.md` §3). Add Zod. Write the glossary
   (OD-10 — cheap, and it blocks every schema name after it).
 - **Phase 1 — foundation, no domain code.** Crypto envelope and golden vectors →
-  boot state machine including the **`FAILED`** state → settings → production
-  Dockerfile → backup, restore and the recovery token → the eight CI checks,
-  including image **promotion** rather than a build on the target host.
+  **audit chain: the genesis constant, `AuditCheckpoint`, the checkpointing
+  retention path and the chunked segment walk (D-168 — ranking item 2, and it
+  was in no phase at all)** → boot state machine including the **`FAILED`**
+  state → settings → production Dockerfile → backup, restore and the recovery
+  token → the eight CI checks, including image **promotion** rather than a build
+  on the target host.
 - **Phase 2 — removals and reshaping.** D-056's removals, incrementally, tests
   green at each step — including the platform-super-admin branch inside
   `requirePermission`, which is real code and not just prose → the scope model,

@@ -934,16 +934,7 @@ that cannot delete, and a retention floor the settings layer refuses to cross.**
    exfiltration is to set audit retention to one day and let the maintenance job
    do it legitimately. The settings layer refuses any value below the floor
    (§4.1), and lowering audit retention at all is a high-severity audit event.
-
-**And the retention mismatch it exposes.** Audit is retained 24 months while
-exam results are retained up to 10 years (`01-domain-model.md` §5). The record
-of *who* recorded a diploma outcome is therefore destroyed eight years before
-the outcome it evidences — in a design that justifies append-only results with
-"a parent disputes a diploma decision". **Audit events evidencing a data class
-are retained at least as long as that class**, or the mismatch is stated in the
-privacy screen as a limit on what the organisation can reconstruct. This is a
-hand-off to `01-domain-model.md` §5 and `07-operations.md` §1.2, not settled
-here.
+   **The floor is computed, not typed — see §3.2.1 (D-168).**
 
 **Reason.** The three questions a breach requires (D-128) are all answered from
 the audit trail. If the actor who caused the breach can also edit it, the
@@ -952,6 +943,124 @@ Article 33 assessment is built on evidence the suspect controls.
 operator pointing `DATABASE_URL` at a managed database must create two roles
 rather than one. The documentation gives the exact statements, as it already
 must for D-116.
+
+**One thing part 2 does not do, stated so nobody reads it as more than it is.**
+The retention path holds `DELETE` on `AuditEvent` and runs in the same process,
+in a code base where §3.1 permits `$executeRaw` behind a reviewer sign-off. The
+`INSERT`-only role is therefore a control against an *external* SQL primitive —
+injection, a stolen `DATABASE_URL`, a careless script — and not against the
+compromised-administrator scenario FM-7 and this decision name. The control that
+reaches that actor is the checkpoint MAC in §3.2.1, and its limit is stated
+there too.
+
+### 3.2.1 The chain must survive its own retention policy
+
+D-149 part 1 requires `audit:verify` and a chain-status line a human sees.
+D-149 part 3 makes retention configurable, and `01-domain-model.md` §5 gives the
+audit row `onExpiry: DELETE`. **These cannot both hold as written.** A hash
+chain in which each row carries the previous row's hash is verifiable from a
+known anchor forward; the template's verification walks from genesis
+(`src/modules/audit/application/audit-service.ts:107`, `previousHash =
+AUDIT_GENESIS_HASH`, over `readAuditChain()`'s full ascending walk). Delete the
+oldest rows and the anchor is gone. On the **first legitimate retention run** —
+month 12 to 24 of the first instance — `audit:verify` reports a discontinuity,
+permanently, and the diagnostics chain-status line goes red and stays red.
+
+That is worse than not having the control. The single thing D-149 exists to
+provide is that a compromised administrator who exports the member base and
+deletes the four rows recording it is *detectable*; on any instance past its
+retention window the detector is already alarming for a benign reason, and the
+volunteer reading diagnostics has been trained by a year of red to ignore it. A
+tamper-evidence mechanism whose false-positive rate is 100% after month twelve
+gives D-128's Article 33 assessment no discriminating power at all.
+
+`06-delivery.md` §5 ranks *"audit chain-aware rotation and checkpointing"* as
+the **number-two** most retrofit-hostile mechanism in the product. Before this
+decision the word `checkpoint` appeared in the design set exactly twice: in that
+ranking row, and in an example branch name on the same page. No decision, no
+specification, no phase. Finding **F-137**.
+
+**Decision D-168 — Audit retention prunes a contiguous prefix and never a
+sparse subset; before it deletes anything it writes a signed `AuditCheckpoint`
+that becomes the new verification anchor; `audit:verify` walks segment by
+segment in chunks and reports "intact across N pruned segments"; and the audit
+retention floor is computed from the classes the events evidence rather than
+typed by an operator.**
+
+**The record.**
+
+```text
+AuditCheckpoint
+  sequence              last SURVIVING AuditEvent.sequence at this checkpoint
+  chainHash             that row's hash — the anchor verification restarts from
+  prunedFromSequence    first deleted sequence      ┐ what this checkpoint
+  prunedToSequence      last deleted sequence       │ accounts for, so a gap
+  prunedCount           rows deleted                │ is a stated fact rather
+  prunedFrom / prunedTo occurredAt range deleted    ┘ than an unexplained hole
+  previousCheckpointHash   checkpoints are themselves chained
+  createdAt
+  mac                   HMAC-SHA256 under HKDF(SECRET_KEY, info="audit-anchor-v1")
+```
+
+**The rules.**
+
+1. **Deletion happens only through the checkpointing path.** The retention job
+   writes the checkpoint and deletes the rows it accounts for **in one
+   transaction**. A deletion without a checkpoint is the tampering signal; there
+   is no other legitimate producer of a gap.
+2. **Prefix only.** An event is deletable only if every event at or below its
+   sequence is deletable. This is what keeps segments contiguous and
+   verification cheap, and it is the reason the floor below is a single
+   instance-wide value rather than a per-event-class one — per-class expiry
+   would delete a *sparse* interior subset, which no anchor can describe.
+3. **Checkpoints are never deleted.** They are small, one per retention run, and
+   they are the record of what the trail no longer contains.
+4. **`audit:verify` verifies segments, in chunks.** For each checkpoint: verify
+   its MAC, verify its `previousCheckpointHash` linkage, then walk the events
+   from that checkpoint's `sequence` forward — **paged by sequence**, never
+   materialising the table. `07-operations.md` §2 calls `AuditEvent` the
+   fastest-growing table, and `readAuditChain()` as inherited reads every row
+   into memory; on a two-year instance verification is otherwise unrunnable,
+   which is the same work as checkpointing and is why it is one item.
+   The result is `valid` with `prunedSegments: N`, and a removed row *inside* a
+   live segment still breaks that segment against its anchor.
+5. **The genesis constant is ours and is decided now.**
+   `AUDIT_GENESIS_HASH = "genesis:splashtrack:audit:v1"`, set in the first commit
+   that writes an audit event and never changed afterwards — changing it
+   invalidates every chain written before the change. The inherited value is the
+   literal `"genesis:webapp-template:audit:v1"`
+   (`src/modules/audit/domain/audit-event.ts:93`), which would otherwise ship as
+   the tamper-evidence root of a product that is not the template. Genesis is
+   treated as checkpoint zero, so verification has exactly one shape.
+6. **The retention floor is computed.** Audit retention is one instance-wide
+   `bounded` value, and its floor is
+   `max(12 months, the longest configured retention among the data classes whose
+   changes audit events evidence)`. With exam results and awards at 7–10 years
+   (`01-domain-model.md` §5) the floor is that, not twelve months. The settings
+   layer computes and displays it rather than asking an operator to keep two
+   numbers in step, and lowering audit retention remains a high-severity audit
+   event. This settles the hand-off F-133 opened; `01-…` §5's audit row and
+   `07-…` §1's table point here rather than restating a number.
+
+**What the MAC does and does not do.** It binds each anchor to the instance's
+own key material, so an attacker with **database write access only** — the
+`$executeRaw` path, a stolen `DATABASE_URL`, an injection — cannot delete
+interior rows and forge a covering checkpoint, which is the gap the template's
+own module README concedes when it calls the chain unkeyed and notes that tail
+truncation still verifies. An attacker with **host access** holds `SECRET_KEY`
+and can forge a checkpoint; nothing in an application can prevent that, and host
+access is already the boundary `13-…` §7 treats as proof of ownership. Saying so
+is the point: the control is real against the actor it names and it is not
+magic.
+
+**Phase.** This is Phase 1, beside the crypto envelope, and
+`06-delivery.md` §5's phase list is corrected to say so — it is ranked #2 by
+cost of doing it late and was in no phase at all.
+
+**Trade-off.** One more table, one more command path, and a retention job that
+can no longer be a single `DELETE … WHERE occurredAt < ?`. Against that: the
+alternative is a diagnostics light that turns red on schedule in month twelve
+and is never green again.
 
 ## 4. Application security controls
 

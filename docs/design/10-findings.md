@@ -1279,3 +1279,31 @@ what stops ciphertext moving between rows, so one narrow rule remains: a
 migration changing a row's primary key, splitting a table or moving an encrypted
 value must decrypt and re-encrypt inside the same migration
 (`05-technical.md` §5 rule 6).
+
+### F-137 — The audit chain's #2-ranked mechanism was unowned, and retention as specified broke the chain on its first run
+**Severity: critical (blocker).** `06-delivery.md` §5 ranks *"audit chain-aware
+rotation and checkpointing"* second in the whole product by cost of doing it
+late. The word `checkpoint` appeared in the design set exactly twice — that
+ranking row, and an example branch name on the same page. No decision, no
+section, no finding, and the Phases list below the ranking assigned it to no
+phase while assigning every other item to one. The pieces that *were* specified
+contradicted each other: `01-domain-model.md` §5 gives the audit row
+`onExpiry: DELETE`, D-149 part 1 requires a chain-status line a human sees, and
+verification walks from genesis
+(`WebAppTemplate/src/modules/audit/application/audit-service.ts:107`), so the
+first legitimate retention run — month 12 to 24 of the first instance — leaves
+`audit:verify` reporting a permanent discontinuity. A tamper detector that is
+red on schedule from month twelve is worse than none, and it is the sole
+evidence base for D-128's Article 33 assessment. Two further costs sat in the
+same inherited file: `readAuditChain()` materialises the whole of what
+`07-operations.md` §2 calls the fastest-growing table, and
+`AUDIT_GENESIS_HASH = "genesis:webapp-template:audit:v1"` would ship as the
+tamper-evidence root of a product that is not the template.
+**Response.** D-168, in `02-security-privacy.md` §3.2.1: prefix-only pruning, a
+signed `AuditCheckpoint` written in the same transaction as the deletion it
+accounts for, a chunked segment walk reporting "intact across N pruned
+segments", the genesis constant decided now as
+`genesis:splashtrack:audit:v1`, and a **computed** retention floor that settles
+F-133's three-document hand-off. Phase 1 in `06-delivery.md` §5. The limits are
+stated rather than implied: the checkpoint MAC defeats an attacker with database
+write access, not one with host access and `SECRET_KEY`.

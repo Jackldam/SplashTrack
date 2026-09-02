@@ -575,7 +575,7 @@ is unresolved and must be settled before that default ships (F-128).
 | Charges | `fees` | `fees.read` | Legal obligation — fiscal administration | Charge due date | 7 years | **`PSEUDONYMISE`** (D-092) |
 | Payments | `fees` | `fees.read` | Legal obligation — fiscal administration | Received date | 7 years | **`PSEUDONYMISE`** (D-092) |
 | Consent records | `consent` | Instance-wide | Legal obligation — accountability (Art. 5(2)) | Withdrawal or expiry of purpose | As long as needed to demonstrate compliance | `REVIEW` |
-| Audit events | `audit` | `audit.read` | Legitimate interest — security, and Art. 5(2) accountability | Event date | **To be reconciled — see note below.** Floor 12 months (D-149/D-150); shipped default currently 24 months | `DELETE` |
+| Audit events | `audit` | `audit.read` | Legitimate interest — security, and Art. 5(2) accountability | Event date | **Floor computed, stated once in `02-security-privacy.md` §3.2.1 (D-168):** `max(12 months, the longest configured retention among the classes these events evidence)` — with exam results and awards below at 7–10 years, that is the effective floor | `DELETE`, **prefix-only and checkpointed** (D-168) |
 | Inquiries (public forms) | `pages` | Instance-wide | Legitimate interest — responding to a request | Submission | 6 months | `DELETE` |
 | Waitlist entries | `students` | Unit | Legitimate interest — placing a request | Placement or withdrawal | 12 months | `DELETE` |
 | **Pre-migration backups** | `maintenance` | Operators | Legitimate interest — recoverability | Migration run (D-044) | **Deleted after the next successful start; at most 3 retained** | `DELETE` |
@@ -583,15 +583,17 @@ is unresolved and must be settled before that default ships (F-128).
 | Organisation settings & branding | `organization` | Singleton | — (no personal data) | — | Indefinite | — |
 | Operational logs | `lib/logging` | Operators — **no PII** | Legitimate interest — operations | Write | 30 days | `DELETE` |
 
-**Note on the audit row (F-133).** Audit events must be retained *at least as
-long as the longest-retained data class whose changes they evidence*. Exam
-results and awards are kept up to 10 years while the record of **who** entered
-an outcome would expire at 24 months — eight years before the outcome it
-attributes, in a design that justifies append-only results with "a parent
-disputes a diploma decision". The shipped default must be reconciled with the
-7–10 year classes above. If reconciliation is rejected on volume grounds, the
-consequence is stated in the privacy screen as an explicit limit on what the
-organisation can reconstruct, rather than left implicit.
+**Note on the audit row (F-133, settled by D-168).** Audit events must be
+retained *at least as long as the longest-retained data class whose changes they
+evidence*. Exam results and awards are kept up to 10 years while the record of
+**who** entered an outcome would have expired at 24 months — eight years before
+the outcome it attributes, in a design that justifies append-only results with
+"a parent disputes a diploma decision". This was left as an open hand-off in
+three documents and is now settled: the floor is **computed** from this table
+rather than typed, in `02-security-privacy.md` §3.2.1, and the settings layer
+displays it. It is deliberately one instance-wide value and not a per-event-class
+one, because a per-class expiry deletes a sparse interior subset of the hash
+chain, which no checkpoint can anchor (D-168 rule 2).
 
 **On the pre-migration backup row.** D-044's automatic backup before a migration
 is the right behaviour and it had **no retention policy at all** — meaning a full

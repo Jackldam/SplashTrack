@@ -794,6 +794,11 @@ It additionally surfaces:
   indicator (`14-…` §3.2, D-103).
 - Whether any encrypted column still holds ciphertext under a superseded
   `keyId` — the resumability signal D-096 makes possible.
+- The **audit chain-status line** D-149 part 1 requires and this section did not
+  carry: the result of the last `audit:verify`, its timestamp, and the number of
+  pruned segments it verified across (`02-…` §3.2.1, D-168). The count is shown
+  because "intact across 3 pruned segments" is a green result and a bare
+  "intact" would hide the deletions that legitimately happened.
 - A **key-custody check** beside the recovery-token acknowledgement: whether the
   running `SECRET_KEY`'s fingerprint matches the fingerprint recorded in the most
   recent archive (`14-…` §2.3, D-166). A mismatch means the newest backup can no
