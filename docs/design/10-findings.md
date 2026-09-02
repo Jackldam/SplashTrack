@@ -386,6 +386,13 @@ the domain expert. A seed containing invented swimming requirements would be
 worse than an empty one, because it would look authoritative and would be
 assessed against. `AssessmentScheme.source` and D-083's fork rule exist so
 that the provenance of whatever is eventually seeded stays visible.
+**Status 2026-09-02: still open, now with an owner and a date shape.** Jack —
+the domain expert — will supply the criteria and thresholds; they were not
+available on the day the rest of chapter 08 was answered. Nothing else waits on
+this: the catalogue's *shape* (D-160's single grade scale, versioned
+`CriterionSet` per `AwardType`, relaxed thresholds for certificates) is settled
+and buildable against an empty catalogue. What is blocked is **seeding**, and
+therefore any pilot that assesses a real child.
 
 ### F-45 — Fee tracking's first regret is reconciliation, and it is deliberately not in v1
 **Severity: medium.** What kills a tracked-billing feature is not the absence
@@ -777,6 +784,14 @@ is pen and paper — if the school genuinely runs on paper there may be no
 digital list to import at all.
 **Response.** OD-16. A different question from OD-1: if both answers are
 "nothing", R-29 and the import path leave v1 together.
+**Status: closed 2026-09-02.** The two answers diverged. OD-1 is "nothing" (no
+deployed prototype); OD-16 is **a commercial membership administration system
+that offers export**. R-29 therefore stays in v1 with a new source, D-157
+forbids specifying a column mapping before a sample export is in hand, and the
+pen-and-paper premise is confirmed only for the poolside surfaces (attendance,
+assessment) — not for the member base. The answer also raised **OD-18**:
+whether that system is retired or stays authoritative, which decides whether
+chapter 15's `Membership` half is a system of record or a read-only projection.
 
 ### F-91 — D-048 was enforced by nothing
 **Severity: medium.** "Migration chains are never squashed within a major

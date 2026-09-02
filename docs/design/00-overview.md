@@ -264,10 +264,14 @@ depth. That is code that has been operated, not merely written.
 repository.** It is in the working tree of *this* repository, at `apps/web` on
 `main` — **111 TypeScript files, 12 Prisma models, 4 migrations**
 (`20260314000000_init` … `20260428213000_add_organization_hierarchy_and_capabilities`),
-and the design branch sits on top of it. That matters: "no destructive action
-against the existing repository" (OD-1) is a constraint on the repository the v1
-build will also occupy, and the obvious move — replace `apps/web` — is exactly
-what OD-1 forbids until it closes.
+and the design branch sits on top of it.
+
+**OD-1 closed on 2026-09-02: there is no deployed prototype instance and no
+prototype data.** The constraint this section previously carried — "no
+destructive action against the existing repository until OD-1 closes" — is
+therefore lifted. `apps/web` may be replaced as part of the v1 build, as an
+ordinary reviewed change on a branch. Its migration history may be discarded
+(D-001's trade-off column, now free).
 
 Models include `User`, `Organization`, `OrganizationWelcomePage`, `Student`,
 `SwimGroup`, `GroupMembership`, `OrganizationMember`,
@@ -277,29 +281,36 @@ Models include `User`, `Organization`, `OrganizationWelcomePage`, `Student`,
 `Person`/`UserAccount` split (which the brief explicitly requires), no branding
 system, no CMS, no API layer, and no consent or retention model.
 
-**Two shape mismatches that any import must handle explicitly** (R-29, OD-1):
+**There is no import from the prototype** (OD-1: nothing is deployed, so there
+is nothing to import). The import path in v1 has a different source: the club's
+**commercial membership administration system**, which offers export (OD-16).
+Its column shapes are unknown until a sample export is supplied, so no mapping
+is specified here — **D-157** forbids specifying one in advance.
 
-1. The prototype's `Organization` is **multi-row with a hierarchy**;
-   SplashTrack's is an enforced singleton (D-027). A prototype holding N
-   organisations has no single target — it becomes N installations, N imports, N
-   recovery tokens. The importer therefore takes **one prototype organisation id
-   as a required argument** and refuses to run without it. Likewise
-   `OrganizationMemberCapability` must map to role assignments explicitly, and
-   the import **refuses on any unmapped capability** rather than silently
-   dropping authority.
-2. **Consent cannot be imported.** The prototype has no consent model. Every
-   photo permission, medical note and marketing flag would arrive with no lawful
-   basis, into a system whose privacy model (D-063, D-065, F-27) rests on having
-   one. The importer writes **zero** `Consent` rows, leaves every consent-gated
-   feature off, and emits a report of what could not be carried over. That is
-   the difference between an import that improves the school's compliance
-   position and one that launders a gap.
+**Two constraints that survive the change of source**, because they are
+properties of the target rather than of the source:
 
-The import is also **lossy by construction**: prototype `Student` and
-`GroupMembership` carry status, not history, so each imported student starts
-with one synthetic `StudentLifecycleEvent(JOINED)` and one `MembershipPeriod`,
-marked `origin: IMPORTED_LEGACY` so nobody later reads an import artefact as
-evidence in a dispute.
+1. **Authority is never inferred.** Whatever the source calls a role,
+   capability or permission level maps to a SplashTrack role assignment
+   explicitly, and the import **refuses on any unmapped value** rather than
+   silently dropping — or silently granting — authority.
+2. **Consent cannot be imported.** A membership system's photo permission,
+   medical note or marketing flag arrives with no recorded lawful basis, into a
+   system whose privacy model (D-063, D-065, F-27) rests on having one. The
+   importer writes **zero** `Consent` rows, leaves every consent-gated feature
+   off, and emits a report of what could not be carried over. That is the
+   difference between an import that improves the school's compliance position
+   and one that launders a gap.
+
+The import is **lossy by construction** wherever the source carries status
+rather than history: such records start with one synthetic
+`StudentLifecycleEvent(JOINED)` and one `MembershipPeriod`, marked
+`origin: IMPORTED_LEGACY` so nobody later reads an import artefact as evidence
+in a dispute.
+
+**Whether the incumbent is then retired is OD-18, and it is open.** If it stays
+authoritative for membership, the `Membership` half of chapter 15 becomes a
+read-only projection rather than a system of record.
 
 ### 2.3 D-001 — build from the template, port the domain as concepts
 
@@ -315,17 +326,17 @@ about the domain, and knowledge ports for free.
 
 **Trade-off.** The prototype's code and migration history are not reused.
 
-**Condition — open, and asking the wrong question.** Whether the prototype's
-*migration history* may be discarded depends on whether it holds data that must
-be migrated. That is **OD-1, and it is still blocking**: no destructive action is
-taken against `apps/web`, its migration history, or any prototype database until
-it closes. If real data exists, a one-time export/import path becomes a v1
-requirement — **R-29**, not R-20 (R-20 is migrations and upgrades).
+**The condition on this trade-off is discharged.** It depended on whether the
+prototype held data that must be migrated, which was OD-1. **Answered
+2026-09-02: no deployed instance exists, so no prototype data exists.**
+Discarding `apps/web` and its four migrations costs nothing, and the
+export/import path that would have been conditional on a "yes" is not needed
+for this source.
 
-The question as posed cannot be answered from a repository. The answerable form
-is: *is there a deployed prototype instance, and who holds its connection
-string?* If nobody can name a running instance, OD-1 closes the same day
-(`08-open-decisions.md` OD-1).
+**R-29 survives with a different source.** It is a v1 requirement — import of
+the existing pupil/member list — but from the commercial membership system
+(OD-16, D-157), not from the prototype. It remains distinct from R-20, which is
+migrations and upgrades.
 
 ---
 
@@ -394,7 +405,7 @@ version that cannot drift.
 | R-26 | Public surface cannot enumerate or expose any person, student, member, group or other private record (§3.4) |
 | R-27 | **Reduced (§3.5):** DEV and PROD. UAT as a separate environment is out of v1 — one person is author, reviewer and acceptor. The same tag still publishes the public image |
 | R-28 | **Reduced (§3.5):** eight blocking CI checks — format, lint, typecheck, unit, integration, E2E, migration-against-populated-database, secret scanning. The check list is stated once, in `06-delivery.md` §2.1 |
-| R-29 | *Conditional on OD-1:* one-time import path from the prototype at `apps/web`, taking one prototype organisation id as a required argument (§2.2) |
+| R-29 | One-time import of the existing pupil/member list from the club's commercial membership system's export (OD-16); mapping specified against a real sample file only, unmapped columns reported not dropped, zero `Consent` rows written (D-157, §2.2) |
 | R-37 | **Breach-response capability** — a "what did this account do" audit report, an active-session inventory with global revocation, notification delivery for high-severity events, and an incident checklist. For health data about children the Article 33/34 thresholds are met by default, so this is a v1 requirement for this data class (`07-operations.md` §1.4) |
 
 ### 3.2 Architecturally prepare — not built in v1

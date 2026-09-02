@@ -6,65 +6,26 @@ that gets more expensive the later it is answered. Ordered by cost of delay.
 
 ---
 
-### OD-1 — Is there a deployed prototype instance holding real data?
+### OD-1 — **(CLOSED 2026-09-02)** Is there a deployed prototype instance holding real data?
 
-**Status: OPEN — unanswered, and blocking.**
+**Answer, from Jack: there is no prototype instance.** Nobody holds a
+connection string because nothing is deployed. The prototype exists only as
+source in `apps/web` on `main`.
 
-The previous wording was *"Status: BLOCKING, confirmed by Jack (2026-08-31)"*,
-which reads as though the decision were settled. It was not. What Jack confirmed
-on 2026-08-31 is that the decision **is blocking** — not what the answer is.
-Every future reader would have misread that line, so it is stated the long way
-here: **nobody has answered this yet.**
+**Consequences, all of them releasing:**
 
-**The question was also posed wrongly.** "Does the prototype have real users or
-real data" cannot be answered by looking at a repository, and a repository is
-all anyone has looked at. The answerable form is:
+- **D-001 is free.** Discarding the prototype's schema and its four migrations
+  costs nothing; no school depends on them.
+- **`apps/web` may be replaced** rather than worked around. The constraint this
+  entry placed on the v1 build — "no destructive action against the existing
+  repository until OD-1 closes" — is lifted. The replacement is still a normal
+  reviewed change on a branch, not a `git rm` on `main`.
+- **R-29 does not exist for the prototype.** There is no one-off import path
+  from prototype data, because there is no prototype data. The import question
+  moves entirely to OD-16, which has a different and non-empty answer.
+- Nothing here reopens D-001; it confirms the trade-off column was free.
 
-> **Is there a deployed prototype instance, and who holds its connection
-> string?**
-
-If nobody can name a running instance, the answer is no and **OD-1 closes the
-same day.**
-
-**Why it matters.** D-001 discards the prototype's schema and migration history.
-That is free if the prototype was never deployed, and a data-migration project
-if a school depends on it today.
-
-**A fact this entry did not record.** The prototype **is not a separate
-repository**. It sits in the working tree of *this* repository at `apps/web` on
-`main` — 111 TypeScript files, 12 models, 4 migrations — and the design branch
-sits on top of it (`00-overview.md` §2.2). So "no destructive action against the
-existing repository" constrains the repository the v1 build will also occupy,
-and the obvious move — replace `apps/web` — is exactly what this decision
-forbids until it closes.
-
-**What follows if the answer is yes** — recorded now, at zero cost, so it is not
-designed under time pressure later:
-
-- The import path becomes requirement **R-29** (not R-20, which is migrations
-  and upgrades).
-- It is **file-based, offline and one-way**: a standalone export script run
-  against the prototype emits a documented JSON envelope; the importer consumes
-  that file. No live database link in either direction, ever.
-- The importer runs through the **new application services**, so rows land with
-  correct scoping, consent state and audit — not by SQL.
-- The prototype's `Organization` is **multi-row with a hierarchy**; SplashTrack's
-  is an enforced singleton (D-027). An import therefore takes **one prototype
-  organisation id as a required argument** and refuses without it. N prototype
-  organisations means N installations, N imports, N recovery tokens.
-- **Consent cannot be imported.** The prototype has no consent model, so the
-  importer writes **zero** `Consent` rows, leaves every consent-gated feature
-  off, and reports what could not be carried over. Anything else launders a
-  compliance gap into a system whose privacy model depends on having a lawful
-  basis on record.
-- `OrganizationMemberCapability` maps to role assignments **explicitly**; the
-  import **refuses on any unmapped capability** rather than silently dropping
-  authority.
-- Sequencing: the importer is written after the foundation and reshaping work,
-  before any cutover — not first.
-
-**Cost of delay.** High, and now cheap to remove: one look at whether a
-prototype instance is running.
+---
 
 ---
 
@@ -175,46 +136,67 @@ poolside screen puts a family's finances in front of a volunteer instructor.
 
 ---
 
-### OD-5 — Guardian portal: v2 or never?
+### OD-5 — **(CLOSED 2026-09-02)** Guardian portal: v2 or never?
 
-**Why it matters.** `PersonRelationship` is built in v1 regardless (it is
-needed for consent on behalf of minors — F-02). But if guardians get their own
-login, the authorization model needs a "reach" concept for *"my child's data
-only"*, which is a genuinely different scoping axis from organisation
-membership.
-**Cost of delay.** Medium.
-**My recommendation:** design the relationship table now (already decided), and
-defer the portal until a customer asks. Do not build the scoping axis
-speculatively.
+**Answer, from Jack: v2 — confirmed, not "maybe".**
 
-**Decided (2026-09-01) — `RELATED` is removed from the scope enum entirely
-until the guardian portal ships.** It was previously in three states at once:
-R-14 mandated building the axis in v1, P-04 and this decision deferred it, and
-the v1 starter-role catalogue shipped a Guardian role that *used* it. Deferring
-it while leaving it grantable is the worst of the three: an administrator can
-assign a scope whose enforcement nobody has written, and it will look like it
-works. Reserving the enum member without implementing it is only marginally
-better — the reserved-but-unimplemented member is exactly the kind of thing that
-gets wired up by someone reading the enum rather than this chapter. So it is
-gone from the enum, and it returns with the portal that needs it.
+This is a firmer answer than the entry asked for, and it changes what v1 owes.
+"Defer until a customer asks" was the recommendation; "it is coming in v2" is a
+commitment, and a commitment has design consequences a deferral does not:
+
+- **The v1 removal of `RELATED` from the scope enum stands unchanged.** An
+  unimplemented-but-grantable scope is worse than an absent one, and that
+  reasoning does not depend on when the portal ships. It returns with the
+  portal, as one reviewed change that adds the enum member, its
+  `resolveReach` variant and its enforcement together (D-147 makes the addition
+  a compile error everywhere it must be handled — the desired forcing function).
+- **v1 may not foreclose the axis.** `PersonRelationship` (F-02), the
+  `ON_BEHALF_OF` consent records and D-151's age-of-digital-consent expiry are
+  already the substrate the portal will read. No v1 decision may assume that
+  the only readers of a student's record are staff. Where that assumption would
+  otherwise be cheap — a query that hard-codes staff reach, a screen that
+  renders "your child" as impossible — it is not taken.
+- **What is still not built in v1:** the portal, guardian authentication,
+  guardian-facing screens and the reach variant itself. Speculative scoping
+  work remains out.
+
+**D-161** records the "do not foreclose" obligation, because a commitment kept
+only in this chapter is a commitment nobody implementing chapter 02 will read.
 
 ---
 
-### OD-6 — Session timeout values.
+---
 
-**Reframed.** `SHARED_DEVICE` mode (D-009) is out of v1 (`00-overview.md`
-§3.5.1): it was opt-in by the party it restricted, and its most valuable
-sub-behaviour — no exports from a poolside session — is achieved better by an
-instructor role that simply holds no export permission. What is left is the
-plain question the mode was wrapped around.
+### OD-6 — **(CLOSED 2026-09-02)** Session timeout values.
 
-**Why it still matters.** Too short and instructors re-authenticate mid-lesson
-with wet hands, which is a defect against a clipboard. Too long and a mislaid
-device is an open door.
-**Proposed defaults.** Idle 30 min (instructor), 15 min (administrator),
-absolute 12 h.
-**Cost of delay.** Low — they are settings, and the right way to decide them is
-three lessons of real use, which is now available.
+**Answer, from Jack: the proposed defaults are accepted, and they must be an
+administrator-changeable setting rather than a constant.**
+
+That second half is the substantive part, and it lands on an existing rule
+rather than creating a new one. **D-150** already classifies every setting as
+`free`, `bounded` or `invariant`; session timeouts are named there as `bounded`
+with a hard ceiling of 8 hours idle. Jack's answer is therefore satisfiable
+exactly as the security model already requires:
+
+| Setting | Default | Class | Bound |
+|---|---|---|---|
+| Idle timeout, instructor role | 30 min | `bounded` | ≤ 8 h |
+| Idle timeout, administrator role | 15 min | `bounded` | ≤ 8 h |
+| Absolute session lifetime | 12 h | `bounded` | ≤ 24 h |
+
+**Why the bound is not negotiable even though the value is.** D-143 removed
+`SHARED_DEVICE` and leaned the poolside threat model on "the Instructor role
+holds no export permission, plus a short role-based idle timeout". If the
+timeout were `free`, the second half of that mitigation could be set to a year
+by the person it restricts — the same self-declaration defect D-143 exists to
+remove. Bounded gives Jack what he asked for (change it after three lessons of
+real use, from the admin UI, no restart) without re-opening it.
+
+**Per-role, not global.** The two defaults differ by role, so the setting is
+role-scoped; a single global number cannot express the table above. Recorded as
+**D-158**.
+
+---
 
 ---
 
@@ -298,18 +280,37 @@ data about children structurally impossible.
 
 ---
 
-### OD-10 — Terminology and language of the domain model.
+### OD-10 — **(CLOSED 2026-09-02)** Terminology and language of the domain model.
 
-**Why it matters.** Code in English, UI in Dutch is the default assumption
-(the template ships NL + EN, NL default). But domain terms — *diploma*,
-*afzwemmen*, *baan*, *lesuur*, *proefzwemmen* — often have no good English
-equivalent, and a bad translation in the schema haunts the codebase forever.
-**My recommendation:** English for generic concepts (`Skill`, `Group`,
-`Enrolment`), and keep Dutch domain terms untranslated where translation loses
-meaning. Decide the glossary once, in a `docs/glossary.md`, before the first
-domain module is written.
-**Cost of delay.** Low individually, high cumulatively — renaming a schema
-concept after ten modules use it is painful.
+**Answer, from Jack: schema and code are always English.** No exceptions, no
+untranslated Dutch identifiers.
+
+This overrides my recommendation, which was to keep Dutch domain terms
+untranslated where translation loses meaning (`afzwemmen`, `lesuur`, `baan`).
+Jack's rule is the stricter and more maintainable one, and it removes a judgment
+call from every future module author — which is worth more than the fidelity
+lost on three or four terms.
+
+**What this obliges, since "English" alone does not settle the hard cases:**
+
+- A **glossary** (`docs/glossary.md`) fixes one English identifier per domain
+  concept *before* the first domain module is written, with the Dutch term
+  beside it. The glossary is the translation record; the schema is not.
+- Where an English word would mislead, the glossary carries the definition
+  rather than the schema carrying Dutch. `afzwemmen` → the assessment/award
+  event; `aftesten` → the independent pre-exam assessment (chapter 15);
+  `lesuur` → `ScheduledSession`; `baan` → `Lane`.
+- **UI stays Dutch by default** (the template ships NL + EN, NL default). This
+  decision is about identifiers, not about what an instructor reads at the
+  poolside. Where a Dutch UI label and an English identifier diverge, the
+  glossary records the pair so a support question can be traced from screen to
+  column.
+- Existing chapters that use Dutch terms as *prose* are unaffected; chapters
+  that use them as *identifiers* are corrected when the module is written.
+
+Recorded as **D-159**.
+
+---
 
 ---
 
@@ -432,25 +433,39 @@ of maintaining packaging we do not control.
 
 ---
 
-### OD-16 — Does a digital pupil list exist anywhere at all?
+### OD-16 — **(CLOSED 2026-09-02)** Does a digital pupil list exist anywhere at all?
 
-**Why it matters, and it is load-bearing.** CSV import of the current pupil list
-has been described as *"what makes a pilot possible at all"*. But the incumbent
-is **pen and paper**. If the school genuinely runs on paper, **there may be no
-digital list to import** — and entering 100 children by hand is one evening, at
-which point CSV import drops out of v1 entirely.
+**Answer, from Jack: yes. The club runs a commercial membership administration
+system, and it offers export.**
 
-Most clubs keep a member ledger or an Excel somewhere for contributie, so it
-probably exists. **Probably is not good enough for a line item**, and this
-assumption has never been checked.
+This is the opposite of the answer the entry was braced for, and it lands
+harder than "the import work survives".
 
-**Needed.** One answer: is the list in Excel, in a ledger, in the prototype
-database, or nowhere? If "nowhere", say so and the import work disappears.
-**Cost of delay.** Medium, and it is the cheapest question in this chapter to
-answer — it takes one look in a drawer.
-**Note.** This is a different question from OD-1. OD-1 asks whether a *prototype
-instance* holds data; this asks whether *any* digital list exists. Both can be
-"no", and if both are, R-29 and the whole import path leave v1 together.
+**What it settles:**
+
+- **The import path stays in v1.** R-29 is not deleted; it is now grounded in a
+  real source rather than a hoped-for spreadsheet.
+- **The importer is built against an actual export file, never an invented CSV
+  schema.** This is the whole value of the answer. A column set guessed in
+  advance is a column set that fails on contact, at the one moment a pilot
+  cannot absorb failure. Recorded as **D-157**: no import mapping is specified
+  until an export sample from the incumbent system is in hand, with an explicit
+  unmapped-column report rather than silent dropping.
+- **The pen-and-paper premise was only ever true for attendance and
+  assessment**, not for the member base. Chapter 04's "the incumbent is paper"
+  framing (D-129, print fallbacks) remains correct for the poolside surfaces and
+  is now known to be wrong for membership data. Both statements coexist; the
+  chapters say which is which.
+
+**What it opens, and I am not deciding it (see OD-18).** If membership
+administration already runs in a commercial system, SplashTrack's own
+`Membership`, `MembershipPeriod` and contributie tracking (chapter 15) may be a
+second home for a fact that already has one — the exact duplication D-134
+forbids inside the document, now appearing between systems. One-time import,
+periodic sync and full takeover are three different products. That question is
+Jack's, and it is now the most expensive open item in this chapter.
+
+---
 
 ---
 
@@ -472,18 +487,56 @@ D-108–111; `13-…`/`14-…`'s D-090–094 → D-112–116) and updating every
 cross-reference; see `09-decision-register.md` for the reconciled set and
 `10-findings.md` for the merged review findings this closes.
 
-### OD-17 — Is the five-value grade scale the only one a school will ever use?
+### OD-17 — **(CLOSED 2026-09-02)** Is the five-value grade scale the only one a school will ever use?
 
-**Why it matters.** `GradeScale`/`GradeValue` (`15-assessment-and-fees.md`
-§2.1) is modelled as org-owned specifically so a school *could* define its own
-ordinal scale, but the only scale in scope is the five NRZ-style values
-(*onvoldoende…zeer goed*) the domain expert described. Nobody has asked
-whether that flexibility is ever used, and it is cheap to leave unused but
-not free to remove once seeded data references it.
-**Cost of delay.** Low. The model already supports either answer; this is a
-data question, not an architecture one, and it can wait until the NRZ
-catalogue itself is confirmed (F-44).
-**My recommendation:** ship the one scale, keep the table generic since it
-cost nothing, and do not ask the question until a second scale is actually
-requested.
+**Answer, from Jack: yes — *onvoldoende / matig / voldoende / goed / zeer goed*
+is the scale.**
+
+Resolved exactly as recommended, and the recommendation stands unchanged:
+
+- **Seed one scale**, the five NRZ-style ordinal values, with "minimally
+  *voldoende*" as the pass threshold except where an `AwardType`'s
+  `CriterionSet` sets a lower one (certificates with relaxed requirements —
+  chapter 15 §2).
+- **Keep `GradeScale`/`GradeValue` generic anyway.** The table cost nothing to
+  write and removing it now would be a schema change to buy nothing. It stays
+  org-owned and versioned; nobody builds a scale editor for it in v1.
+- **Versioning still matters** for the reason it always did (chapter 15): an
+  aftest from 2026 must stay readable against the criterion set that applied in
+  2026, whatever the NRZ does in 2028. Confirming today's scale does not make
+  it permanent.
+
+Recorded as **D-160**.
+
+---
+
+---
+
+### OD-18 — Does SplashTrack take over membership administration, or coexist with the incumbent system?
+
+**Raised 2026-09-02, by OD-16's answer.** The club already runs a commercial
+membership administration system. Chapter 15 specifies `Membership`,
+`MembershipPeriod` and contributie tracking inside SplashTrack. Those are the
+same facts in two systems.
+
+**Why it matters, and why it is the most expensive item currently open.** Three
+answers give three different products:
+
+| Answer | What v1 builds | What breaks later |
+|---|---|---|
+| **One-time import, then SplashTrack owns membership** | Everything in chapter 15 as written; the incumbent is retired | Nothing structurally — but the club must actually retire the incumbent, including whatever it does for invoicing and bookkeeping that SplashTrack deliberately does not (OD-4) |
+| **Incumbent stays authoritative; SplashTrack imports periodically** | `Membership`/`MembershipPeriod` become a **read-only projection**; contributie tracking leaves v1; no membership editing UI | Every screen that assumes membership is editable here; D-059's leave-and-return model becomes something the *other* system decides |
+| **Both authoritative for different things** | A written split — e.g. incumbent owns contributie and the member ledger, SplashTrack owns students, groups, progress and exam fees | The worst option to discover late: reconciliation is exactly the work D-4/F-45 kept out of v1 |
+
+**What makes this answerable, not a design question.** It depends on facts only
+Jack has: whether the club intends to retire the commercial system, what it is
+relied on for beyond a pupil list (invoicing? incasso? bookkeeping export?), and
+whether its export is a one-off or a supported recurring feed.
+
+**Note on scope.** This does not block the design of students, groups, sessions,
+attendance, assessment or exams — none of which the incumbent holds. It blocks
+only the membership and contributie half of chapter 15.
+
+**Cost of delay.** High and rising: it is cheap now and becomes a rewrite of
+chapter 15 plus its schema once written.
 
