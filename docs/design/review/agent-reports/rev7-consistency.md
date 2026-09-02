@@ -458,3 +458,136 @@ codes are data and deliberately Dutch. Resolve together with C-3, which is the
 same boundary applied to `AFTEST`.
 
 ---
+### C-11 — `01-domain-model.md` §3.5 states the exam-access mechanism as an `EXAM_SESSION`-scoped grant citing D-054, which is superseded and whose scope type no longer exists
+
+**Severity: high.**
+
+Side A — `01-domain-model.md` §3.5, the `ExamAssessor` row (normative, in the
+entity table an implementer builds from):
+
+> | `ExamAssessor` | examSessionId, personId, role | | Records **who assessed**
+> this session — an attribution fact, not an access grant. **Access comes from
+> an `EXAM_SESSION`-scoped role assignment (D-054).** Supports the external
+> examiner with no membership (D-052) |
+
+Side B — `09-decision-register.md`, D-054 and D-068:
+
+> | D-054 | **(Superseded by D-068)** `EXAM_SESSION` is a first-class scope
+> type; no access mechanism lives outside the scope enum | …
+>
+> | D-068 | `SESSION` is a first-class scope type: reach follows assignment to a
+> specific session's roster, for a bounded window, and **replaces `EXAM_SESSION`
+> (D-054)** | …
+
+and `02-security-privacy.md` §2.1, the scope enum, which contains `SESSION` and
+no `EXAM_SESSION`:
+
+> | `SESSION` | **Participation in one scheduled session (lesson, aftest or exam
+> session) and its roster, for a bounded window** | "Independent aftest assessor,
+> Groep A1's Thursday aftest" · … · "External examiner, Saturday 14 March" |
+
+and `00-overview.md` R-31:
+
+> | R-31 | **`SESSION` participation reach** … **Replaces the `EXAM_SESSION`
+> scope** (`02-security-privacy.md` §2.1) |
+
+**Why it matters.** This is the clearest case in the set of a superseded
+decision still cited as live, and it is cited *as the mechanism*, in the
+chapter that defines the entity. `01-…` §3.5 is where someone implementing
+exams reads what grants an assessor access; it tells them to use a scope type
+that `02-…` §2.1 does not define and `09-…` records as replaced. Every other
+mention of `EXAM_SESSION` in the active chapters is correctly marked as history
+(`00-…` §3.5, `10-…` F-… , `15-…` §3, `02-…` §2.2), so this is the single
+survivor of that renaming pass — which is exactly why it will not be caught by
+someone who checks one other chapter and assumes the rename was complete.
+
+**Recommended resolution.** Change the `ExamAssessor` Notes cell to "Access
+comes from a `SESSION`-scoped role assignment (D-068, replacing D-054)".
+
+---
+
+### C-12 — `10-findings.md`'s Security-risks table still names `SHARED_DEVICE` (D-009) as the mitigation for a High risk, which F-127 in the same file says was removed
+
+**Severity: medium.**
+
+Side A — `10-findings.md`, "## Security risks" table (presented as the current
+risk register; the chapter's own preamble is "The brief explicitly asks for
+these"):
+
+> | Shared tablet left unlocked | High | **`SHARED_DEVICE` mode (D-009)** |
+
+Side B — `10-findings.md` F-127, ~1000 lines later in the same file:
+
+> D-009 was … **cited as *the* mitigation for two separate High risks and for
+> FM-13**, so the strongest control in the poolside threat model was a
+> self-declaration.
+> **Response.** D-143 supersedes D-009 and records what v1 actually ships …
+
+and `02-security-privacy.md` §6.2, the equivalent row in the abuse-scenario
+table, already corrected:
+
+> | Instructor tablet stolen from pool deck | Short idle timeout by role; the
+> Instructor role holds no export, bulk or admin permission at any scope
+> (**D-143**); session revocation from the breach-response inventory (D-128) |
+
+**Why it matters.** F-127's stated defect is "D-009 was cited as the mitigation
+for two separate High risks". The repair updated chapter 02 and `07-operations.md`
+FM-13, and left one of the two High-risk citations standing — in the table that
+is the design set's summary risk register, and in the same file as the finding
+that says it was fixed. A reader auditing whether F-127 was resolved will find
+the answer contradicted by the table three screens above it. `00-overview.md`
+§3.5.1 also correctly lists D-009 as removed.
+
+**Recommended resolution.** Replace the mitigation cell with D-143's text and a
+pointer to `02-…` §1.3, or mark the whole table as a historical snapshot with a
+pointer to `02-…` §6.2 as the live register — the latter only if that is
+actually true, since `03-…` and `07-…` currently treat it as live.
+
+---
+
+### C-13 — D-017 and D-051 are two authoritative statements of the same public-surface rule, in two chapters, with neither pointing at the other
+
+**Severity: medium.** (A D-134 violation that survived the D-134 repair pass.)
+
+Side A — `09-decision-register.md` D-017, home `03-deployment-model.md` §5.1:
+
+> | D-017 | The public surface has its own read model and **may not touch person
+> tables** | … | `03-deployment-model.md` §5.1 |
+
+restated normatively in `03-deployment-model.md` §5.1:
+
+> **Decision D-017 (unchanged, and now carrying more weight) — the public
+> surface …**
+
+Side B — `09-decision-register.md` D-051, home `00-overview.md` §3.4:
+
+> | D-051 | The public surface **may not read any person, student, member,
+> group, attendance, progress or exam record, nor expose any endpoint from which
+> their existence can be inferred** | … | `00-overview.md` §3.4 |
+
+restated normatively in `00-overview.md` §3.4 ("The anonymous-access rule").
+
+**Why it matters.** D-134 requires that "a normative rule is stated **once**, in
+one section; every other mention points at it and says so". Here one rule has
+two decision ids, two homes, and two full statements, and neither row nor
+section references the other. The copies are not identical: D-051 is strictly
+broader (it forbids inference endpoints, enumerable identifiers and non-uniform
+responses on public forms; D-017 forbids reading person tables). Downstream
+citation has already split along the difference — `10-findings.md` F-10 and its
+risk table, `07-operations.md` §, and `03-…` §5.1/§5 all cite **D-017** alone
+for the structural claim, while `00-…` §3.5.1 and OD-9 cite **D-051** alone as
+the rule that survives the CMS cut. An implementer who lands on D-017 builds a
+read model with no person imports and can still ship an inquiry form that
+confirms whether an email address is already known — which D-051 forbids and
+D-017 does not mention.
+
+This is the same failure mode as D-037 (last round's most valuable find) with
+the duplication expressed as two decision numbers rather than three copies of
+one, which is presumably why the D-134 sweep did not catch it.
+
+**Recommended resolution.** Make D-051 the single statement and reduce D-017's
+register row and `03-…` §5.1 to a pointer ("the rule is stated once, in
+`00-overview.md` §3.4 / D-051"), or the reverse. Update the citations in
+`10-…` F-10, `10-…`'s risk table and `07-…` §… to name the surviving id.
+
+---
