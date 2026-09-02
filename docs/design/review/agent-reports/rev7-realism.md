@@ -31,7 +31,7 @@ actually exists. **No stop** — *provided the session row exists*, which is R-2
 **2. A child moves down a group.** Works, and it is right. `GroupMove` carries
 `direction (UP/DOWN/LATERAL)`, a reason and `decidedByPersonId`
 (`01-domain-model.md` §3.2, D-108). **Stop:** the target group's capacity is a
-nullable field nothing checks (R-11).
+nullable field nothing checks (R-10).
 
 **3. Run an aftest.** Model works: scheme pinned by FK, five-point scale,
 per-criterion grades, waivers with a name on them, default-unset entry.
@@ -77,7 +77,7 @@ takes, and adding §3.5.2's new work:
 | IdP registry | 2.5 | 0 | Cut |
 | Retention | 3 | 1 | Engine → constants |
 | Consent + guardian authority | 1.5 | 1.5 | Not cut |
-| Column encryption + envelope + rotation | 1 | 1.5 | **Grew** — see R-10 |
+| Column encryption + envelope + rotation | 1 | 1.5 | **Grew** — see R-12 |
 | Audit as a product surface | 1 | 1 | Not cut |
 | Diagnostics + break-glass CLI | 1 | 1 | Not cut |
 | Breach response (R-37) | — | 1 | **New** |
@@ -534,3 +534,185 @@ the round-2 recommendation was rejected. What must not stand is a build order
 whose #1 item is a control the scope chapter is silent about. Keeping the `v1:`
 envelope *format* and the AAD design costs about a day and preserves the option
 either way — that part of D-096 should ship regardless.
+
+---
+
+### R-13 — The product can record everything about a lesson and tell nobody anything
+
+**Severity: high.**
+
+There is no outbound communication to guardians anywhere in v1. P-06 defers
+*"Notifications beyond transactional email"*; the guardian portal is committed to
+v2 (OD-5); `07-operations.md` §1.4 ships notification delivery **for
+high-severity security events**, to operators. Grep for a guardian-facing message
+of any kind across the active chapters returns nothing.
+
+**The moment it fails.** Three of them, weekly to termly:
+- The pool closes on Thursday. Twelve families need to know today (and R-3 means
+  the app cannot even represent the cancellation).
+- Sanne is confirmed for the exam on 14 March. Her parents need the date, the
+  time and the fee that D-089 just created — and D-093 correctly forbids putting
+  the fee anywhere an instructor would mention it.
+- Sanne moves from B2 down to B1. D-108 makes the reason a required field
+  precisely so a parent is not left to guess — *"A parent reading 'moved from
+  Group 4 to Group 3' with no reason attached draws the worst conclusion
+  available"* — and then the reason is stored where no parent will ever read it.
+
+**Why it matters.** Every one of those messages is sent today, by WhatsApp, from
+someone's personal phone. SplashTrack does not have to win that; it has to not
+make it worse. D-108's required reason is currently a cost with no beneficiary.
+
+**Recommendation.** One screen: **send a message to the guardians of a group, or
+of a session's roster, from a template.** The `email-templates` and
+`notifications` modules are inherited and working (`01-…` §1.1), and
+`PersonRelationship(GUARDIAN_OF)` already gives the recipient list. This is
+days, not weeks, and it converts three recorded facts into three delivered ones.
+It is not the portal and it does not pre-empt OD-5.
+
+---
+
+### R-14 — `EXCUSED` exists with no way for anyone to excuse anybody
+
+**Severity: medium.**
+
+`AttendanceEvent.state ∈ {PRESENT, ABSENT, EXCUSED, LATE}` (`01-…` §3.4), and
+`04-ux.md` §4.1 gives *"long-press = EXCUSED/LATE + note"*. There is no inbound
+channel that could tell the instructor a child is excused: no guardian portal
+(v2), no form, no email intake, no absence link.
+
+**The moment it fails.** Every week. A parent texts the instructor's personal
+phone at 17:30. At 19:00 the instructor long-presses EXCUSED from memory, for
+the children whose message they happened to see. The distinction between ABSENT
+and EXCUSED — which is the whole point of having both, and which feeds any
+future absence policy — is recorded on the basis of which parent had which
+instructor's number.
+
+**Why it matters.** It is not that the data is missing; it is that the data is
+*wrong in a way nobody can see*, in the append-only log the design calls
+evidence. Round 1 proposed the fix and round 2 dropped it without argument.
+
+**Recommendation.** The cheapest version that works and needs no portal: a
+signed, per-(session, student) link emailed or messaged to the guardian, that
+writes an `EXCUSED` event with `source = GUARDIAN` and no login. Half a week.
+If even that is too much for v1, then say plainly in `04-ux.md` §4.1 that
+EXCUSED is instructor-asserted hearsay in v1, so nobody builds an absence report
+on it later believing otherwise.
+
+---
+
+### R-15 — "Trial lessons: model only" does not actually make a trial cheap
+
+**Severity: low.**
+
+D-109 and R-38 say trials are modelled but no workflow is built:
+`Enrolment.status = TRIAL`, `StudentLifecycleEvent.TRIAL_ATTENDED`, and a
+`SessionRosterEntry` that accepts a non-member. The trade-off is stated as
+*"A school that does run trials and make-ups administers them by hand — a guest
+added to a roster, a note in the reason field."*
+
+That understates it. `SessionRosterEntry` references `studentProfileId`, so a
+child who comes once to see whether they like it needs the full `04-ux.md` §4.5
+path first: search Person → create Person → create StudentProfile → create
+Enrolment → guardian relationship → consent. Six steps and a consent record for
+someone who may never return, before they can appear on a roster at all.
+
+**Why it matters.** Barely, for Jack — his school does not run trials, and I
+agree with the decision not to build the workflow. It matters for the claim: the
+design says the model is there so the workflow is cheap later, and what is
+actually there is a model that makes the workflow *possible*, not cheap.
+
+**Recommendation.** Leave it. Correct D-109's trade-off sentence so a future
+reader does not plan a half-day around it.
+
+---
+
+### R-16 — Two groups in one pool at the same hour is normal, and nothing models it
+
+**Severity: medium.**
+
+`Location | name, address?, capacity?` and `ScheduledSession | groupId,
+locationId, startsAt, endsAt, status` (`01-…` §3.2, §3.4). Nothing prevents two
+sessions in the same location at the same time, and nothing represents the thing
+that makes that legitimate: **lanes**. `Lane` appears exactly once in the design
+set, in OD-10's glossary list (*"`baan` → `Lane`"*), as a term to translate. It
+is not an entity.
+
+**The moment it fails.** 19:00 on Tuesday: A1 in lanes 1–2, B2 in lanes 3–4,
+two instructors, one pool. The design can express both sessions, cannot express
+that they are compatible, and cannot warn when the planner double-books lanes
+1–2. `Location.capacity` is a single number that means "people", which answers a
+different question.
+
+**Why it matters at the poolside.** It is a planning-quality problem, not an
+operational stop — the lesson happens whether or not the app knows. But
+`00-overview.md` R-10 promises *"Planning: lessons, groups, locations,
+instructors, **resources**"*, and this is the resource that exists.
+
+**Recommendation.** Given R-2 already requires opening up `planning`, add a
+`Lane` (or generic `LocationResource`) with an optional assignment on
+`ScheduledSession` and a conflict check in the generator. If that is a week too
+far, cut R-10's word "resources" rather than leaving a requirement with no
+model behind it.
+
+---
+
+### R-17 — The build order schedules the season generator after everything that needs a season
+
+**Severity: medium.**
+
+`06-delivery.md` §5, Phase 3: *"`people → students → groups → courses → skills →
+sessions → attendance → assessment → exams → planning → fees`"*, with the sound
+warning *"Attendance is the flagship and it sits on five modules. Resist
+starting there."*
+
+The DAG order is right and the *delivery* order is wrong. `planning` is tenth of
+eleven, so for the entire build — including every manual test of attendance,
+skills, aftesten and exams — sessions exist only as rows somebody inserted by
+hand or seeded. The first time anyone finds out whether a season can be
+generated at all is after ten modules are built on top of the assumption that it
+can.
+
+**Why it matters.** R-2 says planning is unspecified. This says that even once
+specified, the current plan discovers its problems last. Recurrence with
+holiday exceptions is also the one piece of this domain with genuinely fiddly
+edge cases (a moved lesson, a double week, a block that starts mid-holiday), and
+it is the piece scheduled when the budget is gone.
+
+**Recommendation.** Move the recurrence primitive and the closure calendar into
+`sessions` and build them **with** `sessions`, before `attendance`. The rest of
+`planning` (locations, resources, instructor assignment screens) can stay where
+it is. It also makes the DEV seed honest: a synthetic dataset generated the way
+production generates it.
+
+---
+
+### R-18 — `COURSE` scope has no v1 holder that `SESSION` does not cover, and the scope-escape gate does not test it
+
+**Severity: medium.**
+
+`02-…` §2.1 keeps five scope types plus `SELF`. `COURSE`'s only example is
+*"Examiner for Diploma B"*, and §2.4's only holder is *"Internal examiner |
+`COURSE`, time-bounded | Assesses any exam session of that course"*. But D-068
+moved the external examiner and the aftest assessor to `SESSION`, and §2.2 shows
+`COURSE` covers *"that course, its levels, its enrolments, and **all** its exam
+sessions"* — which is exactly the over-grant D-068 rejects one page later:
+*"`COURSE` scope over-grants every one of these — an assessor would gain every
+future aftest and exam of that course, past and future, on exactly the records
+that matter most."*
+
+Then the gate that is supposed to catch scope escape does not cover it.
+`06-delivery.md` §2.1's mandatory per-module cases are `GROUP`, `UNIT`,
+`SESSION` and reach construction. **`COURSE` and `SELF` are absent from the
+table** — two of the six scope types, one of which (`SELF`) has an explicitly
+enumerated permission set that D-122 calls a security-relevant change to extend.
+
+**Why it matters.** A scope type nobody in this club needs, that over-grants on
+the product's most sensitive records, and that the most important gate in CI
+does not exercise, is three separate reasons pointing the same way.
+
+**Recommendation.** Drop `COURSE` from v1 — an internal examiner gets `SESSION`
+per exam session (which is how the exam day works anyway) or `ORGANIZATION` if
+they are the coordinator. That leaves `ORGANIZATION | UNIT | GROUP | SESSION |
+SELF`. Independently and regardless: add `COURSE` (while it exists) and `SELF`
+to the scope-escape table, or the gate's guarantee is partial in exactly the
+place it is asserted to be total.
