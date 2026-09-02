@@ -1,0 +1,857 @@
+// SplashTrack — Prisma schema
+//
+// Scope: phase 0.2 (foundation), extracted from WebAppTemplate (7db6488). This
+// models the identity graph, the inherited authorization tables, the platform
+// settings singleton and the audit trail. It deliberately contains NO domain
+// model yet — no Person-as-pupil, no group, no lesson, no attendance. Those
+// arrive per module, in the DAG order `06-delivery.md` §5 sets out, and every
+// one of them is blocked on the phase-0.4 ground rules below.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT IS DELIBERATELY ABSENT, AND WHY IT IS NOT AN OVERSIGHT
+//
+// PHASE 0.4 — the retrofit-hostile mechanisms (`docs/build/phase-0-foundation.md`
+// §0.4). None of these are in this schema, on purpose: their specifications
+// were repaired in D-166..D-173 and building a half-matching version now would
+// have to be rebuilt against data.
+//   - Encrypted columns and the D-096 envelope. No column here is encrypted.
+//     The envelope's AAD binds `(columnId, primary key, keyId)` where `columnId`
+//     is a stable registry identifier, never the physical name (D-167).
+//   - `AuditCheckpoint` and the audit chain's checkpointing (D-168). Without it
+//     the first legitimate retention run breaks the chain permanently.
+//   - Retention-policy and lawful-basis columns on every personal-data table
+//     (D-014, D-065), and the erasure registry. `CLAUDE.md` rule 5 makes these
+//     columns, not a later feature — which is exactly why they must arrive with
+//     the repaired specification rather than a guess at it.
+//
+// PHASE 0.3 — the multi-tenant machinery (D-056) IS still here, unchanged:
+// `Organization`, `OrganizationMembership`, `OrganizationUnit`,
+// `RoleAssignment`, `PlatformRoleAssignment`. SplashTrack is one organisation
+// per installation with no tenant id and no platform super administrator, so
+// all of it is removed — but incrementally, test-covered, as its own reviewable
+// diff. Extracting it faithfully first is what makes that diff readable.
+//
+// NOT EXTRACTED AT ALL (features, not foundation — see
+// `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
+// branding, the consent model, custom profile fields, the CMS, email templates,
+// maintenance jobs, IdP step-up, public self-registration, and invitations.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Design rules honoured here:
+//   - A person is not the same as a login account, and neither is the same as
+//     any functional role. Identity is split across tables; there is no
+//     oversized "user" table. D-053 extends this: `Person`, `StudentProfile`
+//     and `Membership` will be separate tables with different lifecycles and
+//     different retention, never one table with a flag.
+//   - Every identifier is English (D-159). `docs/glossary.md` is the Dutch
+//     translation record.
+//   - `Person` is the personal-data anchor. Foreign keys pointing at a `Person`
+//     or an `Organization` use `onDelete: Restrict` so history is never
+//     silently cascade-deleted; erasure must be a deliberate, reviewed
+//     operation. EXCEPTION: pure configuration carrying NO personal data
+//     cascades (Role↔Permission, AccessGroup↔Permission, Role↔AccessGroup, and
+//     org-owned configuration entities).
+
+generator client {
+  // Prisma 7 "prisma-client" generator (Rust-free query compiler). `output` is
+  // required. The client is imported from "<output>/client".
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  // Prisma 7 reads the connection string for the CLI (migrate/db) from
+  // prisma.config.ts (`datasource.url = env("DATABASE_URL")`). At runtime the
+  // client connects through the @prisma/adapter-pg driver adapter, also fed
+  // from env("DATABASE_URL"). Both resolve the same variable — see .env.example
+  // and D-037.
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OrganizationStatus {
+  ACTIVE
+  /// Temporarily blocked (reversible). Data is preserved.
+  SUSPENDED
+  /// Soft-archived (reversible). All data is preserved (every dependent FK is
+  /// `Restrict`). NOT a deletion: hard-deleting an organisation that still has
+  /// members or role grants would be a side-door mass personal-data erasure.
+  ARCHIVED
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+// ---------------------------------------------------------------------------
+// Tenant boundary — PHASE 0.3 removes this (D-056)
+// ---------------------------------------------------------------------------
+
+/// The inherited tenant boundary. SplashTrack v1 is ONE organisation per
+/// installation (D-162): there is no tenant id, no control plane and no
+/// platform super administrator. Phase 0.3 collapses this to a singleton — the
+/// organisation/configuration record for THIS instance, enforced at the
+/// database rather than by convention — and drops the `organizationId` column
+/// from every model below. It is extracted unchanged first so that removal is a
+/// reviewable, test-covered diff rather than a rewrite.
+model Organization {
+  id        String             @id @default(cuid(2))
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  memberships     OrganizationMembership[]
+  roleAssignments RoleAssignment[]
+  roles           Role[]
+  accessGroups    AccessGroup[]
+  apiCredentials  ApiCredential[]
+  units           OrganizationUnit[]
+}
+
+// ---------------------------------------------------------------------------
+// People and accounts
+// ---------------------------------------------------------------------------
+
+/// A human being. NOT necessarily a login user, and not a pupil: `leerling` is
+/// `StudentProfile`, a separate table with its own lifecycle (D-053, and see
+/// `docs/glossary.md`). This is the personal-data anchor — every erasure and
+/// every retention decision ultimately resolves here.
+///
+/// Kept minimal on purpose. Contact details, guardianship, medical remarks and
+/// anything else the school records about a person belong to the modules that
+/// own them, each with its own retention policy from the day the column is
+/// created (D-065, D-014 — phase 0.4).
+model Person {
+  id         String   @id @default(cuid(2))
+  givenName  String
+  familyName String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // 0..1 login account (a Person may have no account — most people in this
+  // system, children especially, never will).
+  account UserAccount?
+
+  memberships             OrganizationMembership[]
+  roleAssignments         RoleAssignment[]
+  platformRoleAssignments PlatformRoleAssignment[]
+  /// Platform-settings rows this person last edited (0..1 today — the singleton).
+  platformSettingsUpdates PlatformSettings[]       @relation("PlatformSettingsUpdatedBy")
+}
+
+/// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
+/// the credential and session material; this table is the application's
+/// representation linking an authenticatable identity to a `Person` and
+/// carrying application-level account state. It stores NO password or secret —
+/// password hashes live in `Account`.
+///
+/// Better Auth's "user" model is MAPPED onto this table (see `src/lib/auth`), so
+/// the columns split into two groups:
+///   - Application-owned: `personId`, `status`, `disabledAt`. Better Auth does
+///     not manage these. `personId` is injected when Better Auth creates an
+///     account (the `user.create.before` hook) so the Person↔account link holds.
+///   - Better-Auth-managed: `email`, `name`, `emailVerified`, `image`,
+///     `twoFactorEnabled`, `createdAt`, `updatedAt`. `name` is a login display
+///     name; structured names live on `Person`.
+model UserAccount {
+  id         String            @id @default(cuid(2))
+  personId   String            @unique
+  email      String            @unique
+  status     UserAccountStatus @default(ACTIVE)
+  /// When the account was disabled; null while ACTIVE. Set by the disable
+  /// operation, which must also revoke the account's sessions.
+  disabledAt DateTime?
+
+  // --- Better Auth-managed identity fields ---
+  name             String
+  emailVerified    Boolean  @default(false)
+  image            String?
+  twoFactorEnabled Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Restrict: deleting a Person while an account exists must be deliberate.
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  // Session / credential / MFA material owned by Better Auth. These are
+  // auth-operational records, NOT the personal-data anchor, so they CASCADE
+  // when a UserAccount is (deliberately) hard-deleted — a stale session or
+  // password credential must never outlive the account it belongs to.
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+  passkeys   Passkey[]
+
+  @@index([personId])
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth tables (identity & session material)
+//
+// Managed by Better Auth's Prisma adapter (`src/lib/auth`). Field names/types
+// match what Better Auth expects for v1.6.x; do not rename columns without
+// updating the auth config's model/field mapping. These carry session tokens,
+// password hashes and TOTP secrets, which must NEVER be logged and must NOT be
+// serialized into any response.
+// ---------------------------------------------------------------------------
+
+/// A single authenticated session for a `UserAccount`. `token` is the opaque
+/// session identifier stored in the httpOnly, secure session cookie. Deleting a
+/// row revokes that session. Cascades when the account is hard-deleted.
+model Session {
+  id        String   @id
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  /// Bumped by Better Auth's own sliding refresh (~`SESSION_REFRESH_AGE_SECONDS`,
+  /// see `@/lib/auth/auth.ts`) — the coarse "last active" proxy. `@updatedAt`
+  /// means Prisma auto-bumps this on ANY update to the row, not just ones that
+  /// set it explicitly, so `getCurrentSession()`'s `lastSeenAt` write pins it
+  /// back to its already-current value on every write. Without that pin, a
+  /// throttled bookkeeping write (as often as every 15-60s) would silently
+  /// shrink this column's documented ~5-minute resolution.
+  updatedAt DateTime @updatedAt
+
+  /// APP-OWNED last-activity timestamp. Deliberately NOT managed by Better Auth
+  /// (not declared in the `session` block of `@/lib/auth/auth.ts`) — its own
+  /// sliding-refresh mechanism overwrites `updatedAt` before
+  /// `auth.api.getSession()` ever returns it, which is exactly what made the
+  /// idle-timeout check unenforceable when it was written against `updatedAt`
+  /// (security review 2026-08-03, in the template's history). This column is
+  /// written ONLY by `getCurrentSession()`, throttled, and is what the live
+  /// idle check reads instead.
+  ///
+  /// Nullable with no default: null means "not yet tracked" (a session this
+  /// helper has not evaluated yet), handled as a one-time fallback there. It is
+  /// also the safe additive-migration shape — see
+  /// `tests/unit/migration-safety.test.ts`.
+  lastSeenAt DateTime?
+
+  /// SESSION-scoped MFA assurance evidence: "was a second factor proven for
+  /// THIS session?", not "does this account have one" (that is
+  /// `UserAccount.twoFactorEnabled`).
+  ///
+  /// Nullable with no default: null means NOT proven — fail toward strict. A
+  /// fresh password-only sign-in with no challenge to prove lands here as null
+  /// and is correctly treated as unproven.
+  ///
+  /// An ENUM rather than a bare boolean, and it RECORDS WHICH METHOD proved it.
+  /// Any step-up gate must treat every non-null value identically — callers
+  /// must never compare against a specific value. The method is still recorded
+  /// because it costs nothing at the write site (each already knows which
+  /// endpoint fired) and is a genuinely useful forensic signal: a session
+  /// proven by a BACKUP CODE is a recovery event, not routine possession of the
+  /// enrolled device.
+  ///
+  /// SECURITY-CRITICAL LOCKOUT LESSON (do not narrow this back to TOTP-only):
+  /// an earlier version of this column in the template was written ONLY for a
+  /// completed TOTP challenge. That reintroduced a hard lockout for exactly the
+  /// population backup codes exist to rescue — an administrator who lost their
+  /// authenticator, signs in with a backup code, then hits the step-up gate
+  /// with no working TOTP device and no way through. All three app-level second
+  /// factors must keep proving a session.
+  mfaEvidence SessionMfaEvidence?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Which second factor proved a session. The template additionally carried
+/// `IDP_PROVEN`, written by the Entra/Microsoft OAuth callback when the ID
+/// token's `amr` claim asserted MFA. SplashTrack v1 has no external identity
+/// provider (the IdP registry is out of v1), so that value — and the
+/// `entraAmrObservation` companion column — is not extracted. Adding it back is
+/// additive if an IdP ever arrives.
+enum SessionMfaEvidence {
+  TOTP_PROVEN
+  OTP_PROVEN
+  BACKUP_CODE_PROVEN
+}
+
+/// A credential record. For email+password auth exactly one row exists per
+/// account with `providerId = "credential"` and the password hash in
+/// `password` — the hash lives HERE, never on `UserAccount` or `Person`. The
+/// OAuth token columns are part of Better Auth's expected shape and stay unused
+/// while there is no social provider.
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Short-lived verification tokens (password reset). Not linked by FK because an
+/// identifier may reference a not-yet-existing subject; rows are consumed and
+/// expired by Better Auth. Values are secrets — the auth config sets
+/// `verification.storeIdentifier: "hashed"` so the raw token is not the row
+/// identifier, and `@/lib/logging` redacts `Verification.value`.
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+/// Fixed-window rate-limit counters (`@/lib/rate-limit`). Keys are HASHED
+/// identifiers, never a raw email or IP address.
+model RateLimitCounter {
+  key         String   @id
+  windowStart DateTime
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-account two-factor (TOTP) enrolment, created by Better Auth's two-factor
+/// plugin. `secret` and `backupCodes` are encrypted/hashed MFA material — never
+/// logged, never returned to a client. Cascades with the account.
+///
+/// This makes MFA POSSIBLE per account. Enforcing "this permission requires
+/// MFA" is an authorization concern and is phase 0.4 (D-147): it needs the
+/// permission set that does not exist yet.
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  userId                  String
+  verified                Boolean?  @default(true)
+  failedVerificationCount Int?      @default(0)
+  lockedUntil             DateTime?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+/// A WebAuthn passkey registered by a `UserAccount`, created and managed by the
+/// `@better-auth/passkey` plugin. Field names/types match what the plugin
+/// expects for v1.6.x — do not rename columns without updating the plugin's
+/// mapping in `src/lib/auth/auth.ts`.
+///
+/// Passkeys are in v1 deliberately (D-132): they are the best answer to "wet
+/// hands at the poolside". The corollary D-132 also fixes is that the WebAuthn
+/// relying-party id is set deliberately at setup — changing `BETTER_AUTH_URL`'s
+/// host invalidates EVERY passkey at once (FM-15) — and every account retains a
+/// password + TOTP fallback so that is recoverable rather than a lockout.
+///
+/// `publicKey` and `credentialID` are the PUBLIC halves of the credential (the
+/// private key never leaves the authenticator), but they are still
+/// auth-operational material and CASCADE when the account is hard-deleted.
+/// `aaguid` identifies the authenticator MODEL, not the device or the user.
+model Passkey {
+  id String @id
+  /// Server-side backstop on the user-chosen label. The registration path
+  /// writes the name straight through the plugin, so this database-level bound
+  /// is the only server enforcement covering every write path. Deliberately
+  /// generous, so it never rejects a legitimate label — it only caps unbounded
+  /// storage from a crafted request.
+  name         String?  @db.VarChar(255)
+  publicKey    String
+  userId       String
+  credentialID String
+  counter      Int
+  deviceType   String
+  backedUp     Boolean
+  transports   String?
+  createdAt    DateTime @default(now())
+  aaguid       String?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([credentialID])
+}
+
+// ---------------------------------------------------------------------------
+// Organisation membership — PHASE 0.3 renames this to `Membership` (D-056)
+// ---------------------------------------------------------------------------
+
+/// Links a `Person` to an `Organization`. Phase 0.3 renames this to
+/// `Membership` and drops `organizationId`.
+///
+/// A caution for whoever does that rename: in SplashTrack, `Membership` is a
+/// DOMAIN concept with its own meaning — club membership, with
+/// `MembershipPeriod` history, where leave-and-return is a second period and
+/// never a mutated row (D-059), and where a pupil may have lessons without
+/// being a member and a member may never swim. This inherited table is not that
+/// concept. Reusing the name is what D-056 asks for; reusing the ROW is not.
+model OrganizationMembership {
+  id             String           @id @default(cuid(2))
+  personId       String
+  organizationId String
+  status         MembershipStatus @default(ACTIVE)
+  /// The organisational unit this member belongs to; null = unassigned. `UNIT`
+  /// is FLAT in v1 — there is no descendant walk (D-121) — and the club has one
+  /// location today, which confirms that choice rather than straining it.
+  unitId         String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  person       Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  unit         OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, organizationId])
+  @@index([organizationId])
+  @@index([personId])
+  @@index([unitId])
+}
+
+// ---------------------------------------------------------------------------
+// Authorization: roles group permissions; assignments are org-scoped
+//
+// The TABLES are extracted; the GUARD is not. `requirePermission` and
+// `resolveReach` with the opaque `Reach` type (D-147), and `coversResource()`
+// which the design names and does not define, are phase 0.4 — and they change
+// the signature of the guard every module calls, which is why no domain module
+// may be built before them (`06-delivery.md` §5, ranking item 3).
+// ---------------------------------------------------------------------------
+
+/// A named bundle of permissions. Business logic checks PERMISSIONS, never
+/// hardcoded role names (D-130) — the starter role catalogue is "a starting
+/// point, not a fixed object", and a school inventing its own role must not
+/// thereby fall off a security control. `isSystem` marks built-in roles that
+/// seeding manages.
+model Role {
+  id String @id @default(cuid(2))
+  /// Globally unique machine key. System roles use stable constants; org-owned
+  /// custom roles use an auto-generated unique key. `name` is the human label
+  /// and is NOT unique.
+  key  String @unique
+  name String
+  /// null → a system/global role (seeded, `isSystem = true`).
+  /// <org> → an org-owned custom role. PHASE 0.3 collapses this distinction.
+  organizationId String?
+  description    String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization          Organization?              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions           RolePermission[]
+  accessGroups          RoleAccessGroup[]
+  assignments           RoleAssignment[]
+  platformAssignments   PlatformRoleAssignment[]
+  credentialAssignments CredentialRoleAssignment[]
+
+  @@index([organizationId])
+}
+
+/// A node in an organisation's unit tree — the within-organisation partition
+/// dimension. `path` is a materialized ancestor path so "this unit and its
+/// descendants" is a cheap prefix query.
+///
+/// NOTE for phase 0.4: `UNIT` is FLAT in v1 (D-121) — a child unit is OUTSIDE a
+/// `UNIT`-scoped principal's reach, and the scope-escape suite asserts exactly
+/// that (`06-delivery.md` §2.1). The `parentId`/`path`/`depth` columns are
+/// inherited tree machinery that v1 does not walk. Do not let their presence
+/// talk `resolveReach` into a descendant walk.
+model OrganizationUnit {
+  id             String   @id @default(cuid(2))
+  organizationId String
+  /// null → a root unit; else the parent unit's id.
+  parentId       String?
+  name           String
+  /// Materialized ancestor path, always beginning and ending with a slash.
+  path           String
+  /// 0 for a root unit; parent.depth + 1 otherwise.
+  depth          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization              Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent                    OrganizationUnit?          @relation("UnitTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children                  OrganizationUnit[]         @relation("UnitTree")
+  roleAssignments           RoleAssignment[]
+  credentialRoleAssignments CredentialRoleAssignment[]
+  memberships               OrganizationMembership[]
+
+  @@index([organizationId])
+  @@index([organizationId, path])
+}
+
+/// A named, admin-editable bundle of permissions — a reusable building block a
+/// custom role can include. Enforcement still resolves to atomic permissions.
+model AccessGroup {
+  id             String   @id @default(cuid(2))
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  AccessGroupPermission[]
+  roles        RoleAccessGroup[]
+
+  @@index([organizationId])
+}
+
+/// Join: which catalogue permissions an `AccessGroup` grants.
+model AccessGroupPermission {
+  accessGroupId String
+  permissionId  String
+  createdAt     DateTime @default(now())
+
+  accessGroup AccessGroup @relation(fields: [accessGroupId], references: [id], onDelete: Cascade)
+  permission  Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([accessGroupId, permissionId])
+  @@index([permissionId])
+}
+
+/// Join: which access groups a role is composed of. A role's effective
+/// permission set is the union of its direct `RolePermission` rows and its
+/// groups' permissions.
+model RoleAccessGroup {
+  roleId        String
+  accessGroupId String
+  createdAt     DateTime @default(now())
+
+  role        Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  accessGroup AccessGroup @relation(fields: [accessGroupId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, accessGroupId])
+  @@index([accessGroupId])
+}
+
+/// A single checkable permission from the catalogue, e.g. `exams.results.record`.
+model Permission {
+  id          String   @id @default(cuid(2))
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles        RolePermission[]
+  accessGroups AccessGroupPermission[]
+}
+
+/// Join table grouping permissions under roles. Pure configuration with no
+/// personal data, so deletes CASCADE.
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+/// Grants a `Role` to a `Person` within an `Organization`. Restrict deletes, so
+/// a person's or an organisation's role history is never silently removed.
+model RoleAssignment {
+  id             String   @id @default(cuid(2))
+  personId       String
+  roleId         String
+  organizationId String
+  /// Unit reach of this grant: null = the whole organisation; a unit = that
+  /// unit. See `OrganizationUnit` on why v1 does NOT walk descendants (D-121).
+  unitId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  person       Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  role         Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  unit         OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  // Unique per (person, role, org, unit). Postgres treats NULLs as DISTINCT, so
+  // this enforces uniqueness for UNIT-scoped grants but NOT for two whole-org
+  // grants (unitId = null). The Prisma DSL cannot express NULLS NOT DISTINCT,
+  // so whole-org-grant uniqueness is enforced at the application layer: the
+  // write path applies a diff keyed on (person, role, org).
+  @@unique([personId, roleId, organizationId, unitId])
+  @@index([organizationId])
+  @@index([personId])
+  @@index([roleId])
+  @@index([unitId])
+}
+
+/// Grants a `Role` to a `Person` platform-wide — not tied to any organisation.
+///
+/// PHASE 0.3 DELETES THIS MODEL ENTIRELY. There is no platform super
+/// administrator in SplashTrack (D-056, `CLAUDE.md` §4), and `06-delivery.md`
+/// §5 is explicit that the platform-super-admin branch inside
+/// `requirePermission` is real code and not just prose. It is extracted here
+/// only so that deletion is a diff against what was actually inherited.
+model PlatformRoleAssignment {
+  id        String   @id @default(cuid(2))
+  personId  String
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, roleId])
+  @@index([personId])
+  @@index([roleId])
+}
+
+// ---------------------------------------------------------------------------
+// API credentials — present and unused, deliberately (`05-technical.md` §4)
+// ---------------------------------------------------------------------------
+
+/// A machine caller. There is NO public API surface in v1 and no integration
+/// with any external system (D-163, OD-19) — `05-technical.md` §4 nevertheless
+/// keeps these scoped credentials "in place, unused", so that when an
+/// integration does exist it authenticates with one and never with a user's
+/// session token.
+///
+/// HASH-ONLY token storage: only `sha256(raw)` and a non-secret `tokenPrefix`
+/// are stored; the raw token is shown once at mint and is never recoverable.
+/// Lifecycle is revoke-based (`revokedAt`), never delete, so the audit trail
+/// keeps its referent.
+///
+/// No code in this repository reads or writes this table yet — the template's
+/// `api-credential.ts` and credential-auth path were not extracted. The table
+/// is here because the design says to keep it; the first integration brings the
+/// code.
+model ApiCredential {
+  id String @id @default(cuid(2))
+
+  organizationId String
+  /// Human-readable label chosen at creation.
+  name           String
+
+  /// sha256(rawToken), hex — the ONLY stored form of the secret.
+  tokenHash   String @unique
+  /// The non-secret leading characters of the raw token, so a credential is
+  /// identifiable in a list without revealing the secret.
+  tokenPrefix String
+
+  /// The administrator who minted the credential — accountability only.
+  /// Nullable and deliberately NO foreign key: on erasure of that person the
+  /// pointer is severed to null and the credential is retained as a live asset.
+  createdByPersonId String?
+
+  /// Optional expiry; null = non-expiring (revoke-only).
+  expiresAt  DateTime?
+  /// Set when revoked; a revoked credential fails verification forever.
+  revokedAt  DateTime?
+  /// Best-effort "last seen" stamp; never part of the auth decision.
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roleAssignments CredentialRoleAssignment[]
+
+  @@index([organizationId])
+}
+
+/// Grants a `Role` to an `ApiCredential`. A dedicated grant table mirroring
+/// `PlatformRoleAssignment`, not nullable-polymorphism on `RoleAssignment`.
+model CredentialRoleAssignment {
+  id           String   @id @default(cuid(2))
+  credentialId String
+  roleId       String
+  unitId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  credential ApiCredential     @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  role       Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  unit       OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@unique([credentialId, roleId, unitId])
+  @@index([credentialId])
+  @@index([roleId])
+  @@index([unitId])
+}
+
+// ---------------------------------------------------------------------------
+// Platform settings singleton
+// ---------------------------------------------------------------------------
+
+/// The single-row settings record for this instance. `platformConfig` holds one
+/// VERSIONED, server-validated JSON document (`@/lib/settings/config.ts`), which
+/// is what lets a setting be added without a migration per field.
+///
+/// This is the mechanism D-036/D-037 rest on: every runtime setting is
+/// database-backed and administrator-editable, and only the three bootstrap
+/// values in `.env.example` are environment variables. The session idle and
+/// absolute timeouts live in this document's `security` section, bounded, and
+/// are enforced live in `@/lib/auth/session.ts` (D-173).
+///
+/// The template additionally carried branding assets, theme configuration,
+/// notification configuration, profile-field definitions and both identity
+/// configurations here. None of those are extracted: branding and uploads are
+/// phase 4 surfaces, and the Entra/native-sign-in documents belong to the IdP
+/// registry, which is out of v1.
+model PlatformSettings {
+  id String @id
+
+  /// Portal/brand display name (plain text, no markup). Length-bounded at the
+  /// validation layer. Injected over the `common.brand` message so every brand
+  /// reference follows it without per-component wiring.
+  displayName String @default("SplashTrack")
+
+  /// The general configuration document — see `@/lib/settings/config.ts` for
+  /// its shape, its lenient read path and its strict write path. Null ⇒ no
+  /// config yet; the read path coerces a complete, safe default.
+  platformConfig Json?
+
+  /// Who last changed settings. Nullable, `onDelete: SetNull` as DEFENCE IN
+  /// DEPTH: the erasure path severs this column explicitly before deleting the
+  /// Person row in the same transaction, so this action should never fire — but
+  /// a bare `Restrict` leaves the column as a live trap for any other future
+  /// Person-delete path that forgets the sever step. That trap sprang once in
+  /// the template: `OrganizationBranding.updatedByPersonId` was `Restrict` with
+  /// no sever step, and erasing its last editor raised a raw FK-constraint error
+  /// that rolled back an entire Article 17 erasure. `SetNull` degrades a
+  /// forgotten sever to "pointer silently nulled" instead.
+  updatedByPersonId String?
+  updatedBy         Person? @relation("PlatformSettingsUpdatedBy", fields: [updatedByPersonId], references: [id], onDelete: SetNull)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([updatedByPersonId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail (D-149)
+// ---------------------------------------------------------------------------
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+/// The tamper-EVIDENT, append-only audit trail. Distinct from the operational
+/// logger (`@/lib/logging`) — different required fields, different retention,
+/// different tamper-resistance. Written ONLY through the audit module's
+/// append-only service; there is no update or delete path (D-149).
+///
+/// Tamper-evidence: rows form a HASH CHAIN. Each row's `hash` = SHA-256 of
+/// `previousHash` + a canonical projection of the row's audited content; the
+/// first row chains from a fixed genesis constant. Appends are serialized on a
+/// Postgres advisory lock so the chain never forks.
+///
+/// This is tamper-EVIDENT, not tamper-PROOF, and the gaps are named rather than
+/// glossed: the chain is unkeyed, so an attacker with database write access
+/// could recompute it forward after an edit, and truncating the TAIL leaves an
+/// intact chain that still verifies.
+///
+/// PHASE 0.4 — three things this model does NOT yet have, all specified in
+/// D-149 + D-168 and none of them safe to guess at:
+///   - `AuditCheckpoint` and the checkpointing retention path. Without it the
+///     first legitimate retention run breaks the chain permanently.
+///   - The insert-only database role. Today "append-only" is an application
+///     convention enforced by there being no other writer; D-149 makes it a
+///     `REVOKE UPDATE, DELETE` on the application's role.
+///   - `05-technical.md` §5 rule 7: ONE audit event per aggregate write, not per
+///     row. At 30 students a group registration would otherwise take 30 chained
+///     appends one at a time against a lock every other audit writer contends
+///     for. This must be decided before the attendance load test is written.
+///
+/// Content rule: this table holds NO passwords, secrets, tokens or raw
+/// personal-data VALUES — only actor/target IDENTIFIERS, the event type, an
+/// outcome, and (in `changedFields`) the NAMES of what changed. It deliberately
+/// carries NO foreign keys: the trail must OUTLIVE the entities it references,
+/// because an erasure deletes a Person and retains the accountability record.
+model AuditEvent {
+  id String @id @default(cuid(2))
+
+  /// Database-assigned monotonic insertion order — the sequence the chain is
+  /// walked in for verification. An autoincrement, not a timestamp or a cuid,
+  /// because it is the only reliable ordering key.
+  sequence Int @default(autoincrement())
+
+  /// Dotted event type, e.g. `exams.results.record`. A stable machine token.
+  eventType  String
+  /// When the audited action occurred.
+  occurredAt DateTime @default(now())
+
+  /// The acting person's id (null for a system or scheduled action).
+  actorPersonId     String?
+  /// The acting API credential's id, when authenticated by a credential rather
+  /// than a human session. Mutually exclusive with a human actor. A plain
+  /// identifier with no FK, like every other id here.
+  actorCredentialId String?
+  /// The authentication method behind the action where known, e.g. `session` /
+  /// `api_key`. Null when not applicable.
+  actorAuthMethod   String?
+  /// The organisation scope. PHASE 0.3 removes this column with the rest of the
+  /// tenant machinery — with one organisation per installation it is a constant.
+  organizationId    String?
+
+  /// The kind of resource acted on, e.g. `person`, `attendance_event`.
+  targetType String?
+  /// The acted-on resource's id.
+  targetId   String?
+
+  /// The request correlation id (`@/lib/api/request-id`), when in a request.
+  requestId String?
+
+  outcome AuditOutcome
+
+  /// Small structured context — the NAMES of changed fields and non-sensitive
+  /// tokens. NEVER personal-data values, secrets or tokens.
+  changedFields Json?
+  /// Free-text reason where an action requires one. Kept minimal — never a
+  /// dumping ground for personal content.
+  reason        String?
+
+  /// Canonicalization version of this row's hashed content. Determines which
+  /// FIXED field array `canonicalizeAuditContent` digests, so old rows keep
+  /// verifying after a new field is added. `verifyAuditChain` canonicalizes each
+  /// row by its OWN version.
+  contentVersion Int @default(1)
+
+  /// The prior row's `hash`, or the genesis constant for the first row.
+  previousHash String
+  /// SHA-256 of `previousHash` + this row's canonical content. Unique: a
+  /// collision would indicate a duplicated or forged row.
+  hash         String @unique
+
+  @@index([actorPersonId])
+  @@index([organizationId])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@index([organizationId, sequence])
+  @@index([eventType, sequence])
+  @@index([actorPersonId, sequence])
+}
