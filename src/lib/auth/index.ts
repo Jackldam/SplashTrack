@@ -16,6 +16,7 @@ export {
   BETTER_AUTH_COOKIE_ATTRIBUTES,
   personCreationTracker,
   reauthenticationMarker,
+  accountProvisioningMarker,
   hashToken,
 } from "./auth";
 

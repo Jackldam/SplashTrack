@@ -142,6 +142,10 @@ export const BETTER_AUTH_COOKIE_ATTRIBUTES = {
  * There is no such caller yet: account provisioning arrives with the `users`
  * module. The tracker ships with the hook because the two are a matched pair,
  * and an orphaned `Person` row is a personal-data leak, not a tidiness issue.
+ *
+ * That is not hypothetical. Probing this extraction produced exactly one: a
+ * sign-up whose `Account` insert failed left a `Person` and a `UserAccount`
+ * behind, because the hook had already run.
  */
 export const personCreationTracker = new AsyncLocalStorage<{
   personId?: string;
@@ -173,6 +177,42 @@ export const personCreationTracker = new AsyncLocalStorage<{
  * have no reason to suspect it.
  */
 export const reauthenticationMarker = new AsyncLocalStorage<true>();
+
+/**
+ * Marks an in-flight `auth.api.signUpEmail` call as SERVER-SIDE ACCOUNT
+ * PROVISIONING — an administrator creating an instructor's account — rather
+ * than a stranger creating one for themselves.
+ *
+ * WHY THIS EXISTS, AND WHY IT IS NOT IN THE TEMPLATE. `/api/auth/[...all]`
+ * mounts Better Auth's FULL endpoint surface, which includes
+ * `/sign-up/email`. With `emailAndPassword.enabled: true` and nothing in front
+ * of it, an unauthenticated POST to that path creates a Person, a UserAccount
+ * with status ACTIVE, and a credential — and is immediately able to sign in.
+ * Measured during the phase-0.2 extraction, not reasoned about: the probe
+ * returned HTTP 200 and a session token.
+ *
+ * The template documented this and left it open on the reasoning that
+ * `/sign-up/email` is "the server-side primitive behind bootstrap and admin
+ * provisioning" — true of the FUNCTION, not of the ROUTE. It was survivable
+ * there because that platform had a deliberate public-registration feature
+ * behind its own toggle. Here public self-registration is OUT OF v1 (R-12
+ * reduces the public surface to a catalogue and an inquiry form), so an open
+ * sign-up endpoint is not a feature with a missing gate — it is a stranger
+ * creating an account on a system holding children's records.
+ *
+ * Deny by default: `enforceServerSideSignUpOnly` below rejects `/sign-up/email`
+ * unless this marker is set, and it can only be set by server-side code that
+ * chose to. This is the same AsyncLocalStorage-plus-`hooks.before` shape the
+ * template already uses for its own gates, not a new mechanism — and it fails
+ * CLOSED, unlike the sign-in toggle, because refusing to create an account can
+ * never lock anybody out of one they already have.
+ *
+ * The `users` module's provisioning service is what will wrap its
+ * `signUpEmail` call in `accountProvisioningMarker.run(true, ...)`, alongside
+ * `personCreationTracker`. Until then NOTHING can create an account through
+ * HTTP, which for a phase with no account-management UI is the correct state.
+ */
+export const accountProvisioningMarker = new AsyncLocalStorage<true>();
 
 /**
  * Password length policy. Exported because callers that must reject a bad
@@ -384,6 +424,38 @@ const auditSignInEmailTerminalOutcome = {
           } catch {
             // An audit failure must never break sign-in.
           }
+        }),
+      },
+    ],
+  },
+};
+
+/**
+ * Refuses `/sign-up/email` unless it comes from server-side account
+ * provisioning — see `accountProvisioningMarker` above for the full reasoning
+ * and for what the open endpoint actually did when probed.
+ *
+ * Placed FIRST in `plugins` so this gate runs before any other plugin's
+ * before-hook touches state for this path.
+ *
+ * FAILS CLOSED, deliberately, and this is the opposite direction from a
+ * sign-IN gate. Refusing to create a new account cannot lock anyone out of an
+ * account they already hold, so there is no lockout argument for failing open
+ * here — whereas a fail-closed gate on sign-in could leave an administrator
+ * unable to reach the page that would fix it. Do not "harmonise" the two.
+ */
+const enforceServerSideSignUpOnly = {
+  id: "enforce-server-side-sign-up-only",
+  hooks: {
+    before: [
+      {
+        matcher: (context: { path?: string }) =>
+          context.path === "/sign-up/email",
+        handler: createAuthMiddleware(async () => {
+          if (accountProvisioningMarker.getStore() === true) return;
+          throw new APIError("FORBIDDEN", {
+            message: "Accounts are created by an administrator.",
+          });
         }),
       },
     ],
@@ -686,6 +758,11 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    // Deny-by-default gate on account creation — FIRST, so it runs before any
+    // other plugin's before-hook. See its definition above: without it, an
+    // unauthenticated POST to /api/auth/sign-up/email creates an ACTIVE account
+    // and returns a session token, which it did when probed.
+    enforceServerSideSignUpOnly,
     // Two-factor (TOTP). This makes MFA technically AVAILABLE per account
     // (enable/verify/disable endpoints and the `twoFactorEnabled` flag). It
     // intentionally does NOT enforce "this permission requires MFA": that is an

@@ -290,10 +290,23 @@ enum SessionMfaEvidence {
 /// `password` — the hash lives HERE, never on `UserAccount` or `Person`. The
 /// OAuth token columns are part of Better Auth's expected shape and stay unused
 /// while there is no social provider.
+///
+/// `issuer` is REQUIRED by Better Auth 1.7 and is NOT in the template's schema:
+/// the template pins `^1.6.23`, which today resolves to 1.7.2, and a fresh
+/// install of the template would break exactly as this did — sign-up threw
+/// `Unknown argument 'issuer'` from `prisma.account.create()`. Together with
+/// `accountId` it forms the stable provider-side key Better Auth recognizes an
+/// account by; local credentials get a synthetic `local:<providerId>` value.
+///
+/// This is why `better-auth` and `@better-auth/passkey` are pinned to an EXACT
+/// version in package.json rather than a caret range. The auth library owns the
+/// shape of four tables in this schema; a floating minor can therefore change
+/// the database contract silently, and it did.
 model Account {
   id                    String    @id
   accountId             String
   providerId            String
+  issuer                String
   userId                String
   accessToken           String?
   refreshToken          String?
