@@ -461,3 +461,204 @@ and concluded *"the size problem is not solvable by another round of cuts to the
 platform"*. The new target buys 2.5 weeks more than that reviewer could take,
 and the conclusion is unchanged. **The platform is no longer where the weight
 is.** See the total in §Total.
+
+---
+
+## B — KEEP IN v1 EVEN THOUGH IT LOOKS CUTTABLE
+
+Everything here survives the argument *"there is only one club, and its operator
+wrote the software"*. Each item fails that argument for one of exactly three
+reasons, and the reason is stated in the first clause:
+
+- **data exists** — adding it in v2 means migrating, or inventing, rows that are
+  already written;
+- **signature** — adding it in v2 rewrites a call every module makes;
+- **the law does not count clubs** — the obligation attaches to processing
+  children's health data, not to the number of deployments.
+
+Twenty items. None is a week on its own; together they are the reason v1 cannot
+be a prototype.
+
+---
+
+**B-1 · The encryption envelope, the decryptor registry and the golden vectors
+(D-096, D-097, D-049).** *Data exists.* Build-order item 1 — *"every encrypted
+byte written before the envelope exists has to be found and re-wrapped"*. Ship
+it as **`v2:`** with AAD bound to a **stable logical column id** (B-20, B-12).
+Roughly a day beyond the naive version, and the only alternative is a rewrite of
+every ciphertext in the club's database.
+
+**B-2 · Encrypting the D-148 protected class at write time — medical remarks,
+pastoral/safeguarding notes, assessment remarks, `Inquiry` free text.** *Data
+exists, and the law does not count clubs.* rev7-realism R-12 declined to call
+this cut and was right to: a plaintext medical note written today is a plaintext
+medical note in every backup ever taken, and encrypting the column in v2 leaves
+the plaintext in every archive that already left the building. `02-…` §5.4's
+argument for the inquiry text is the strongest one in the section — a parent's
+first email is often *"mijn zoon heeft epilepsie en is bang in het water"*,
+i.e. Article 9 data arriving through a public form. **A-8 cuts rotation, not
+this.**
+
+**B-3 · The audit hash chain, the `INSERT`-only database role, the retention
+floor, and `audit:verify` (D-149, D-126).** *The law does not count clubs.* The
+three Article 33 questions are answered from this trail and from nothing else,
+and A-4 cuts the breach-response *tooling* on the explicit basis that the trail
+survives. `UPDATE`/`DELETE` revoked on a second database role is a compose-file
+change, not a project.
+
+**B-4 · Audit chain checkpointing (B-17).** *Data exists.* Ranked #2 in
+`06-delivery.md` §5's cost-of-doing-it-late table, assigned to **no phase**, and
+specified **nowhere**. It is not optional and it is not free — see **C-9**,
+where it is costed as an *addition*, because it is one. Retention as specified
+(`onExpiry = DELETE`, floor 12 months) breaks the chain on its **first run**,
+around month 12–24 of the only instance that will ever hold this club's history,
+and `audit:verify` then reports a broken chain forever.
+
+**B-5 · The scope model with reach as a required repository argument, the
+branded `Reach` union, and per-module scope-escape tests (D-030, D-031, D-032,
+D-147).** *Signature.* Build-order item 3 — *"it changes the signature of the
+guard every module calls"*, and worse, a module built first has scope-escape
+tests written against the wrong question. This is also the boundary that stops a
+volunteer instructor reading another instructor's children, which is a
+one-club problem as much as a fleet problem. **A-9 removes one variant from it;
+that is not the same as deferring the model.**
+
+**B-6 · `coversResource()` (B-10).** *Signature.* Not a feature — a specification
+gap on the **write** half of B-5, named once in a delivery plan and defined in
+no chapter, while the read half gets a fully specified eight-variant union.
+Every write in the application calls it. Costed in **C-13**.
+
+**B-7 · The `SESSION` scope type and roster-resolved reach (R-31, D-068,
+D-144).** *Signature.* Cutting it makes the independent aftest assessor, the
+substitute instructor, the receiving instructor of a make-up lesson and the
+external examiner **all four impossible** — they are one problem, and none of
+them holds a standing grant over the child. D-147 makes adding a scope variant a
+compile error in every repository, which is exactly why the one that carries
+four real workflows ships now.
+
+**B-8 · Append-only event models: `AttendanceEvent` with `clientEventId` and
+`supersedesEventId` (D-061, D-005), `ExamResult` with `supersedesResultId`
+(D-062), `GroupMove` (D-108), `MembershipPeriod` + `StudentLifecycleEvent`
+(D-059).** *Data exists.* Build-order item 4 — *"converting a mutable column
+into an event log after data exists means inventing the history you destroyed"*.
+D-061's justification is not compliance theatre: attendance is evidence for
+absence policy, for parental disputes and occasionally for safeguarding.
+`clientEventId` is one indexed column and it is what makes P-02's offline path
+additive rather than a rewrite.
+
+**B-9 · `Person` / `Membership` / `StudentProfile` as three tables (D-004,
+D-053, D-058).** *Data exists.* Retrofitting the split is a migration through
+every table, and one retention policy forced onto both lifecycles is a
+compliance defect on day one — a member may leave while diploma history is kept
+ten years.
+
+**B-10 · Consent with actor, purpose, lawful basis and authority evidence
+(D-063), guardian authority expiring at the age of digital consent (D-151), and
+the withdrawal constraint (D-152).** *Data exists, and the law does not count
+clubs.* Build-order item 6 — *"a consent captured under the current shape has no
+recoverable actor, and consent on behalf of a minor is the majority case"*.
+D-151 is the cheapest control in the chapter: one computed condition over
+`Person.dateOfBirth` and a configurable age, and it is the most predictable
+consent failure in this domain — a club's eight-year-olds turn sixteen inside
+the retention window whether or not anyone built a queue.
+
+**B-11 · Boot-state predicates and restore-then-migrate (D-098, D-046, D-055).**
+*Data exists.* **A-3 cuts the wizard, not this.** An empty database is ambiguous
+— fresh install, or the first minute of a restore — and migrating immediately
+resolves it wrongly: a migrated empty schema and a backup that no longer
+restores cleanly into it. `FAILED` earns its place separately: a failed Prisma
+migration stays recorded and blocks every later one, so without the state the
+container crash-loops with no indication that the fix is `migrate resolve`.
+
+**B-12 · Backup, restore, the Recovery Kit, and restore-fixture generation
+(D-040, D-102, D-113, D-115, D-044, D-104, D-043, D-105).** *Data exists —
+and there is exactly one copy of it.* This is the item the one-deployment target
+makes **more** important, not less. There is no fleet to absorb a loss; there is
+one box holding one club's children's records. Keep in full: the encrypted
+archive with D-102's framed AEAD construction (plain AES-GCM is not a streaming
+construction and truncation would verify), the printed recovery token,
+D-044's automatic pre-migration backup with D-104's cap, D-043's refusal to
+start against a newer schema, and **D-105's fixture generation** — which must
+ship at v1.0 or v2 can never test restoring from v1.0, and v1.0's data is the
+only data that will exist. *(The v1.3 restore **matrix** stays cut; only the
+fixture is retained. `00-…` §3.5.1 already says this and `14-…` §4.3.1 still
+does not — B-14.)*
+
+**B-13 · Fix S-1 before any of B-12 is called done.** *Data exists.* rev7-security
+**S-1**, severity critical: the Recovery Kit as specified needs a **third
+artefact nobody is told to keep**. `SECRET_KEY` is the HKDF root for TOTP
+encryption, settings secrets and the medical-column key (D-112), and it is not
+in the archive by design (D-113) and never displayed (`13-…` §6.3). An operator
+holding the `.stbak` and the printed token, doing exactly what the product told
+them, brings up a fresh container, generates a **new** `SECRET_KEY`, restores —
+and **nothing fails**: row counts match, migrations report clean, and every
+medical remark, pastoral note, assessment remark, inquiry free text, SMTP
+password and TOTP enrolment in the school is permanently unreadable, with MFA
+mandatory and non-clearable. This is not a v2 concern. It is the difference
+between a Recovery Kit and a ritual.
+
+**B-14 · `D-048` never-squash, plus the append-only migration lockfile test
+(D-124).** *Data exists.* Free as a policy, worthless as prose. It is what makes
+the eventual **v1 → v2 upgrade of the live instance** survivable, and it is what
+makes the D-047 matrix addable later. The enforcing test is inherited-adjacent
+and cheap.
+
+**B-15 · The break-glass CLI (R-19, `13-…` §7, D-141).** *Signature-adjacent.*
+Promoted by A-3 from a safety net to the **primary bootstrap path**, and it is
+already the only stated recovery from an authentication lockout. Lockout,
+MFA reset, settings reset, all audited.
+
+**B-16 · Medical and pastoral notes behind their own permission pair (D-010,
+D-087, D-148).** *The law does not count clubs.* Least privilege on the data
+class whose exposure would end the project — and D-148 is right that folding
+pastoral into medical would be a *reduction* in least privilege: the instructor
+who must know about a child's epilepsy would also read the note about the
+family.
+
+**B-17 · Retention constants with a `lawfulBasis` column, and the D-014 erasure
+registry with its completeness test (D-065 reduced, D-110, D-014, D-154,
+D-135).** *The law does not count clubs.* The **engine** is already cut; the
+policy, the basis column and the registry are not. The registry's completeness
+test is inherited, bidirectional and already built (`person-reference-sync.test.ts`)
+— *"the cheapest compliance insurance in the document set"*. Adopt it **minus
+its hard-coded eight-column floor**, which names four models D-056 removes or
+renames and whose own comment will tell the engineer the removal is the bug
+(**B-1**, rev7-build).
+
+**B-18 · D-051 as a lint rule — `(public)` never imports a person repository.**
+*The law does not count clubs.* Free, structural, and it prevents the worst
+plausible incident for this product. Cutting it saves nothing.
+
+**B-19 · The MFA mandate bound to permissions, and the `invariant` settings
+class (D-130, D-150).** *The law does not count clubs.* An invariant that
+becomes editable later is a control nobody can prove was ever on. Bind to
+permissions, never to role names — and note **B-3** (rev7-build): **D-158 binds
+session timeouts to the role names *instructor* and *administrator*, which
+D-130 forbids and which has no defined answer for a club that invents a role
+called "Hoofdbadmeester"**. Resolve to the permission form; the template already
+ships the bounded, live, fail-safe-to-strict timeout mechanism (**B-5**,
+rev7-build), so this is adding a dimension, not building timeouts.
+
+**B-20 · Three schema shapes that are free today and a migration through live
+data later.** *Data exists.*
+- **`origin: IMPORTED_LEGACY`** on `MembershipPeriod` and `StudentLifecycleEvent`
+  (B-15, rev7-build) — named once, in the chapter that does not own them, and
+  the rows that most need the marker are the **entire CSV import** (C-2), which
+  is now the only way pupils enter the system.
+- **`Assessment.schemeId` pinning an immutable scheme version by FK (D-081)**,
+  one criterion catalogue (**D-084**), and the `Certificate` → **`Award`** rename
+  with `AwardType.kind` (**D-082**) — a rename today, a migration through every
+  issued diploma later.
+- **`Person.dateOfBirth` and `ProcessingObjection` in the Phase-1 foundation
+  schema** (B-11, rev7-build) — otherwise Phase 2's consent work reaches
+  forward into Phase 3's `people` module, which is how the DAG erodes in week
+  three.
+
+---
+
+### What List B costs
+
+Nothing new, except **B-4** (checkpointing) and **B-6** (`coversResource`), both
+of which are genuinely unbuilt work and are therefore costed in List C rather
+than hidden here. Everything else in List B is already inside the ~55-week
+baseline. **List B is not a budget line — it is a fence.**
