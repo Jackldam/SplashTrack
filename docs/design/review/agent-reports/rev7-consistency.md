@@ -591,3 +591,107 @@ register row and `03-…` §5.1 to a pointer ("the rule is stated once, in
 `10-…` F-10, `10-…`'s risk table and `07-…` §… to name the surviving id.
 
 ---
+### C-14 — The blocking-CI list is stated three times despite R-28 saying it is stated once; the count is wrong and the copies drop the check the authoritative table calls the most important
+
+**Severity: high.**
+
+Side A — `06-delivery.md` §2.1, declared by R-28 to be the single home. Its
+table has **nine** rows marked "Blocking in v1: Yes":
+
+> | Format (Prettier) | Yes | … |
+> | Lint (ESLint, incl. module-boundary rules) | Yes | … |
+> | Typecheck | Yes | … |
+> | Unit tests (Vitest) | Yes | … |
+> | Integration tests | Yes | … |
+> | **Scope-escape tests** | Yes | **New, and the most important gate in this table.** See below |
+> | **Migration against populated DB** | Yes | … |
+> | Secret scanning | Yes | … |
+> | E2E (Playwright) | Yes | … |
+
+while the prose immediately above it says:
+
+> **v1 ships eight blocking checks** (`00-overview.md` §3.5.1).
+
+Side B — `00-overview.md` §3.1, R-28:
+
+> | R-28 | **Reduced (§3.5):** **eight** blocking CI checks — format, lint,
+> typecheck, unit, integration, E2E, migration-against-populated-database,
+> secret scanning. **The check list is stated once, in `06-delivery.md` §2.1** |
+
+and `00-overview.md` §3.5.1, a third statement:
+
+> | **R-28's full 15-check CI** | **Eight checks:** format, lint, typecheck,
+> unit, integration, E2E, migration-against-populated-database, secret scanning.
+> Seven of the fifteen were asserted to exist and did not (§2.1) |
+
+**Why it matters.** Three defects compounding:
+(a) R-28 asserts the list is stated once and then states it, and §3.5.1 states
+it a third time — a direct D-134 violation *in the sentence that invokes D-134's
+discipline*.
+(b) The two copies in `00-overview.md` are **not** the nine-row table. Both omit
+**scope-escape tests**, which §2.1 flags as "the most important gate in this
+table" and which D-032 and D-147 both depend on
+(`02-…` §2.3: "`06-delivery.md` §2.1's scope-escape gate already requires
+asserting that a `Reach` cannot be constructed outside `resolveReach()`").
+(c) The number "eight" is wrong against the table it claims to summarise —
+nine rows say Yes. Someone building the CI pipeline from the overview ships
+eight jobs and no scope-escape gate; someone building it from §2.1's table ships
+nine and wonders which of the two documents is stale.
+
+The §2.1 preamble's own stated purpose — the below-the-line checks are "named
+here so `00-overview.md` §4.1 and this table cannot drift apart again" — is
+evidence this exact drift was previously found and repaired above the line only.
+
+**Recommended resolution.** Correct the count to nine in both `06-…` §2.1's
+prose and `00-…` §3.5.1, and reduce R-28 to what it claims to be — a pointer
+with no enumeration at all. Add scope-escape tests to §3.5.1's cell.
+
+---
+
+### C-15 — The MFA high-risk permission set is enumerated in two chapters, the two lists differ, and the shorter one claims to be "the same set"
+
+**Severity: high.**
+
+Side A — `02-security-privacy.md` §1.2, the authoritative definition (nine
+entries):
+
+> Any principal holding any permission in the **high-risk set** —
+> `organization.settings.manage`, **`identity.providers.manage`**,
+> `roles.assign`, **`roles.manage`**, **`accessgroups.assign`**, `privacy.*`,
+> `audit.read`, `backup.*`, `students.medical.*` — at **any** scope must have a
+> verified second factor.
+
+Side B — `07-operations.md` §1.3, the security-alerting table (six entries),
+asserting identity with Side A:
+
+> | Privilege use | Any use of a permission in the high-risk set
+> (`organization.settings.manage`, `privacy.*`, `roles.assign`, `audit.read`,
+> the backup permissions, `students.medical.*`) — **the same set that compels
+> MFA (`02-security-privacy.md` §1.2)** |
+
+`identity.providers.manage`, `roles.manage` and `accessgroups.assign` are absent
+from the second list.
+
+**Why it matters.** The second list is not decoration — it defines which
+privilege uses raise a security alert. Implemented as written, the three missing
+permissions compel MFA but generate no privilege-use alert. Those three are the
+privilege-escalation permissions specifically: `02-…` §6.2 lists "**Settings
+administrator adds their own identity provider and logs in as instance
+administrator**" and "**Location manager grants themselves an
+organisation-scoped role**" as named abuse scenarios, and `02-…` §1.2.1 says
+`identity.providers.manage` is "in the high-risk set that compels MFA". The
+alerting gap is therefore precisely on the actions the threat model treats as
+the escalation path.
+
+D-130's own trade-off column predicted this — "The named high-risk permission
+set must be maintained as permissions are added" — and D-134 forbids the second
+enumeration that made it possible. The clause "the same set that compels MFA"
+makes it worse than a plain duplicate: a reviewer diffing the two is told they
+match.
+
+**Recommended resolution.** Delete the parenthetical enumeration from
+`07-operations.md` §1.3 and leave only the pointer to `02-…` §1.2, per D-134.
+If a reader-facing list is wanted there, generate it from one named constant and
+say so.
+
+---
