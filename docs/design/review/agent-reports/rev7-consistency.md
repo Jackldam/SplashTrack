@@ -887,3 +887,143 @@ in D-150 and §3.2 rather than in one bullet of chapter 14. If it does not,
 delete the "or" clause from D-104 and from `02-…` §4.1.
 
 ---
+## FIXES I VERIFIED AS CORRECT
+
+Each item below is a repair made after an earlier round that I checked against
+the current text and found sound. This list is the other half of the review: it
+is what should *not* be re-opened.
+
+**1. D-037's three-place duplication (last round's headline find) is genuinely
+repaired.** `13-configuration-and-setup.md` §3.1 carries the only normative
+statement; §3.3 says "The rule governing what may live in the environment is
+stated once, in §3.1 (D-037). It is not restated here"; `00-overview.md` R-17,
+`06-delivery.md` §1 and `03-deployment-model.md` §2 all cite rather than
+restate. The pointer form D-134 prescribes is actually used.
+
+**2. D-057's two in-chapter contradictions (F-73) are gone.** `01-domain-model.md`
+§2.3 now reads "**owned by the `sessions` module** (D-057); `planning` and
+`attendance` are both consumers", and §3.4's `ScheduledSession` Notes cell says
+the same. The paragraph that defended "one table, two owners" as *deliberate*
+was deleted, not softened — which is what F-73's response claimed. `05-technical.md`
+§3.1 agrees.
+
+**3. Register integrity (D-133) holds where it was applied.** D-011, D-015 and
+D-029 each carry "(Withdrawn/Reaffirmed — this row is the authoritative text;
+see D-133)" with a "Where" cell that explicitly says *no active section*, and
+points at chapter 11 as history only. D-027's previously wrong pointer is
+corrected: it now names `03-deployment-model.md` §1.3, and §1.3 does state the
+singleton with D-027 cited. *Minor nuance, not a finding:* `08-open-decisions.md`'s
+register-integrity note lists D-027 among the rows that "state, in the register
+row itself, that the row is the authoritative text for a withdrawn or superseded
+decision" — D-027 is live and correctly does not, so the note over-claims by one
+entry while the underlying rows are right.
+
+**4. The D-090–D-098 double-assignment is cleanly resolved.** Mechanical check
+of `09-decision-register.md`: 146 rows, zero duplicate ids, range D-001…D-161.
+The gaps left by the renumbering (D-069–D-079, D-117–D-119, D-137) are dead
+numbers — I grepped every active chapter for each and **none is cited anywhere**.
+No orphan references survived the renumber.
+
+**5. Identifier hygiene is otherwise good.** Programmatic cross-check of every
+`D-`, `F-`, `R-`, `OD-`, `P-` and `FM-` reference in chapters 00–10, 13, 14, 15
+against its register (`09-…` rows, `10-…` `###` headings, `00-…` §3 tables,
+`08-…` `###` headings, `07-…` §1.5 table): **every reference resolves**, with
+the single exception of the `D-4` typo reported as C-5. F-01…F-133 numbering has
+no duplicates. FM-1…FM-15 are all defined in `07-operations.md` §1.5.
+
+**6. No active chapter cites chapters 11 or 12 as a requirement.** The only
+references are `00-overview.md` §1's reading-order table ("*History only:*"),
+`03-deployment-model.md`'s header banner, and three register "Where" cells that
+say "History only in `11-revision-single-tenant.md`". Nothing depends on them
+normatively.
+
+**7. OD-1's closure propagated correctly through the prototype-import path.** I
+grepped every mention of "prototype" in the active chapters. Nothing still
+assumes a prototype import or a prototype database: `00-overview.md` §2.2/§2.3
+are rewritten, `05-technical.md` §3 references the prototype only as a location
+on `main` (D-123's basis), `01-domain-model.md` §2.3 references it only as prior
+art for `SwimGroup`, and `10-findings.md` F-12 references it only as a reason for
+D-001. The "no destructive action until OD-1 closes" constraint appears nowhere
+except in the sentences that record its lifting. *One stale trace, too small to
+number:* D-001's register trade-off column still reads "any live data needs
+export/import" — conditional phrasing that is now known to be moot, but it does
+not instruct anyone to do anything.
+
+**8. D-007's withdrawal is cleanly enforced.** `04-ux.md` §… states the rule
+directly — "no active chapter may cite D-007 as an instruction" — and no active
+chapter does. OD-12's citation was corrected to D-062 and the correction is
+recorded in the entry; `00-overview.md` P-09 carries the same correction. This
+is the cleanest of the superseded-decision repairs, and it is the model C-11
+(D-054) should follow.
+
+**9. D-082's `Certificate` → `Award` rename is complete in the two chapters it
+claimed.** `01-domain-model.md` §3.5 uses `Award` throughout with the rename
+noted, and `04-ux.md` contains no `Certificate` entity reference at all.
+`15-…` §9 item 3's claim is accurate as scoped. (The lowercase `certificate`
+survival in `02-…` §5.6's `dataClass` sketch is C-17 and was outside that
+pass's stated scope.)
+
+**10. D-147's opaque `Reach` covers the scope enum exactly.** The six scope
+types in `02-security-privacy.md` §2.1 (`ORGANIZATION`, `UNIT`, `GROUP`,
+`COURSE`, `SESSION`, `SELF`) each have a matching `Reach` variant, plus `NONE`
+and `UNION`. `RELATED` is absent from both, consistently. The union/opaque
+reasoning in §2.3 and D-147's register row agree word for word in substance.
+
+**11. D-111/D-155 (attendance `DELETE`, not `ANONYMISE`) is consistent
+everywhere.** `01-domain-model.md` §5's table row reads "**`DELETE`** — see
+§5.3", §5.3 gives the re-identification argument, `02-…` §5.6 D-155 gives the
+mechanical definition and cites attendance as already moved, and `10-…` F-123
+records it. No chapter still prescribes `ANONYMISE` for attendance. (The
+separate `PSEUDONYMISE` problem is C-16 and is a different rule.)
+
+**12. F-95's `SECRET_KEY` lifecycle is stated once and pointed at twice.**
+`13-configuration-and-setup.md` §3.1.1 is the single home; `03-deployment-model.md`
+§1.2 and `14-backup-restore-upgrade.md` §1 both explicitly decline to restate it
+and point there. This is the D-134 pattern executed correctly, including the
+"and says so" half.
+
+**13. OD-6's closure lands on D-150 rather than inventing a parallel rule.** The
+*classification* half is right: OD-6 correctly reasons from D-150's existing
+`bounded` class instead of creating a new mechanism, and correctly ties the bound
+to D-143's threat model. The defects are the numbers and the missing registry
+dimension (C-1, C-2, C-7), not the shape of the decision.
+
+**14. F-44's status update is internally consistent.** `10-findings.md` F-44 now
+carries an owner and a precise blast radius ("What is blocked is **seeding**"),
+and `15-…` §9 item 2 and `08-…` OD-2's "What remains" both say the same thing in
+the same scope — a data question, blocking a seeded catalogue only. Three
+places, but two are explicit pointers to the finding, so this is a correct
+D-134 shape rather than a duplicate.
+
+---
+
+## Summary
+
+**19 findings: 7 high, 8 medium, 4 low.** No blockers — nothing here stops the
+design being built, and several findings are the same defect class the previous
+round found, surviving in a new location.
+
+| Severity | Findings |
+|---|---|
+| high | C-1, C-2, C-3, C-7, C-11, C-14, C-15 |
+| medium | C-4, C-6, C-8, C-12, C-13, C-16, C-18, C-19 |
+| low | C-5, C-9, C-10, C-17 |
+
+**The pattern.** Eleven of the nineteen are one shape: **a rule stated
+normatively in more than one place, where the copies have drifted apart**
+(C-1, C-2, C-3, C-13, C-14, C-15, C-16, C-18, C-19) or where a fix was recorded
+in the register and not landed in the chapter the register points at (C-4, C-12).
+D-134 exists to prevent exactly this and is itself violated by the requirements
+table that invokes it (C-14: R-28 says "the check list is stated once" and then
+states it). Three of the requirement rows in `00-overview.md` §3.1 that end with
+"stated once, in X" — R-13, R-14, R-28 — each have a second enumeration
+somewhere that has drifted (C-15, C-11, C-14 respectively). That is the highest-
+yield place to look next round.
+
+**Today's changes specifically.** D-157–D-161 are individually well-reasoned and
+none contradicts an earlier decision it did not revise. What they consistently
+lack is propagation: D-158 names two sections that were not edited (C-1, C-2,
+C-7), D-161 names two sections that were not edited (C-4), D-159 was not checked
+against the schema sketches already in the set (C-3, C-10), and OD-16/OD-18's
+consequences reached chapter 15 §6.2 but not R-32 or chapter 04 (C-8, C-6). The
+register was updated; the chapters mostly were not.
