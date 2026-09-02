@@ -1469,3 +1469,32 @@ class, and Jack asked for something an administrator can change), and the number
 are stated once in `02-…` §4.1.2 with §1.2, §1.3, OD-6 and `13-…` §3.2 pointing
 at it. `05-technical.md` §5.1 becomes "three template capabilities to adopt",
 which recasts the work item as narrowing bounds and adding one key.
+
+### F-145 — Keeping medical remarks forces a question the design has not answered: who reads them at the poolside?
+**Severity: high, and it is a design question rather than a defect.** D-176 keeps
+medical remarks in v1 for child safety — *"if a child has epilepsy I want to know,
+for safety"*. But the catalogue gates them behind `students.medical.read`, which
+D-148 treats as protected, read-audited, export-excluded free text, and which no
+starter role grants to an instructor.
+
+Both cannot be true. If the instructor standing at the water cannot see it, the
+control has made the child less safe than the paper list it replaced. If every
+instructor can read every medical note, the protection is decorative.
+
+**Proposed resolution, requiring the domain expert's confirmation before it is
+built.** Split the datum by what each reader actually needs:
+
+| | Who sees it | What it contains |
+|---|---|---|
+| **Safety flag** | every instructor teaching that child, on the session roster | a short, structured, pre-agreed marker — *epilepsy*, *severe allergy*, *deaf in one ear* — and what to do |
+| **Medical remark** | `students.medical.read` holders only, read-audited | the free-text detail, history, guardian's account |
+
+The flag is what the poolside needs and is far less sensitive; the remark is what
+a full record needs and stays protected. Making the flag a **closed vocabulary**
+rather than free text is the point: it stays glanceable at the poolside, it does
+not become a second uncontrolled note field, and its retention is defensible.
+
+**Open until Jack confirms:** the vocabulary, and whether guardians are the ones
+who set a flag at registration or whether staff transcribe it. Do not build
+either half before that answer.
+
