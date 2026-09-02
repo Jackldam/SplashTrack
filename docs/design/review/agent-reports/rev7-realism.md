@@ -716,3 +716,113 @@ they are the coordinator. That leaves `ORGANIZATION | UNIT | GROUP | SESSION |
 SELF`. Independently and regardless: add `COURSE` (while it exists) and `SELF`
 to the scope-escape table, or the gate's guarantee is partial in exactly the
 place it is asserted to be total.
+
+---
+
+## What is right, said plainly
+
+An over-long list of complaints is less useful than a short list that is true,
+and the same applies in the other direction. These are decisions I checked
+specifically because I expected them to be wrong, and they are not:
+
+- **D-108 — `GroupMove` with a direction and a required reason.** Moving a child
+  *down* as ordinary history rather than a correction is the case products in
+  this space forget, and the argument for the required reason is the best
+  paragraph in `01-domain-model.md`.
+- **D-059 — leave and return.** One persistent `StudentProfile`, membership as
+  intervals, an append-only lifecycle log. The year-away scenario just works.
+- **D-081 — pin the scheme by foreign key, never resolve it by date.** Correct,
+  and the two failure modes it names (backdated entry; NRZ revision date ≠ school
+  adoption date) are the real ones.
+- **D-084 — one criterion catalogue.** Collapsing `SkillRequirement` into
+  `SchemeCriterion` removes a table, a seed and a divergence. It is the rare
+  scope decision that is also a simplification.
+- **D-086 — default unset on the aftest screen**, and the willingness to say the
+  product thesis does not apply there. Pre-filling *voldoende* would have made
+  the four-eyes control ceremonial, and the design says so out loud.
+- **D-085's recorded override.** *"An un-overridable rule does not produce four
+  eyes in that week; it produces someone logging in as a colleague."* That is
+  how controls actually behave in small volunteer organisations.
+- **D-094 — the NRZ delegate gets paper.** No guest account, no share link, no
+  scope type. The low-tech answer genuinely is the better design here.
+- **D-093 — arrears never reach the poolside surface**, re-affirmed rather than
+  drifted through.
+- **D-091 — the line is the document.** Refusing to emit anything headed
+  *Factuur* is the correct place to stop, for the correct reason.
+- **D-090 — no `Household`.** Grouping by payer at render time will age better
+  than a fourth identity concept.
+- **D-061 + `clientEventId`.** One indexed column that makes offline additive
+  and corrections honest. Keep it whatever else is cut.
+- **`04-ux.md` §4.0 — "the incumbent is pen and paper."** The whole section is
+  correct, including cutting `SHARED_DEVICE` and poolside step-up, and including
+  the procurement line about the cellular iPad. My only quarrel with it is R-6:
+  it identifies the failure and mitigates it with an action nobody will take.
+- **Raising OD-18 at all.** The design could have quietly kept chapter 15 and
+  discovered the duplication after building it.
+
+---
+
+## STILL MISSING FROM v1
+
+Ranked by weekly cost to the school if it ships without them.
+
+| # | Missing | Est. | Finding |
+|---|---|---|---|
+| 1 | **Session generation: a recurrence primitive plus a holiday / pool-closure calendar.** Without it nobody can register attendance at all | ~1 w | R-2 |
+| 2 | **Lesson cancellation** — an enumerated `ScheduledSession.status`, a cancel action with a reason, and the three consequences | ~0.5 d | R-3 |
+| 3 | **Guardian communication** — one screen sending a templated message to a group's or session's guardians | ~3 d | R-13 |
+| 4 | **Roster-based reach** so a session's own instructor can see a guest on their own roster without an admin minting a grant | ~1 clause | R-4 |
+| 5 | **Substitute assignment as an action**, and a `SESSION` grant window that survives until the sheet is typed in | ~2 d | R-5 |
+| 6 | **A print fallback that is routine, plus a cached session shell** | ~2 d | R-6 |
+| 7 | **Absence self-report** — a signed per-session link, no login — or an explicit statement that EXCUSED is hearsay in v1 | ~2 d | R-14 |
+| 8 | **Waitlist entries must hold a `Person`** in D-066's list, and `Inquiry` must outlive an entry derived from it | 2 lines | R-9 |
+| 9 | **Capacity check** on group move and on waitlist placement | ~0.5 d | R-10 |
+| 10 | **Lanes / location resources** in scheduling, or delete "resources" from R-10 | ~3 d | R-16 |
+| 11 | **A defined independence window** for the four-eyes gate | 1 sentence | R-7 |
+
+Items 2, 4, 8, 9 and 11 together are under two days of work and close five real
+failures. They should not wait for a scope conversation.
+
+---
+
+## SHOULD LEAVE v1
+
+Ranked by weeks recovered per unit of regret.
+
+| # | Cut | Saves | What breaks | What does **not** break | Finding |
+|---|---|---|---|---|---|
+| 1 | **Contribution tracking** — `§6.2`'s periodic generation job, the membership fee type, the payer-level balance. Ship **exam fees only** | ~1.5 w | Nothing operational: the incumbent already does contributie, and building it here *creates* the dual entry the requirement exists to prevent | D-089's exam fee, `Charge`/`Payment`, D-092's financial retention ground, D-093's seam, the CSV | R-11 |
+| 2 | **Release engineering for strangers** — signed images, SBOM, provenance, restore-fixture generation in the release workflow | ~1.5 w | v1.0 is not machine-verifiable as a restore source later, and the first public image is unsigned | The image build, DEV → PROD promotion (D-022), D-048's never-squash policy, the tag-only deploy rule | — |
+| 3 | **Setup wizard + the five-state boot machine** (D-039, D-055) | ~1.5 w | A stranger cannot install without reading a page of documentation. The first operator is the author | **Keep D-044** (pre-migration backup), **D-046** (restore-then-migrate) and **D-040** (encrypted backup + recovery token). Those are load-bearing and cheap | — |
+| 4 | **Column encryption (D-013, extended by D-148) + rotation** — or, at minimum, decide it on the record instead of by omission | ~1.5 w | Protection against a DB dump obtained without host access, on a host where the key file sits beside the volume | D-010 (medical behind its own permission), D-040, and the `v1:` envelope *format* from D-096 — keep that, it is a day and hard to retrofit | R-12 |
+| 5 | **R-37's breach-response tooling** — active-session inventory with global revocation, notification delivery, the "what did this account do" report | ~1 w | An incident is worked from the audit log by hand | The Article 33/34 *duty*, which is a documented procedure, not a product feature. Ship the incident checklist | — |
+| 6 | **`COURSE` scope type** | ~0.5 w | An internal examiner is scoped per exam session or organisation-wide instead | Everything. It also removes the widest over-grant in the model on the most sensitive records | R-18 |
+| 7 | **EN localisation** — ship NL only | ~0.5 w | An English-speaking instructor reads Dutch | `next-intl`, the no-hardcoded-strings rule, P-05's locale discriminator. Adding EN later is translation, not engineering | — |
+| 8 | **The diagnostics page as a third-party support tool** (R-21) | ~0.5 w | Supporting a self-hoster over a GitHub issue is harder | Jack has SSH to his own box. Cheap either way; last on this list for that reason | — |
+
+**Total recovered: ~8.5 weeks.** Against R-1's ~66–72, that is not the answer on
+its own — which is the point. The size problem is not solvable by another round
+of cuts to the platform, because the platform is no longer where the weight is:
+after §3.5, **eleven domain modules at the design's own Definition of Done are
+the budget**. The lever that remains is staging, not cutting.
+
+---
+
+## Verdict
+
+**v1 is now the right *shape* and roughly three times the stated *size*.**
+
+The re-cut did the hard thing correctly: it moved the budget from a self-hosting
+product for an operator who does not exist to a domain a swim instructor
+touches, and the assessment half of that domain is modelled well enough that I
+spent this pass trying and failing to break it. What it did not do is finish the
+job on the operational half. A design whose thesis is an instructor at a poolside
+still has no way to create the lesson that instructor is standing at, no way to
+cancel it, and no way to tell a parent it was cancelled — while the number
+attached to the whole release understates it by a factor of three.
+
+Take items 2, 4, 8, 9 and 11 from STILL MISSING today; they are two days. Specify
+session generation before anything else is built on top of it. Answer OD-18 with
+"exam fees only" and stop waiting for it. Then re-estimate honestly and split the
+release, because the difference between a pilot Jack's school runs next season
+and a public v1.0 is the only decision left that changes the date.
