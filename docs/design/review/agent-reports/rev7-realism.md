@@ -302,3 +302,235 @@ same promise extended by one page load. Both are days, not weeks.
 The procurement line in §4.0(6) — *"If the school buys an iPad, buy the cellular
 model"* — is correct and stays. It does not cover the phone with no signal in a
 semi-basement hall, which is the common case.
+
+---
+
+### R-7 — The four-eyes independence test has an undefined window, and the two readings give opposite answers in a four-instructor club
+
+**Severity: medium.**
+
+D-085 (`15-assessment-and-fees.md` §3) requires that
+`assessorPersonId` is *"**not** among the `InstructorAssignment` holders for that
+student's group **over the assessment window**"*. "The assessment window" is
+never defined, here or in `01-domain-model.md` §3.2, and
+`InstructorAssignment` binds to `groupId` **or** `sessionId` — so a one-evening
+substitution creates an assignment of exactly the same kind as a standing one.
+
+**The two readings.** *Narrow* ("assigned on the day of the aftest"): almost
+nothing is excluded, and an instructor who taught the group last week may assess
+it this week — the control is close to ceremonial. *Broad* ("ever assigned"): in
+a club with four instructors who cover for each other, everyone has substituted
+for everyone's group at some point, so nobody is independent for anything and
+D-085's override becomes the normal path rather than the exception. Both
+readings are available to an implementer reading the sentence.
+
+**Why it matters.** D-085's own defence is that the override *rate* is the
+signal a chair can act on: *"if it is being used every week that is itself the
+finding."* That reporting is worthless if the rule's calibration is an accident
+of how one developer read one clause.
+
+**Recommendation.** Define it: independence is broken by a **standing**
+`InstructorAssignment` to the child's group (one bound to `groupId`) that
+overlaps the aftest date, and **not** by a session-level substitution. State the
+reasoning — the relationship the control is about is "their own teacher", not
+"someone who once stood in". Then the override rate means something.
+
+---
+
+### R-8 — The aftest screen is specified as a poolside screen and is in fact a seated data-entry screen
+
+**Severity: medium.**
+
+`04-ux.md` §4.7 and `15-…` §4 argue — correctly, and against the design's own
+grain — that the thirty-second doctrine must not apply here, and land on *"an
+aftest takes ten minutes and that is the correct number."* But §4.7 also
+describes the interaction as live: *"[set whole column ▾] with confirmation, for
+the criterion the group just did"*.
+
+**The arithmetic.** §4 states the load itself: *"roughly twelve children against
+roughly twenty criteria … about 240 ordinal values."* Ten minutes is **2.5
+seconds per value**, on a tablet, with wet hands, while simultaneously *watching
+twelve children swim* — which is the thing the assessor is actually there to do
+and the entire justification for the control. Nobody hits that number, and an
+assessor who tries will do the thing D-086 exists to prevent: sweep the column.
+
+**What actually happens.** The aftester watches, makes short notes, and enters
+the grades afterwards, seated, from those notes — the same shape as the
+attendance-from-the-sheet path the design already blesses in §4.0(3), and the
+reason `15-…` §2.1 gives `Assessment.assessedAt` separately from the row's
+`createdAt`.
+
+**Why it matters.** The design correctly refuses to make this screen fast and
+then implicitly requires it to be. If it is built for the poolside it will be
+optimised for sweeping; if it is built for a desk it can be keyboard-first, dense
+and resumable, which is what "ten minutes" actually buys.
+
+**Recommendation.** Say plainly that grades are **recorded from notes after the
+sitting**, keep per-criterion resume (already specified), design the screen
+keyboard-first for a laptop, and keep set-whole-column behind confirmation for
+the genuinely uniform criterion. Nothing changes in the model; one paragraph
+changes in §4.7 and it changes what gets built.
+
+---
+
+### R-9 — People waiting on the waiting list are deleted by the retention rule
+
+**Severity: high.**
+
+Two rules in `01-domain-model.md` §5 do not compose.
+
+D-066 enumerates every relationship that holds a `Person`: *"an active
+`MembershipPeriod`; an active `StudentProfile` enrolment; a role assignment …;
+a guardian relationship to a person still held; an unexpired consent record; or
+a legal retention ground on a record referencing them."* **A `WaitlistEntry` is
+not on that list.** The retention table two pages up gives waitlist entries a
+trigger of *"Placement or withdrawal"* — so the entry itself correctly survives
+while someone is still waiting.
+
+**The moment it fails.** A parent enquires in March. An `Inquiry` row is written
+(D-051 — public forms never write `Person`), promoted to a `WaitlistEntry`,
+which requires a `Person` (`01-…` §3.1: `WaitlistEntry | personId, …`). That
+person has no membership, no enrolment, no role, no consent record and no legal
+ground. Under D-066 their **last relationship of any kind** ended the moment it
+began. They enter `REVIEW` and, after the configured period, are deleted —
+while their waitlist entry, which the design calls *"The front door"*, points at
+nothing. Dutch swim-school waiting lists run months to years; this is not a tail
+case, it is the median entry.
+
+A second, smaller version of the same defect: `Inquiry` retention is *6 months
+from submission → `DELETE`*, while `WaitlistEntry` holds an optional reference
+to it. Six months in, the front door's provenance is gone.
+
+**Why it matters.** The failure is silent, it destroys the pipeline the school
+loses prospects on today, and it is caused by the one rule (D-066) the design is
+most pleased with — *"Every person category must be covered by construction,
+because the one that is forgotten is the one that accumulates indefinitely."*
+The forgotten one here does the opposite.
+
+**Recommendation.** Add *"an open `WaitlistEntry`"* to D-066's list, and extend
+`Inquiry` retention to the life of any `WaitlistEntry` derived from it. Two
+lines. This is the cheapest correction in this review and the one with the most
+embarrassing failure mode.
+
+---
+
+### R-10 — `Group.capacity` is nullable and nothing enforces it, on the action the design just made first-class
+
+**Severity: medium.**
+
+`Group | name, courseLevelId?, capacity?, active` (`01-domain-model.md` §3.2).
+Nothing anywhere reads it. R-34 and D-108 make `GroupMove` a v1 requirement with
+a direction, a reason and a decider — and `04-ux.md` §4.8's group-move row is
+*"choose the target group, **give a reason**, confirm"*. No capacity check, no
+"this group is full", no waiting-for-a-place state.
+
+**The moment it fails.** The weekly management question in a swim school is not
+"is Sanne ready" — it is *"is Sanne ready **and is there a spot in B2**"*. Both
+predecessor reports named this and it is still unaddressed. Without the check,
+the move screen will happily put a thirteenth child in a group of twelve, and
+the person who finds out is the instructor on Tuesday.
+
+**Recommendation.** One query and a soft block: show current occupancy against
+`capacity` on the move screen, warn over capacity, allow the override (a group
+of thirteen for one week is normal). Hours of work. Also make `capacity` mean
+something on the waiting-list placement action (R-33), which has the identical
+question.
+
+---
+
+### R-11 — OD-18: contribution tracking (§6.2) should not be built, and OD-18's option table is missing the option that is actually available
+
+**Severity: high.** *(This is the answer to the brief's question 5.)*
+
+OD-18 (`08-open-decisions.md`) frames three answers: SplashTrack takes over
+membership, the incumbent stays authoritative and SplashTrack projects it, or
+both own different things. The framing is honest and the "most expensive open
+item" label is right. Two things are wrong with it.
+
+**First, it is missing the fourth option, which needs no decision from Jack.**
+`15-…` §6.2's own text already contains it: *"**§6.3 (exam fees) is unaffected
+either way**: an exam fee is created by an event that happens only inside
+SplashTrack, and no membership system knows about it."* That is the whole
+answer. The exam fee is the only money in this domain that SplashTrack
+originates, it is created by D-089 as a side effect of a state change the app
+already owns, and it costs roughly two days on top of the `Charge`/`Payment`
+tables. Contribution tracking — the `MembershipPeriod × Enrolment` generation
+job, the periodic-charge idempotency discipline, the balance view spanning two
+fee kinds, the CSV the treasurer reconciles by hand — is the expensive half, and
+it is the half the incumbent already does.
+
+**Second, the argument for fees inverts under OD-16's answer.** OD-4 and
+`00-…` §3.5.2 both justify billing-lite with: *"without it the school keeps
+their existing system and does dual entry, which is the most common reason
+software like this is abandoned."* That sentence was written when the incumbent
+was assumed to be paper. It is now known that the club runs **a commercial
+membership administration system with export** (OD-16). So the dual entry is not
+avoided by building contribution tracking — **it is created by it.** Two homes
+for one fact, which is precisely what D-134 forbids inside the document and
+OD-16 itself flags *"now appearing between systems."*
+
+And the design has not absorbed its own hedge. §6.2 is conditional on OD-18, but
+R-32 (`00-…` §3.1) states billing-lite as an unconditional v1 requirement,
+`04-ux.md` §1 and §3 give Fees a nav section and a three-level page hierarchy,
+`01-…` §1.1 lists `fees` as a v1 module at the top of the DAG, and §5 adds
+`Charge`/`Payment` retention rows with D-092's pseudonymisation obligation. Five
+commitments and one conditional.
+
+**Verdict.** No — contribution tracking is not worth building. Build **exam fees
+only**: `FeeType`, `Charge`, `Payment`, the exam-fee event (D-089), a per-child
+balance and the CSV. Drop the periodic generation job, the membership-fee fee
+type and the payer-level balance until OD-18 is answered in SplashTrack's
+favour, which it may never be.
+
+**What breaks if it is cut.** Nothing operational. The treasurer keeps doing
+contributie where they already do it. D-092's financial-retention ground and
+pseudonymisation still ship (exam fees are fiscal records too), so the expensive
+compliance work is not deferred, only its volume. D-093 (arrears never on the
+poolside surface) is unaffected and stays — it is right.
+
+**What this also settles.** OD-18 stops being blocking. The only question left
+for Jack is the one OD-16 already asks — can we have a sample export — and that
+question belongs to R-29's importer, not to chapter 15.
+
+---
+
+### R-12 — Column encryption survived the re-cut without being discussed, and then grew
+
+**Severity: medium.**
+
+`report-realist-round2.md` §E1 listed *"**D-013** column encryption + **OD-7**
+key management"* as out of v1, keeping D-010 (medical behind its own
+permission), D-040 (encrypted backups) and the `v1:` envelope prefix. That row
+is **absent from `00-overview.md` §3.5.1**, which takes every other cut on the
+same list. Nothing anywhere records the reversal or argues for it.
+
+Meanwhile the scope went the other way. OD-7 closed on 2026-09-02 against three
+decisions — D-112 (`SECRET_KEY_FILE` root, HKDF per purpose), D-114 (two-level
+envelope, Argon2id over a printed recovery token, per-archive data keys,
+rotation re-wraps the master key) and D-096 (`v1:<keyId>:<nonce>:<ct>` with AAD
+binding table, column, primary key and key id) — and D-148 **extended** the
+encrypted class from medical/pastoral notes to *"assessment remarks and inquiry
+free text"* (`02-…` §4). `06-delivery.md` §5 then ranks the encryption envelope
+**#1 in the whole build order**: *"Nothing that stores a secret may be written
+first."*
+
+**Why it matters.** The threat this control addresses is a database dump
+obtained without host access. On the deployment this product is designed for —
+one Docker Compose stack, `SECRET_KEY_FILE` on the same filesystem as the
+volume — that attacker is rare and the one who matters (a copied backup) is
+already covered by D-040, which is kept. So the first two weeks of the build go
+to a control whose premise §3.5's own reasoning undercuts, and the extension to
+inquiry free text encrypts the contact form.
+
+I am **not** confident enough to call this a cut. The counter-argument in
+`02-…` §5.4 — that a parent's first email is often *"mijn zoon heeft epilepsie
+en is bang in het water"*, i.e. Article 9 data arriving through the public form —
+is a real reason to encrypt inquiry text, and it is a better argument than the
+one the design gives for D-013 generally.
+
+**Recommendation.** Decide it on the record rather than by omission. Either add
+D-013 to §3.5.1 with the reasoning above, or add a row to §3.5 explaining why
+the round-2 recommendation was rejected. What must not stand is a build order
+whose #1 item is a control the scope chapter is silent about. Keeping the `v1:`
+envelope *format* and the AAD design costs about a day and preserves the option
+either way — that part of D-096 should ship regardless.
