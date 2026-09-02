@@ -233,15 +233,23 @@ costs nothing:
    load test is written — the p95 target in `00-overview.md` §4.1 was set
    without knowing the lock exists.
 
-### 5.1 Two template capabilities to adopt, not re-invent
+### 5.1 Three template capabilities to adopt, not re-invent
 
-The design describes both of these as things to build. They already exist,
+The design describes all three of these as things to build. They already exist,
 tested, and adopting them is free:
 
 | Capability | What it already does | What the design said |
 |---|---|---|
 | `tests/unit/migration-safety.test.ts` | Blocks the unsafe `ADD COLUMN … NOT NULL` without a default | Nothing. This is exactly the class of migration that strands a self-hoster mid-upgrade, and it is already gated |
 | `person-reference-classification.ts` + `person-reference-sync.test.ts` | **Is** D-014's *"registry with a test asserting every `Person`-referencing table appears in it"* — already built, and checked **bidirectionally** | Described it as something to create |
+| `src/lib/auth/session.ts` + `src/lib/settings/config.ts` | Live, admin-configurable, floor- and ceiling-bounded **session idle and absolute timeouts**, with fail-safe-to-strict degradation, an application-owned `Session.lastSeenAt` idle check, and a cross-field rule keeping idle ≤ absolute. That is D-150's `bounded` class and most of D-173, already built and already debugged twice | `13-…` §4 listed session timeouts as `appliesLive` settings to build, and D-158 specified them as new work. The design's search space contained no reference to `src/lib/settings/` at all |
+
+The third row changes the shape of the D-173 work item: it is **narrowing the
+bounds and adding one key**, not building a timeout mechanism. The comments in
+`session.ts` record two prior bugs — an idle check based on `session.updatedAt`
+that a 2026-08-03 security review found unenforceable, and the
+fail-safe-to-strict degradation on a database blip — that an engineer starting
+fresh would not know to reproduce.
 
 The second one has a consequence worth stating as a rule rather than a
 surprise: **the build goes red the moment a domain model adds a `Person`

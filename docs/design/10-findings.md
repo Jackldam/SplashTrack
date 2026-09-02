@@ -1429,3 +1429,33 @@ installation holds health data about children, so we designed for the case where
 notification is required; whether it is required for a given breach is the
 controller's assessment and 34(3) may bear on it. The engineering consequence is
 unchanged, which is the point.
+
+### F-143 — D-158 bound a security control to role names, disagreed with D-150, and needed a registry dimension that does not exist
+**Severity: high.** Three defects in one decision, all mine, all introduced one
+commit after the rules they break. **(a)** It named "instructor" and
+"administrator" as if they were closed categories, while D-130 states that role
+names are not a checkable predicate because roles are user-definable and §2.4
+calls the starter catalogue "a starting point, not a fixed object" — so a school
+creating *Instructeur (avond)*, *Hulpinstructeur* and *Stagiair* puts the
+poolside session on an unchosen fallback, and D-143 rests half the poolside
+threat model on that timeout. **(b)** Its ceilings contradicted D-150's
+`bounded` table (absolute ≤ 12 h there, default 12 h / ceiling 24 h in D-158 and
+OD-6), with `13-…` §3.2 carrying a third copy that omitted the absolute
+lifetime entirely — the exact D-037 shape D-134 exists to stop. **(c)** It
+required a role dimension in a registry whose `scope` field is the single
+literal `instance-wide`, in the same chapter that claims the registry
+*generates* the admin UI, the validation and the API. And separately, the whole
+mechanism already exists in the template: live, admin-configurable,
+floor-and-ceiling-bounded idle and absolute timeouts with fail-safe-to-strict
+degradation and an application-owned `Session.lastSeenAt` idle check
+(`src/lib/settings/config.ts:111-115`, `:132-136`, `:706-735`;
+`src/lib/auth/session.ts:33-46`, `:125-142`), which the design set never
+referenced.
+**Response.** D-173 supersedes D-158. The idle window is selected by whether the
+principal holds any high-risk permission — checkable, survives an invented role,
+and needs no registry dimension. The absolute ceiling is settled at 24 h (a
+`bounded` setting whose ceiling equals its default is an invariant in the wrong
+class, and Jack asked for something an administrator can change), and the numbers
+are stated once in `02-…` §4.1.2 with §1.2, §1.3, OD-6 and `13-…` §3.2 pointing
+at it. `05-technical.md` §5.1 becomes "three template capabilities to adopt",
+which recasts the work item as narrowing bounds and adding one key.

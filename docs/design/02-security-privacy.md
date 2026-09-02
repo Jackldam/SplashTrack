@@ -25,10 +25,12 @@ Inherited from the template (Better Auth), unchanged:
 
 - Secure, HTTP-only, `SameSite` cookies; session rotation after sensitive
   events; protection against session fixation.
-- Defined **idle and absolute** session timeouts. For SplashTrack the idle
+- Defined **idle and absolute** session timeouts, enforced live and
+  administrator-configurable within hard bounds. For SplashTrack the idle
   timeout matters unusually much: tablets are shared at the poolside and left
-  unlocked. Proposal: idle 30 min for instructor roles, 15 min for admin roles,
-  absolute 12 h. See open decision OD-6.
+  unlocked. **The values, the bounds and the tier rule are stated once in §4.1.2
+  (D-173)** and not repeated here; OD-6 is closed. The idle window is selected
+  by permission, never by role name (D-130).
 - **MFA is mandatory, bound to permissions rather than to role names (D-130).**
   Any principal holding any permission in the **high-risk set** —
   `organization.settings.manage`, `identity.providers.manage`, `roles.assign`,
@@ -272,7 +274,10 @@ What v1 actually ships (D-120, `00-overview.md` §3.5.1):
   structurally, and it holds whether the instructor is on the pool deck, at
   home, or on a stolen tablet. It cannot be un-marked because there is nothing
   to mark.
-- A **short idle timeout** for instructor sessions (OD-6), applied by role.
+- A **short idle timeout**, selected by the permissions a principal holds and
+  not by their role name — §4.1.2 (D-173). A poolside instructor holding no
+  high-risk permission gets the standard window; anyone who does holds the
+  elevated, shorter one, whatever their role is called.
 - Nothing else. No second dimension in `requirePermission`, no context deny-list.
 
 If a device mode returns later, these are its terms: an administrator **enrols**
@@ -1213,7 +1218,7 @@ convention.**
 | Class | Meaning | Examples |
 |---|---|---|
 | `free` | Edit at will. The overwhelming majority | branding, email templates, feature toggles, lesson defaults |
-| `bounded` | Editable within a hard floor/ceiling enforced by the setting's own schema, which `settings:reset` also respects. **A ceiling that can be exceeded with a documented reason is not a bound; that setting is `free` with a warning** (§4.1.1) | session idle and absolute lifetime — bounds stated once in §4.1.1 (D-173); rate limits ≥ a stated minimum; audit retention ≥ the computed floor (§3.2.1, D-168); any retention ≤ the platform maximum |
+| `bounded` | Editable within a hard floor/ceiling enforced by the setting's own schema, which `settings:reset` also respects. **A ceiling that can be exceeded with a documented reason is not a bound; that setting is `free` with a warning** (§4.1.1) | session idle and absolute lifetime — bounds stated once in §4.1.2 (D-173); rate limits ≥ a stated minimum; audit retention ≥ the computed floor (§3.2.1, D-168); any retention ≤ the platform maximum |
 | `invariant` | Not editable in the UI at all, not clearable by `settings:reset`, no override flag | MFA required for the high-risk permission set (§1.2); the egress deny-list's *existence* (its allow-private-networks flag is `free` and audited). **Nothing else** — see §4.1.1 for what was removed from this list and where those properties are actually enforced |
 
 Changing a `bounded` setting to its floor, and any attempt to change an
@@ -1284,6 +1289,92 @@ fix for it.
 **Trade-off.** `invariant` shrinks to two entries, which reads thinner and is
 true; and `system: true` is one more flag that a future "just let me edit it"
 will push against — the test is what holds it.
+
+#### 4.1.2 Session timeouts — the one home for the values and the bounds
+
+**Decision D-173 (supersedes D-158) — Session idle timeout is selected by
+**permission**, not by role name: any principal holding a permission in the
+high-risk set (§1.2) gets the elevated (shorter) timeout, everyone else the
+standard one, strictest wins on any overlap, and an unrecognised principal gets
+the strictest. All three values are instance-wide `bounded` settings, needing no
+new dimension in the settings registry. The implementation is the template's,
+narrowed — not a new mechanism.**
+
+| Setting | Default | Floor | Ceiling |
+|---|---|---|---|
+| `security.sessionIdleTimeoutMinutes` (standard) | 30 min | 5 min | 8 h |
+| `security.sessionIdleTimeoutMinutesElevated` (holder of any high-risk permission) | 15 min | 5 min | 8 h |
+| `security.sessionAbsoluteTimeoutMinutes` | 12 h | 1 h | **24 h** |
+
+Cross-field, inherited from the template: an idle timeout may not exceed the
+absolute timeout. **These are the only normative statements of these numbers in
+the design set** — §1.2, §1.3, `08-open-decisions.md` OD-6 and `13-…` §3.2 point
+here and do not restate them (D-134).
+
+**Why D-158 had to be replaced, in its author's own words.** I wrote it, and it
+was wrong in three ways.
+
+1. **It bound a security control to role names.** D-130 exists to forbid exactly
+   that — *"'organisation administrator roles' is not a checkable predicate,
+   since roles are user-definable"* — and §2.4 calls the starter catalogue *"a
+   starting point, not a fixed object"*. A school that creates *Instructeur
+   (avond)*, *Hulpinstructeur* and *Stagiair* has three roles D-158 does not
+   name, and the wet-tablet session lands on whatever the fallback happens to
+   be. D-143 rests half the poolside threat model on this timeout, so attaching
+   it to a name rather than to the thing that makes the session dangerous
+   reintroduces the defect D-143 exists to remove, one commit later.
+2. **Its ceilings contradicted D-150.** §4.1's table said absolute ≤ 12 h while
+   D-158 and OD-6 said default 12 h, ceiling 24 h — and `13-…` §3.2 stated the
+   bounds a third time while omitting the absolute lifetime entirely. Resolved
+   in favour of **24 h**: a `bounded` setting whose ceiling equals its default
+   cannot be raised, which makes it an invariant filed in the wrong class, and
+   Jack's answer to OD-6 was explicitly *"make it a setting an admin can change
+   later"*.
+3. **It required a registry dimension that does not exist.** `13-…` §3.2 defines
+   `scope` as the single literal `instance-wide`, and the registry claims to
+   *generate* the admin UI, the validation and the API. A role-scoped setting has
+   no representation in it, so D-158 was not implementable against the chapter it
+   named as its home. Permission-tier selection needs no dimension at all: two
+   ordinary instance-wide numbers and a predicate the MFA mandate already
+   computes over the same set. Finding **F-143**.
+
+**The implementation already exists, and the design did not know.** `05-…` §5.1
+lists two template capabilities to adopt rather than re-invent; this is a third,
+verified in the source rather than taken on report:
+
+- `WebAppTemplate/src/lib/settings/config.ts:111-115` —
+  `SESSION_TIMEOUT_MINUTES = { min: 15, max: 43_200, default: 720 }`: the
+  absolute cap, admin-configurable, floor- and ceiling-bounded. That is D-150's
+  `bounded` class, already built.
+- `:132-136` — `SESSION_IDLE_TIMEOUT_MINUTES = { min: 1, max: 43_200,
+  default: 30 }`, the idle window, likewise.
+- `:706-735` — the cross-field rule refusing an idle timeout longer than the
+  absolute one.
+- `src/lib/auth/session.ts:33-46` — the absolute cap enforced live, read through
+  `getConfiguredSecurityPolicy()`, *"per-request-cached, fail-safe-to-default (a
+  DB blip degrades to this same default, never to 'no cap')"*.
+- `session.ts:125-142` — the idle check enforced from an application-owned
+  `Session.lastSeenAt` column, with the file recording why: Better Auth's own
+  `expiresIn` is fixed at auth-context construction and cannot be the live,
+  admin-configurable window. That is the same singleton problem F-105/D-106
+  identifies for identity providers, already solved here.
+
+So the work is **narrowing bounds and adding one key**, not building timeouts:
+tighten the ceilings to the table above (the template's 30-day maxima are
+generous for a general platform and far outside D-150's intent here), add
+`sessionIdleTimeoutMinutesElevated`, and select between the two idle values at
+the point `session.ts` already reads the configured policy. The comments in that
+file record two prior bugs — the `session.updatedAt` idle check a 2026-08-03
+security review found unenforceable, and the fail-safe-to-strict degradation —
+that an engineer starting fresh would not know to reproduce.
+
+**Reason.** Binding to permissions is checkable, survives a school inventing a
+role, needs no registry change, and is what every other security-load-bearing
+rule in this chapter already binds to — one predicate rather than two.
+**Trade-off.** An instructor who is also the treasurer may fall in the high-risk
+set and get the shorter window on a wet tablet. The set is the arbiter, that is
+the correct direction of failure, and it is an argument for keeping the
+high-risk set small rather than for binding to names.
 
 **Photographs deserve explicit mention, and the rule for them is stated here
 and nowhere else.** Swim schools photograph children for identification on class

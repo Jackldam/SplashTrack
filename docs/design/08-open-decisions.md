@@ -180,9 +180,13 @@ exactly as the security model already requires:
 
 | Setting | Default | Class | Bound |
 |---|---|---|---|
-| Idle timeout, instructor role | 30 min | `bounded` | ≤ 8 h |
-| Idle timeout, administrator role | 15 min | `bounded` | ≤ 8 h |
-| Absolute session lifetime | 12 h | `bounded` | ≤ 24 h |
+| Idle timeout, standard | 30 min | `bounded` | 5 min – 8 h |
+| Idle timeout, elevated | 15 min | `bounded` | 5 min – 8 h |
+| Absolute session lifetime | 12 h | `bounded` | 1 h – 24 h |
+
+**This table is a summary of the answer; the normative statement is
+`02-security-privacy.md` §4.1.2 (D-173)** — including the tier rule, which is
+what changed after this entry was first written.
 
 **Why the bound is not negotiable even though the value is.** D-143 removed
 `SHARED_DEVICE` and leaned the poolside threat model on "the Instructor role
@@ -192,9 +196,17 @@ by the person it restricts — the same self-declaration defect D-143 exists to
 remove. Bounded gives Jack what he asked for (change it after three lessons of
 real use, from the admin UI, no restart) without re-opening it.
 
-**Per-role, not global.** The two defaults differ by role, so the setting is
-role-scoped; a single global number cannot express the table above. Recorded as
-**D-158**.
+**Per-permission, not per-role — corrected.** The entry first closed as
+*"per-role, so the setting is role-scoped; one more dimension in the settings
+registry"*, recorded as **D-158**. That was wrong on three counts and is
+superseded by **D-173**: it bound a security control to role names, which D-130
+forbids because roles are user-definable; its 24-hour absolute ceiling
+contradicted D-150's 12-hour one; and the registry it named as its home defines
+`scope` as the single literal `instance-wide`, so the dimension it required does
+not exist. The two idle defaults now differ by **whether the principal holds any
+high-risk permission**, which is checkable, survives a school inventing a role,
+and needs no new registry dimension. Jack's answer — the defaults are accepted
+and must be administrator-changeable — is unchanged and still satisfied.
 
 ---
 

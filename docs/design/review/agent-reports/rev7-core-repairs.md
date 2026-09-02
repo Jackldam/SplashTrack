@@ -223,3 +223,41 @@ rather than a data model.
 `07-…` §1.4 and a note on D-128's register row. The capability was never
 justified by the legal conclusion, so removing the conclusion costs nothing
 built.
+
+---
+
+## Defect 6 — C-1 / C-7 / S-10 / B-3 / B-5: D-158 was mine and it was wrong · **closed** · D-173, F-143
+
+**Verified first, as instructed.** The claim that `WebAppTemplate` already
+implements this was checked against the source, not taken from the report:
+`src/lib/settings/config.ts:111-115` (`SESSION_TIMEOUT_MINUTES = {min: 15,
+max: 43_200, default: 720}`), `:132-136` (`SESSION_IDLE_TIMEOUT_MINUTES =
+{min: 1, max: 43_200, default: 30}`), `:706-735` (the cross-field rule refusing
+idle > absolute), and `src/lib/auth/session.ts:33-46` and `:125-142` (live
+enforcement through `getConfiguredSecurityPolicy()`, fail-safe-to-strict, the
+application-owned `Session.lastSeenAt` idle check and the recorded reason Better
+Auth's own `expiresIn` cannot serve). It holds in every particular. The
+template's ceilings are 30 days, so the work is **narrowing** them, not building
+a mechanism.
+
+**What D-173 says.** The idle window is selected by whether the principal holds
+any permission in the high-risk set — the predicate the MFA mandate already
+computes — with strictest-wins and strictest-on-unknown. Three instance-wide
+`bounded` keys, so C-7's missing registry dimension is not needed rather than
+added. The absolute ceiling is settled at **24 h**: a `bounded` setting whose
+ceiling equals its default cannot be raised, which makes it an invariant filed
+in the wrong class, and Jack's OD-6 answer was explicitly "make it a setting an
+admin can change later".
+
+**Where the numbers live now.** One place: `02-…` §4.1.2. §1.2's "Proposal…
+see OD-6" (C-2), §1.3's "applied by role", §4.1's `bounded` cell, OD-6's closure
+table and `13-…` §3.2's fourth copy all became pointers. `05-technical.md` §5.1
+gained a third row and is retitled.
+
+**Where I disagreed with a reviewer.** B-3 recommended deriving the timeout from
+"the highest-risk permission the principal holds… one `free`→`bounded` numeric
+per risk tier". I took the binding and not the tiering: there is one risk set in
+this design (the high-risk permission set), not a graded ladder, and inventing a
+second gradation would create a new thing to maintain as permissions are added —
+which is the maintenance cost D-130's trade-off column already names. Two tiers,
+one existing set.
