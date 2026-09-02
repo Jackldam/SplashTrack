@@ -405,7 +405,7 @@ version that cannot drift.
 | R-26 | Public surface cannot enumerate or expose any person, student, member, group or other private record (§3.4) |
 | R-27 | **Reduced (§3.5):** DEV and PROD. UAT as a separate environment is out of v1 — one person is author, reviewer and acceptor. The same tag still publishes the public image |
 | R-28 | **Reduced (§3.5):** eight blocking CI checks — format, lint, typecheck, unit, integration, E2E, migration-against-populated-database, secret scanning. The check list is stated once, in `06-delivery.md` §2.1 |
-| R-29 | One-time import of the existing pupil/member list from the club's commercial membership system's export (OD-16); mapping specified against a real sample file only, unmapped columns reported not dropped, zero `Consent` rows written (D-157, §2.2) |
+| R-29 | **One-time bulk CSV import** of the existing pupil/member list, exported from the incumbent membership system (OD-16), after which that system is switched off and SplashTrack is the record (OD-18, D-163). Mapping specified against a real sample file only, unmapped columns reported not dropped, zero `Consent` rows written (D-157, §2.2). **No integration, no recurring feed, no re-import to catch up** |
 | R-37 | **Breach-response capability** — a "what did this account do" audit report, an active-session inventory with global revocation, notification delivery for high-severity events, and an incident checklist. For health data about children the Article 33/34 thresholds are met by default, so this is a v1 requirement for this data class (`07-operations.md` §1.4) |
 
 ### 3.2 Architecturally prepare — not built in v1

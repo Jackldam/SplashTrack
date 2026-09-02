@@ -386,13 +386,32 @@ the domain expert. A seed containing invented swimming requirements would be
 worse than an empty one, because it would look authoritative and would be
 assessed against. `AssessmentScheme.source` and D-083's fork rule exist so
 that the provenance of whatever is eventually seeded stays visible.
-**Status 2026-09-02: still open, now with an owner and a date shape.** Jack —
-the domain expert — will supply the criteria and thresholds; they were not
-available on the day the rest of chapter 08 was answered. Nothing else waits on
-this: the catalogue's *shape* (D-160's single grade scale, versioned
-`CriterionSet` per `AwardType`, relaxed thresholds for certificates) is settled
-and buildable against an empty catalogue. What is blocked is **seeding**, and
-therefore any pilot that assesses a real child.
+**Status 2026-09-02: CLOSED — dissolved rather than answered.** Jack's answer
+was not a set of criteria but a rejection of the premise:
+
+> The NRZ requirements are **reference, not content to ship**. An administrator
+> authors the skill list, the certificates and diplomas it maps to, and their
+> requirements **inside the application**. That keeps the product generic.
+
+This is the better answer and it removes the blocker outright:
+
+- **No catalogue is ever seeded.** SplashTrack ships with an empty catalogue and
+  no swimming requirements in its source. The finding's original fear — invented
+  requirements that look authoritative and get assessed against — cannot occur,
+  because the project never asserts any.
+- **`AssessmentScheme.source` gains its real meaning.** Provenance is
+  "authored by this organisation" rather than "shipped by us and possibly
+  forked" (D-083).
+- **It generalises the product for free.** A club following a different scheme,
+  or the NRZ changing its requirements in 2028, needs no release from us — which
+  is exactly what D-160's versioned `CriterionSet` was already built to survive.
+
+**The cost, and it is real: v1 acquires a catalogue-authoring surface.** Somebody
+must be able to create an `AwardType`, define its `CriterionSet`, set each
+criterion's minimum grade, and publish a version — before a single aftest can be
+recorded. That is a screen and a workflow that no chapter currently specifies.
+Recorded as **D-164**, and it is now on the v1 critical path in place of the
+seeding task it replaces.
 
 ### F-45 — Fee tracking's first regret is reconciliation, and it is deliberately not in v1
 **Severity: medium.** What kills a tracked-billing feature is not the absence

@@ -397,15 +397,16 @@ and for the same reason: a job that runs twice, a retry, and a manual re-run mus
 all collapse to one charge. Double-billing a parent is the fastest way to lose
 the feature.
 
-**Conditional on OD-18, raised 2026-09-02.** The club runs a commercial
-membership administration system (OD-16). If it stays authoritative for
-membership, this subsection does not ship: `Membership` and `MembershipPeriod`
-become a read-only projection of that system and periodic contribution charges
-are its job, not SplashTrack's — generating them here would be a second home for
-a fact that already has one, and reconciliation between the two is precisely
-what §6.6 keeps out of v1. **§6.3 (exam fees) is unaffected either way**: an exam
-fee is created by an event that happens only inside SplashTrack, and no
-membership system knows about it.
+**OD-18 closed 2026-09-02: this subsection ships as written.** The club runs a
+commercial membership administration system (OD-16), and SplashTrack **takes it
+over** rather than coexisting with it — the incumbent is member administration
+only, and SplashTrack is intended to hold the club's digital needs. `Membership`
+and `MembershipPeriod` are therefore systems of record here, not projections of
+anything.
+
+The transition is a **one-time bulk CSV import and then a switch-off** (D-163:
+no integration with any external system in v1). There is no sync, no recurring
+feed and no re-import to catch up — after the switch, this is the record.
 
 ### 6.3 The exam fee is created by an event, never in advance
 

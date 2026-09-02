@@ -512,31 +512,63 @@ Recorded as **D-160**.
 
 ---
 
-### OD-18 — Does SplashTrack take over membership administration, or coexist with the incumbent system?
+### OD-18 — **(CLOSED 2026-09-02)** Does SplashTrack take over membership administration, or coexist with the incumbent system?
 
-**Raised 2026-09-02, by OD-16's answer.** The club already runs a commercial
-membership administration system. Chapter 15 specifies `Membership`,
-`MembershipPeriod` and contributie tracking inside SplashTrack. Those are the
-same facts in two systems.
+**Raised earlier the same day by OD-16's answer, and answered the same day.**
 
-**Why it matters, and why it is the most expensive item currently open.** Three
-answers give three different products:
+**Answer, from Jack: option 1 — SplashTrack takes it over.** The incumbent is
+*only* a member administration system, and SplashTrack is intended to hold all
+of the club's digital needs eventually. The read-only-projection branch (option
+2) and the split branch (option 3) are both dead.
 
-| Answer | What v1 builds | What breaks later |
-|---|---|---|
-| **One-time import, then SplashTrack owns membership** | Everything in chapter 15 as written; the incumbent is retired | Nothing structurally — but the club must actually retire the incumbent, including whatever it does for invoicing and bookkeeping that SplashTrack deliberately does not (OD-4) |
-| **Incumbent stays authoritative; SplashTrack imports periodically** | `Membership`/`MembershipPeriod` become a **read-only projection**; contributie tracking leaves v1; no membership editing UI | Every screen that assumes membership is editable here; D-059's leave-and-return model becomes something the *other* system decides |
-| **Both authoritative for different things** | A written split — e.g. incumbent owns contributie and the member ledger, SplashTrack owns students, groups, progress and exam fees | The worst option to discover late: reconciliation is exactly the work D-4/F-45 kept out of v1 |
+**But with a constraint that changes how the takeover happens:**
 
-**What makes this answerable, not a design question.** It depends on facts only
-Jack has: whether the club intends to retire the commercial system, what it is
-relied on for beyond a pupil list (invoicing? incasso? bookkeeping export?), and
-whether its export is a one-off or a supported recurring feed.
+> **No integrations with any external system in v1.** The only ingress is a
+> **bulk import from a CSV** that the other system can export.
 
-**Note on scope.** This does not block the design of students, groups, sessions,
-attendance, assessment or exams — none of which the incumbent holds. It blocks
-only the membership and contributie half of chapter 15.
+That constraint is worth more than it looks. It converts a systems-integration
+problem into a file-parsing problem, removes every question about sync
+direction, conflict resolution and staleness, and means the incumbent is
+**switched off**, not kept alive alongside. Recorded as **D-163**.
 
-**Cost of delay.** High and rising: it is cheap now and becomes a rewrite of
-chapter 15 plus its schema once written.
+**What this settles in the chapters:**
 
+- `15-assessment-and-fees.md` §6.2 (membership fees) **is built as written**.
+  The conditional note added earlier today is removed: `Membership` and
+  `MembershipPeriod` are systems of record here, not projections.
+- **D-157 simplifies.** It still forbids inventing a column mapping before a
+  real file exists, but the source is now a CSV export rather than a vendor
+  API, and the importer is a **one-time bulk load**, not a recurring feed.
+- No adapter, no vendor coupling and no scheduled synchronisation appears
+  anywhere in v1.
+
+**One new fact arrived with the answer, and it is not v1 — see OD-19.**
+
+---
+
+### OD-19 — SportLink registration for competition and water-polo members
+
+**Raised 2026-09-02 by Jack, as context rather than as a request.**
+
+**The fact.** Members who swim competitively or play water polo must *also* be
+registered in **SportLink** to be allowed to compete. This is mandatory for
+those members and irrelevant for ordinary lesson pupils — the large majority.
+
+**Explicitly out of v1.** D-163 admits no external integration in v1, and this
+is one. It is recorded because it is a real obligation the club carries, and
+because knowing it exists changes one small thing now: a person may hold an
+**external registration in another system**, and a future integration should
+not have to invent where that identifier lives.
+
+**What v1 does about it: nothing, deliberately.** No SportLink field, no
+external-id column, no stub. Adding an identifier column later is a migration;
+inventing a shape for an integration nobody has specified is a guess that will
+be wrong. `01-domain-model.md`'s `Person` is the obvious home when the time
+comes.
+
+**What v2 must decide.** Whether SplashTrack pushes to SportLink, reads from
+it, or merely records that a member is registered there — three quite different
+commitments. Also whether competition membership is a distinct membership kind
+in the domain model at all, which today it is not.
+
+**Cost of delay.** Low. Nothing in v1 becomes harder by not answering it.
