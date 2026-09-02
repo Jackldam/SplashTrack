@@ -4,31 +4,37 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Guardrail against the migration anti-pattern that froze UAT (see
- * documentation/database.md §4.1): an `ALTER TABLE ... ADD COLUMN "x" <type>
- * NOT NULL` with NO `DEFAULT`. Prisma replays migrations on a FRESH database
- * against empty tables, so this succeeds locally and in CI — but on an
- * incrementally-upgraded, already-populated environment (UAT, and any real
- * prod that has been live since the feature shipped) it fails with P3009 and
- * blocks EVERY later migration until an operator resolves it by hand.
+ * ADOPTED FROM THE TEMPLATE AS-IS (D-135), and verified to do what
+ * `05-technical.md` §5.1 claims: it blocks the unsafe `ADD COLUMN … NOT NULL`
+ * without a default.
+ *
+ * The anti-pattern: an `ALTER TABLE … ADD COLUMN "x" <type> NOT NULL` with NO
+ * `DEFAULT`. Prisma replays migrations on a FRESH database against empty
+ * tables, so this succeeds locally and in CI — but on an incrementally-upgraded,
+ * already-POPULATED database it fails with P3009 and blocks EVERY later
+ * migration until an operator resolves it by hand.
+ *
+ * This is exactly the class of migration that strands an upgrade mid-flight,
+ * and `06-delivery.md` §2.1 makes it a blocking check. It pairs with the
+ * migrate-against-a-populated-database job, which catches what a regex cannot.
  *
  * The safe shapes are:
  *   - `ADD COLUMN "x" <type> NOT NULL DEFAULT <value>`, or
  *   - add the column NULLABLE, backfill it, then `ALTER COLUMN "x" SET NOT NULL`.
- *
- * This test fails CI if a NEW migration ships the unsafe shape.
  */
 
 const MIGRATIONS_DIR = join(process.cwd(), "prisma", "migrations");
 
 /**
- * Migrations that predate this guard and carry the risky pattern. They are
- * already applied everywhere, and a from-scratch deploy replays them on an EMPTY
- * table (safe); the one incrementally-upgraded environment that broke (UAT) was
- * remediated by hand (add-nullable → backfill → set-not-null). Listed here so the
- * guard blocks only NEW occurrences. Do not add to this list — fix the migration.
+ * Migrations that predate this guard and carry the risky pattern.
+ *
+ * EMPTY, and it must stay that way. The template shipped one entry, for a
+ * migration of its own that this repository does not have — carrying it across
+ * would have failed the second test below (which is the point of that test).
+ * SplashTrack's migration history starts clean, so there is nothing to
+ * grandfather. Do not add to this list: fix the migration instead.
  */
-const ALLOWLIST = new Set(["20260722105628_credential_role_assignment_unit"]);
+const ALLOWLIST = new Set<string>([]);
 
 /** `ADD COLUMN "col" <type> ... NOT NULL` — the ALTER TABLE add (NOT a CREATE
  * TABLE column, which never says "ADD COLUMN", and NOT `ALTER COLUMN ... SET NOT

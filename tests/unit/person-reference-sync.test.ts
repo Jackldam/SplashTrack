@@ -7,30 +7,36 @@ import { PERSON_REFERENCE_CLASSIFICATION } from "@/modules/users/infrastructure/
 import { extractModelBlocks } from "./prisma-schema-parser";
 
 /**
- * Guards the same risk `tests/unit/organization-scope-sync.test.ts` guards for
- * `organizationId`, applied to `Person`: `PERSON_REFERENCE_CLASSIFICATION`
- * (src/modules/users/infrastructure/person-reference-classification.ts) is a
+ * ADOPTED FROM THE TEMPLATE (D-135), and verified to do what
+ * `05-technical.md` §5.1 claims: this IS D-014's "registry with a test
+ * asserting every `Person`-referencing table appears in it", already built, and
+ * checked BIDIRECTIONALLY.
+ *
+ * `PERSON_REFERENCE_CLASSIFICATION`
+ * (`src/modules/users/infrastructure/person-reference-classification.ts`) is a
  * hand-maintained map that must account for every field in
- * `prisma/schema.prisma` referencing a `Person` — a `personId`/`*PersonId`
- * scalar column, or a relation typed `Person`/`Person?` — or GDPR Art. 17
- * erasure coverage for that column is a silent, undocumented accident.
+ * `prisma/schema.prisma` referencing a `Person` — a `personId` / `*PersonId`
+ * scalar column, or a relation typed `Person` / `Person?`. Without that, Article
+ * 17 erasure coverage for a column is a silent, undocumented accident.
  *
- * This is exactly the gap that produced two real bugs: `OrganizationBranding
- * .updatedByPersonId` had a `Restrict` FK with no sever step (an erasure of
- * that editor rolled back the WHOLE transaction), and
- * `MaintenanceJob.updatedByPersonId` was never referenced by
- * `person-erasure-repository.ts` at all (no FK, so erasure "succeeded" but
- * silently left the erased person's id on the row forever). Neither table
- * would have failed a Prisma migration or a typecheck — only a schema-vs-map
- * sync test like this one catches it, and only if this test is the one
- * accurate mirror of the schema.
+ * This is exactly the gap that produced two real bugs in the template:
+ * `OrganizationBranding.updatedByPersonId` had a `Restrict` FK with no sever
+ * step, so erasing that editor rolled back the WHOLE transaction; and
+ * `MaintenanceJob.updatedByPersonId` was never referenced by the erasure
+ * repository at all — no FK, so erasure "succeeded" while silently leaving the
+ * erased person's id on the row forever. Neither would have failed a Prisma
+ * migration or a typecheck. Only a schema-vs-map sync test catches it, and only
+ * while this test is the one accurate mirror of the schema.
  *
- * Parses prisma/schema.prisma directly (not the generated client) so it fails
+ * The forcing function is deliberate and belongs in the Definition of Done
+ * (`06-delivery.md` §4.4): the build goes red the moment a domain model adds a
+ * `Person` reference without an entry.
+ *
+ * Parses `prisma/schema.prisma` directly (not the generated client) so it fails
  * the moment schema and map drift apart, in EITHER direction. Model-body
- * extraction is shared with `organization-scope-sync.test.ts` via
- * `./prisma-schema-parser` — see that file for why a brace-DEPTH walk is used
- * instead of a naive first-`}` regex, and `prisma-schema-parser.test.ts` for
- * the regression guard.
+ * extraction lives in `./prisma-schema-parser` — see that file for why a
+ * brace-DEPTH walk is used instead of a naive first-`}` regex, and
+ * `prisma-schema-parser.test.ts` for the regression guard.
  */
 
 /**
@@ -92,18 +98,24 @@ describe("PERSON_REFERENCE_CLASSIFICATION stays in sync with prisma/schema.prism
 
   it("found the known Person-referencing columns (sanity check the parser itself)", () => {
     // A fixed floor of columns known (by manual audit) to reference Person
-    // today. If this shrinks, the PARSER broke (e.g. reverted to the naive
-    // brace pattern) — that is a bug in the test, not a schema change, and
-    // must be investigated before touching the other two assertions below.
+    // today. If this shrinks, the PARSER broke — that is a bug in the test,
+    // not a schema change, and must be investigated before touching the other
+    // two assertions below.
+    //
+    // Narrowed from the template's list to the models SplashTrack actually
+    // extracted: the template's floor named CustomPage, EmailTemplate,
+    // MaintenanceJob and PlatformBootstrap, none of which exist here. The two
+    // shapes that MUST stay represented are an FK-backed pointer
+    // (`UserAccount.personId`) and a plain token with no FK by design
+    // (`AuditEvent.actorPersonId`) — they exercise the parser's two distinct
+    // detection paths.
     for (const known of [
       "UserAccount.personId",
+      "OrganizationMembership.personId",
+      "RoleAssignment.personId",
       "PlatformSettings.updatedByPersonId",
-      "CustomPage.createdByPersonId",
-      "CustomPage.updatedByPersonId",
-      "EmailTemplate.updatedByPersonId",
-      "MaintenanceJob.updatedByPersonId",
+      "ApiCredential.createdByPersonId",
       "AuditEvent.actorPersonId",
-      "PlatformBootstrap.personId",
     ]) {
       expect(schemaPersonRefs.has(known), known).toBe(true);
     }

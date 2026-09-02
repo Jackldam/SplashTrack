@@ -1,9 +1,9 @@
 /**
  * Shared parser for `prisma/schema.prisma`, used by every schema-vs-map sync
- * test (`organization-scope-sync.test.ts`, `person-reference-sync.test.ts`,
- * and any future one). Factored out so there is exactly ONE implementation to
- * get right — two independent copies of a subtle parser drift apart, which
- * defeats the point of a drift-detection test.
+ * test (`person-reference-sync.test.ts` today, and the erasure-registry and
+ * retention-policy sync tests phase 0.4 adds). Factored out so there is exactly
+ * ONE implementation to get right — two independent copies of a subtle parser
+ * drift apart, which defeats the point of a drift-detection test.
  *
  * Extracts every top-level `model Name { ... }` block's NAME and BODY.
  *
@@ -11,7 +11,7 @@
  * stops at the FIRST literal `}`, and several model doc comments in this
  * schema contain a balanced `{...}` of their own (e.g. the hex-colour regex
  * example "`^#[0-9a-fA-F]{6}$`" in `PlatformSettings`, or a JSON-shape example
- * in `AuditEvent` / `CustomPage` / `EmailTemplate` / `ProfileFieldConsentText`)
+ * in `AuditEvent`)
  * — which truncates the body right there, before the model's REAL closing
  * brace, and silently drops every field declared after it.
  *

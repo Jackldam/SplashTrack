@@ -3,9 +3,8 @@ import { describe, expect, it } from "vitest";
 import { extractModelBlocks } from "./prisma-schema-parser";
 
 /**
- * Regression guard for the parser both `organization-scope-sync.test.ts` and
- * `person-reference-sync.test.ts` rely on to find the true end of a Prisma
- * `model { ... }` block.
+ * Regression guard for the parser `person-reference-sync.test.ts` relies on to
+ * find the true end of a Prisma `model { ... }` block.
  *
  * The bug this guards against: a naive `/model\s+(\w+)\s*\{([^}]*)\}/` regex
  * stops at the FIRST literal `}`. Several real model doc comments in
@@ -13,7 +12,7 @@ import { extractModelBlocks } from "./prisma-schema-parser";
  * hex-colour regex example "`^#[0-9a-fA-F]{6}$`" in `PlatformSettings`), which
  * truncates the captured body right there — silently dropping every field
  * declared after it, and every downstream classification check that reads
- * that body. `organization-scope-sync.test.ts` carried exactly this bug for a
+ * that body. The template's org-scope sync test carried exactly this bug for a
  * time and got lucky: none of the truncated models' MISSING fields happened
  * to be `organizationId`. Without this test, a future "simplification" of
  * `extractModelBlocks` back to a naive regex would reintroduce that bug

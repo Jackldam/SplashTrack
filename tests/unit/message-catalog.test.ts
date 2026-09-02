@@ -11,9 +11,16 @@ import { describe, expect, it } from "vitest";
  * not `nl` — or a typo in the string an action passes to `t()` — typechecks
  * cleanly, builds cleanly, and passes every service-level test, because the
  * action tests mock `getTranslations` to echo the key back. It surfaces only as
- * a next-intl error in a real browser, on whichever locale was forgotten. Both
- * catalogs were at exact parity (1935 keys) when this was written, so this
- * starts from a clean baseline rather than grandfathering drift.
+ * a next-intl error in a real browser, on whichever locale was forgotten — and
+ * which one that is will be arbitrary, while Dutch is what an instructor
+ * actually reads at the poolside (D-159 governs identifiers, not the UI).
+ *
+ * `06-delivery.md` §2.1 lists an i18n missing-key check as a required addition
+ * that nothing gates today. This is the parity half of it. The other half —
+ * "every key a component asks for actually exists" — needs components.
+ *
+ * Both catalogues start at exact parity, so this begins from a clean baseline
+ * rather than grandfathering drift.
  */
 
 function flatten(value: unknown, prefix = ""): Map<string, unknown> {
@@ -57,18 +64,12 @@ describe("message catalogs", () => {
     }
   });
 
-  it("carries the anti-lockout messages both disable paths depend on", () => {
-    // These are the keys `setPlatformUserDisabledAction` and
-    // `setMemberDisabledAction` reach for when `checkPlatformAdminFloor`
-    // refuses. A rename on one side only would leave an operator staring at a
-    // next-intl error instead of being told why the account cannot be disabled.
-    for (const key of [
-      "admin.users.edit.errors.lastActiveAdmin",
-      "org.users.status.errors.lastActiveAdmin",
-      "org.users.erase.lastAdmin",
-    ]) {
-      expect(en.get(key), `${key} missing from en`).toBeTypeOf("string");
-      expect(nl.get(key), `${key} missing from nl`).toBeTypeOf("string");
-    }
-  });
+  // The template additionally pinned the specific message keys its
+  // anti-lockout paths reach for, so a one-sided rename could not leave an
+  // operator staring at a next-intl error instead of an explanation. That test
+  // is NOT carried across: it named keys for admin screens that do not exist
+  // here, so it would have asserted the presence of copy for features nobody
+  // has built. The PATTERN is worth repeating per surface — pin the keys a
+  // failure path depends on, because those are the ones no happy-path click-
+  // through ever exercises — and it belongs with the first such surface.
 });

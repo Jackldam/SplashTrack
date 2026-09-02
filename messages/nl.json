@@ -1,0 +1,15 @@
+{
+  "common": {
+    "brand": "SplashTrack",
+    "loading": "Bezig met laden…"
+  },
+  "landing": {
+    "title": "SplashTrack",
+    "tagline": "Leerlingvolgsysteem voor zwemscholen.",
+    "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt."
+  },
+  "errors": {
+    "notFound": "Deze pagina bestaat niet.",
+    "unexpected": "Er ging iets mis. Probeer het opnieuw."
+  }
+}

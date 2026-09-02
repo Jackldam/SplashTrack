@@ -8,7 +8,7 @@ import {
   type AuditHashContent,
 } from "@/modules/audit/domain/audit-event";
 
-/** Unit tests for the audit hash-chain primitives (Section 16 tamper-evidence). */
+/** Unit tests for the audit hash-chain primitives (D-149, tamper-evidence). */
 
 const base: AuditHashContent = {
   contentVersion: 1,

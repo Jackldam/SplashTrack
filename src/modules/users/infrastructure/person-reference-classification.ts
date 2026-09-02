@@ -1,46 +1,54 @@
 /**
  * Hand-maintained classification of EVERY Prisma field that references a
- * `Person` — a `personId`/`*PersonId` scalar column, or a relation field typed
- * `Person`/`Person?` — across the whole schema. This is the single source of
- * truth `tests/unit/person-reference-sync.test.ts` checks against
- * `prisma/schema.prisma` directly, in BOTH directions: a schema column with no
- * entry here fails the test (an undocumented, possibly-unhandled Person
- * reference), and an entry with no matching schema column fails too (a stale
- * entry after a rename/removal).
+ * `Person` — a `personId` / `*PersonId` scalar column, or a relation field
+ * typed `Person` / `Person?` — across the whole schema.
  *
- * This is the Person-erasure analogue of `ORG_SCOPED_MODELS` /
- * `ORG_SCOPE_EXEMPT_MODELS` (`src/lib/database/organization-scope.ts`) — same
- * root cause, same fix: the recently-fixed `OrganizationBranding` erasure bug
- * (a `Restrict` FK with no sever step rolled back an entire Art. 17 erasure)
- * and the `MaintenanceJob.updatedByPersonId` gap (no FK, no sever step,
- * `person-erasure-repository.ts` never referenced the model at all) both
- * happened because NOTHING forced a reviewed decision when the column was
- * added. This map — and the sync test — is that forcing function, for every
- * Person-referencing column, going forward.
+ * ADOPTED FROM THE TEMPLATE (D-135), not re-invented. `05-technical.md` §5.1
+ * corrects the design on this point: D-014 describes "a registry with a test
+ * asserting every `Person`-referencing table appears in it" as something to
+ * CREATE. It already existed, and it is checked BIDIRECTIONALLY —
+ * `tests/unit/person-reference-sync.test.ts` reads `prisma/schema.prisma`
+ * directly and fails if a schema column has no entry here (an undocumented,
+ * possibly-unhandled Person reference) AND if an entry here has no matching
+ * schema column (a stale entry after a rename or removal).
+ *
+ * THE CONSEQUENCE IS A FORCING FUNCTION, AND IT BELONGS IN THE DEFINITION OF
+ * DONE RATHER THAN IN A CI SURPRISE (`06-delivery.md` §4.4): the build goes red
+ * the moment a domain model adds a `Person` reference without an entry here.
+ * That is the desired behaviour. In a system holding children's records, an
+ * erasure that silently misses a column is the failure this exists to prevent —
+ * and in the template it happened twice, in ways nothing else would have
+ * caught: `OrganizationBranding.updatedByPersonId` had a `Restrict` foreign key
+ * with no sever step, so erasing that editor rolled back the WHOLE transaction;
+ * and `MaintenanceJob.updatedByPersonId` was never referenced by the erasure
+ * repository at all — no foreign key, so erasure "succeeded" while leaving the
+ * erased person's id on the row forever. Neither would have failed a migration
+ * or a typecheck.
+ *
+ * PHASE 0.4: the ERASURE PATH this classifies does not exist yet. `erasePersonData`
+ * and the retention/erasure registry are D-014/D-065 work, blocked on the
+ * repaired specification. What exists today is the classification and the test
+ * that keeps it honest — which is the right order round: the map must be
+ * accurate before anything is written against it.
  *
  * Categories:
- *   HARD_DELETE      — the row is the person's OWN data. `erasePersonData`
- *                       deletes it explicitly (its FK to Person is
- *                       `onDelete: Restrict`, so this step is MANDATORY —
- *                       there is no cascade to fall back on).
- *   CASCADES         — the row is the person's own data AND the FK is
- *                       `onDelete: Cascade`, so the database would remove it
- *                       automatically even without an explicit step. Still
- *                       deleted explicitly today (for an accurate count / an
- *                       up-front `requireOrphaned` check), but the row's
- *                       removal does not depend on that.
- *   SEVER_AND_RETAIN — the row is NOT the person's own data (org/platform/
- *                       operator content, or accountability/consent
- *                       evidence). Only the personal-id LINK is nulled; the
- *                       row itself survives.
- *   RETAIN_BY_DESIGN — the plain id token is left AS-IS, forever, by
- *                       deliberate choice. MUST carry a `reason` (enforced by
- *                       the sync test) — this is the category it is easiest
- *                       to hide a silent leak behind, so every entry must
- *                       justify itself in writing.
+ *   HARD_DELETE      — the row is the person's OWN data. The erasure deletes it
+ *                      explicitly (its FK to Person is `onDelete: Restrict`, so
+ *                      this step is MANDATORY — there is no cascade to fall
+ *                      back on).
+ *   CASCADES         — the person's own data AND the FK is `onDelete: Cascade`,
+ *                      so the database would remove it automatically.
+ *   SEVER_AND_RETAIN — NOT the person's own data (operator content, or
+ *                      accountability evidence). Only the personal-id LINK is
+ *                      nulled; the row itself survives.
+ *   RETAIN_BY_DESIGN — the plain id token is left AS-IS, forever, by deliberate
+ *                      choice. MUST carry a `reason` (enforced by the sync
+ *                      test) — this is the category it is easiest to hide a
+ *                      silent leak behind, so every entry justifies itself in
+ *                      writing.
  *
- * Keyed `"<Model>.<field>"`, matching every model/field pair
- * `person-reference-sync.test.ts` extracts from the schema.
+ * Keyed `"<Model>.<field>"`, matching every model/field pair the sync test
+ * extracts from the schema.
  */
 
 export type PersonReferenceCategory =
@@ -60,152 +68,71 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
   "UserAccount.personId": {
     category: "HARD_DELETE",
     reason:
-      "The account IS the person's login identity. FK is deliberately " +
-      "onDelete: Restrict (never a silent cascade); erasePersonData deletes " +
-      "it explicitly before the Person row. This in turn cascades Session / " +
-      "Account (password hash) / TwoFactor / Passkey / EmailVerificationToken " +
-      "via userId/userAccountId — those reference UserAccount, not Person, " +
-      "so they are out of this map.",
+      "The account IS the person's sign-in identity. The FK is deliberately " +
+      "onDelete: Restrict, never a silent cascade; the erasure deletes it " +
+      "explicitly before the Person row. That in turn cascades Session / " +
+      "Account (the password hash) / TwoFactor / Passkey via userId — those " +
+      "reference UserAccount, not Person, so they are out of this map.",
   },
   "OrganizationMembership.personId": {
     category: "HARD_DELETE",
     reason:
-      "The person's own membership row. Restrict FK; explicit deleteMany in " +
-      "erasePersonData (Section 18.2).",
+      "The person's own membership row. Restrict FK; an explicit deleteMany " +
+      "in the erasure. NOTE for phase 0.3: when this table becomes " +
+      "`Membership`, the SplashTrack domain concept of club membership " +
+      "(D-059, with MembershipPeriod history) is NOT this row, and its " +
+      "retention is a separate decision — a diploma history outliving a " +
+      "membership is the whole point of D-053's split.",
   },
   "RoleAssignment.personId": {
     category: "HARD_DELETE",
     reason:
-      "The person's own org-scoped role grant. Restrict FK; explicit " +
-      "deleteMany in erasePersonData.",
+      "The person's own role grant. Restrict FK; an explicit deleteMany in " +
+      "the erasure.",
   },
   "PlatformRoleAssignment.personId": {
     category: "HARD_DELETE",
     reason:
-      "The person's own platform-wide role grant. Restrict FK; explicit " +
-      "deleteMany in erasePersonData.",
-  },
-  "PersonProfileFieldValue.personId": {
-    category: "HARD_DELETE",
-    reason:
-      "The person's own custom-profile-field values. Restrict FK (Section " +
-      "18.2): an erasure must delete these EXPLICITLY, never as an accidental " +
-      "cascade side effect. Explicit deleteMany in erasePersonData.",
-  },
-
-  // --- CASCADES — own data, but the FK itself would remove it automatically ---
-  "PendingInvitation.personId": {
-    category: "CASCADES",
-    reason:
-      "The person's own pending invitation. FK is onDelete: Cascade, so the " +
-      "database removes this row automatically when the Person row is " +
-      "deleted. erasePersonData ALSO deletes it explicitly first (its count " +
-      "feeds the requireOrphaned check for the invitation-revoke caller, " +
-      "which must see zero pending invitations BEFORE erasing) — but the " +
-      "row's survival does not depend on that explicit step.",
+      "The person's own platform-wide role grant. Restrict FK; an explicit " +
+      "deleteMany in the erasure. PHASE 0.3 deletes this model entirely — " +
+      "there is no platform super administrator in SplashTrack (D-056) — and " +
+      "this entry goes with it.",
   },
 
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
-  "Consent.personId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Art. 7 / 17(3) accountability: the fact a consent was given/withdrawn " +
-      "for a purpose/version is retained, detached from the person. Nullable, " +
-      "Restrict FK (a direct delete attempt outside erasure is still " +
-      "blocked); erasePersonData severs it explicitly (personId -> null).",
-  },
-  "UploadedAsset.uploadedByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "A SHARED asset (e.g. a branding logo) is org/platform data; only the " +
-      "'uploaded by' link is personal. The person's OWN avatar asset(s) are " +
-      "matched separately by id and HARD-deleted (row + external bytes) — " +
-      "they never reach this sever path. Nullable, Restrict FK; explicit " +
-      "updateMany sever in erasePersonData.",
-  },
   "PlatformSettings.updatedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:
-      "Last-editor accountability pointer on the platform settings " +
-      "singleton — same class as the other operator-config pointers below. " +
-      "FK changed onDelete: Restrict -> SetNull 2026-08-03 (defense-in-depth, " +
-      "mirroring OrganizationBranding.updatedByPersonId below); " +
-      "erasePersonData severs it explicitly regardless.",
-  },
-  "OrganizationBranding.updatedByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Per-org branding last-editor pointer (ADR-017). FK is onDelete: " +
-      "SetNull (fixed 2026-08-03, defense-in-depth) — before that fix it was " +
-      "Restrict with no sever step, and erasing a person who last edited ANY " +
-      "org's branding rolled back the WHOLE erasure transaction. " +
-      "erasePersonData severs it explicitly regardless of the FK action.",
-  },
-  "CustomPage.createdByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Operator-authored page content (ADR-015) is retained; only the " +
-      "author pointer is nulled. Plain token, no FK by design (so erasure " +
-      "never depends on a sever step succeeding before the delete) — " +
-      "explicit updateMany sever in erasePersonData.",
-  },
-  "CustomPage.updatedByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Same as CustomPage.createdByPersonId above, for the last-editor " +
-      "pointer (a person may be the creator of one page and the last editor " +
-      "of another, so both are severed independently).",
-  },
-  "EmailTemplate.updatedByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Last-editor pointer on a seeded, operator-edited template row " +
-      "(ADR-030) — same class as CustomPage/PlatformSettings above. Plain " +
-      "token, no FK; explicit updateMany sever in erasePersonData.",
+      "A last-editor accountability pointer on the settings singleton. The FK " +
+      "is onDelete: SetNull as defence in depth; the erasure severs it " +
+      "explicitly regardless. Both, deliberately: the explicit sever is the " +
+      "control, and SetNull is what stops a FUTURE delete path that forgets " +
+      "the sever from rolling back an entire erasure — which is exactly what " +
+      "the sibling column in the template did before it was fixed.",
   },
   "ApiCredential.createdByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:
-      "The admin who minted the credential (ADR-020) — accountability only. " +
-      "The credential is a live, org-owned, permission-managed asset that " +
-      "stays usable after the creator is erased; plain token, no FK. " +
-      "erasePersonData severs it explicitly and the org's credential admins " +
-      "are notified afterwards so a now-creator-less credential can be " +
-      "reviewed/revoked.",
-  },
-  "MaintenanceJob.updatedByPersonId": {
-    category: "SEVER_AND_RETAIN",
-    reason:
-      "Last-editor pointer for a maintenance job's enabled/intervalMinutes " +
-      "config — same class as the other operator-config last-editor " +
-      "pointers above. Gap fixed 2026-08-03 (this program): previously " +
-      "unhandled — plain token, no FK, and person-erasure-repository.ts never " +
-      "referenced the MaintenanceJob model at all, so an erased person's id " +
-      "lingered on the row forever. Now severed explicitly.",
+      "The administrator who minted the credential — accountability only. The " +
+      "credential is a live, permission-managed asset that stays usable after " +
+      "its creator is erased; a plain token, no FK. The erasure severs it " +
+      "explicitly. There is no code reading this table yet " +
+      "(`05-technical.md` §4 keeps API credentials in place, unused), which " +
+      "is precisely why it needs a classification now rather than when " +
+      "someone finally writes to it.",
   },
 
   // --- RETAIN_BY_DESIGN — the id token is kept, forever, on purpose ---
   "AuditEvent.actorPersonId": {
     category: "RETAIN_BY_DESIGN",
     reason:
-      "Art. 17(3) security/accountability: the tamper-evident audit trail " +
-      "must OUTLIVE the entities it references, so this column is " +
-      "deliberately NOT an FK and is NEVER severed or deleted on erasure. " +
-      "The erasure's own `data_subject.erased` event retains the erased " +
-      "person's id as targetId under this exact rule.",
-  },
-  "PlatformBootstrap.personId": {
-    category: "RETAIN_BY_DESIGN",
-    reason:
-      "A one-time, single-row historical marker of who performed the " +
-      "(unrepeatable, database-race-guarded) platform-bootstrap action — " +
-      "recorded, per the model doc, 'purely so the bootstrap event can be " +
-      "logged/traced'. Same accountability rationale as " +
-      "AuditEvent.actorPersonId, at negligible severity: exactly one row " +
-      "ever exists, no live functionality reads this column once " +
-      "`completedAt` is set, and it carries no FK. Decided NOT to sever: the " +
-      "pointer records a permanent historical fact ('this person bootstrapped " +
-      "this platform'), not live operational state, so adding a sever step " +
-      "would be speculative hardening for a table written exactly once.",
+      "Article 17(3) security and accountability: the tamper-evident audit " +
+      "trail must OUTLIVE the entities it references, so this column is " +
+      "deliberately NOT a foreign key and is NEVER severed or deleted on " +
+      "erasure. Severing it would also break the hash chain — actorPersonId " +
+      "is inside the canonicalized content every row's hash commits to, so an " +
+      "UPDATE here makes the trail report itself as tampered with. The " +
+      "erasure's own event retains the erased person's id as targetId under " +
+      "this same rule.",
   },
 };

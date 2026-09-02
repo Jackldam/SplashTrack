@@ -1,14 +1,18 @@
 /**
- * Audit-trail domain (Audit module — Architecture.md Section 16). Pure types +
- * the hash-chain primitives; no I/O. The audit trail is the tamper-EVIDENT,
- * append-only record of sensitive actions, DISTINCT from the operational logger
- * (Section 17) — different required fields, retention, and tamper-resistance.
+ * Audit-trail domain (D-149). Pure types and the hash-chain primitives; no I/O.
  *
- * Section 16 content rule (enforced by TYPING here, not just discipline): an
- * event carries actor/target/org IDENTIFIERS, an event type, an outcome, and
- * the NAMES of what changed — NEVER passwords, secrets, tokens, or raw
- * personal-data VALUES. `changedFields` is a small structured record of
- * machine tokens; do not put values in it.
+ * The audit trail is the tamper-EVIDENT, append-only record of sensitive
+ * actions, DISTINCT from the operational logger (`@/lib/logging`) — different
+ * required fields, different retention, different tamper-resistance.
+ *
+ * CONTENT RULE, enforced by TYPING here rather than by discipline: an event
+ * carries actor and target IDENTIFIERS, an event type, an outcome, and the
+ * NAMES of what changed — NEVER passwords, secrets, tokens, or raw
+ * personal-data VALUES. In this product that rule has teeth: an audit trail
+ * that recorded a child's name, a medical remark or an address alongside every
+ * read would itself become the largest personal-data store in the system, and
+ * an append-only one that cannot be corrected. `changedFields` is a small
+ * structured record of machine tokens; do not put values in it.
  */
 
 import { createHash } from "node:crypto";
@@ -30,7 +34,7 @@ export interface AuditEventInput {
   outcome: AuditOutcome;
   /** Acting person's id; null/omitted for a system/scheduled action. */
   actorPersonId?: string | null;
-  /** Acting API credential's id (ADR-020); null/omitted unless the action was
+  /** Acting API credential's id; null/omitted unless the action was
    * authenticated by an API credential. Mutually exclusive with `actorPersonId`:
    * a credential-authenticated event sets this + `actorAuthMethod = "api_key"`
    * and leaves `actorPersonId` null. */
@@ -42,7 +46,7 @@ export interface AuditEventInput {
   /** Resource kind acted on, e.g. `person` / `profile_field_value`. */
   targetType?: string | null;
   targetId?: string | null;
-  /** Section 14.7 request correlation id, when in a request. */
+  /** Request correlation id (`@/lib/api/request-id`), when in a request. */
   requestId?: string | null;
   /** Small structured context — field NAMES / non-sensitive tokens only. */
   changedFields?: Record<string, string | number | boolean | null> | null;
@@ -58,8 +62,7 @@ export interface AuditEventInput {
  * reproducible across a read-back (see `verifyAuditChain`).
  *
  * `contentVersion` selects WHICH fixed field array {@link canonicalizeAuditContent}
- * digests, so the hashed shape can grow without invalidating history (ADR-018
- * Correction C / ADR-020).
+ * digests, so the hashed shape can grow without invalidating history.
  */
 export interface AuditHashContent {
   /** Canonicalization version of this content (see `canonicalizeAuditContent`):
@@ -69,7 +72,7 @@ export interface AuditHashContent {
   occurredAt: Date;
   outcome: AuditOutcome;
   actorPersonId: string | null;
-  /** The acting API credential's id (ADR-020) — only committed to the hash at
+  /** The acting API credential's id — only committed to the hash at
    * `contentVersion` ≥ 2; ignored by the v1 canonicalization. */
   actorCredentialId: string | null;
   actorAuthMethod: string | null;
@@ -89,12 +92,21 @@ export interface AuditHashContent {
  */
 export const CURRENT_AUDIT_CONTENT_VERSION = 2;
 
-/** The chain's starting link — a fixed, well-known constant for the first row. */
-export const AUDIT_GENESIS_HASH = "genesis:webapp-template:audit:v1";
+/**
+ * The chain's starting link — a fixed, well-known constant for the first row.
+ *
+ * PHASE 0.4 (D-168): the genesis constant, `AuditCheckpoint` and the
+ * checkpointing retention path are specified together, because the first
+ * legitimate retention run breaks the chain permanently without them. This
+ * value is SplashTrack's own rather than the template's, so no verification
+ * ever accidentally succeeds against a foreign chain — but the checkpointing
+ * work may still revise it, and it must be settled before rows accumulate.
+ */
+export const AUDIT_GENESIS_HASH = "genesis:splashtrack:audit:v1";
 
 /**
  * Canonical, stable serialization of one event's audited content, VERSIONED by
- * `content.contentVersion` (ADR-018 Correction C / ADR-020). Fields are emitted
+ * `content.contentVersion` (inherited: the versioned canonicalization). Fields are emitted
  * as a FIXED-ORDER array (not object-insertion order) and `changedFields` is
  * canonicalized with sorted keys, so the same logical event always digests
  * identically — a read-back from the DB reproduces the byte-for-byte input.
@@ -132,28 +144,28 @@ export function canonicalizeAuditContent(content: AuditHashContent): string {
     return JSON.stringify(v1Fields);
   }
 
-  // v2 (ADR-020): the v1 array with the credential actor appended at the END.
+  // v2: the v1 array with the credential actor appended at the END.
   return JSON.stringify([...v1Fields, content.actorCredentialId]);
 }
 
 /**
  * Event types that represent a person's own interactive SIGN-IN attempt — the
- * allowlist behind the `/profile` "sign-in history" panel (FD-USER-04). Each
- * entry is written by an audit hook in `src/lib/auth/auth.ts` (PR #165) with a
- * `changedFields.method` token identifying which credential was used.
+ * allowlist behind a self-service "recent sign-ins" view. Each entry is written
+ * by an audit hook in `@/lib/auth/auth.ts` with a `changedFields.method` token
+ * identifying which credential was used.
  *
- * Deliberately EXCLUDES `security.reauthentication` — PR #165 split that event
- * type out of the ordinary login types PRECISELY so a step-up re-auth (e.g.
- * before a data export or erasure) never poses as a login in a future
- * recent-logins view. This allowlist IS that view; honouring the split is not
- * optional. Also excludes `security.section_access_denied` — an authorization
- * refusal on an already-authenticated session, not sign-in activity.
+ * Deliberately EXCLUDES `security.reauthentication`. That event type was split
+ * out of the ordinary sign-in types PRECISELY so a step-up re-authentication —
+ * before a data export or an erasure — never poses as a sign-in in this view.
+ * This allowlist IS that view; honouring the split is not optional.
+ *
+ * The template additionally listed `identity.microsoft_login`. There is no
+ * external identity provider in v1, and no hook writes that type.
  */
 export const SIGN_IN_EVENT_TYPES = [
   "security.password_login",
   "security.two_factor_login",
   "security.passkey_login",
-  "identity.microsoft_login",
 ] as const;
 
 /** Recursively key-sorted JSON so object key order never changes the digest. */

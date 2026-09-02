@@ -1,17 +1,26 @@
 /**
- * Server-side session helper (Architecture.md Sections 9, 10; ADR-003).
+ * Server-side session helper. ADOPTED FROM THE TEMPLATE, NOT REWRITTEN (D-173).
  *
  * This is the single, typed entry point other server code (Route Handlers,
  * Server Components, Server Actions) uses to answer "who is the current user?".
  * It resolves the Better Auth session and joins it back to the application
- * identity model (Section 8): the `UserAccount` and its linked `Person`.
+ * identity model: the `UserAccount` and its linked `Person`.
  *
- * IMPORTANT — this proves IDENTITY only, not AUTHORIZATION (Critical Rule 5).
- * It deliberately does NOT check organization scope, membership, roles or
- * permissions. It returns exactly enough for the upcoming authorization-
- * framework story to build those checks on top: the UserAccount id, the linked
- * Person id, and the org-scoped lookups (OrganizationMembership / RoleAssignment)
- * are keyed by `personId`. Do not add permission logic here.
+ * IMPORTANT — this proves IDENTITY only, never AUTHORIZATION (`CLAUDE.md` rule
+ * 3). It deliberately does NOT check membership, roles, permissions or reach.
+ * It returns exactly enough for `requirePermission` + `resolveReach` (D-147,
+ * phase 0.4) to be built on top: the account id and the linked `personId`,
+ * which is the key every role grant is looked up by. Do not add permission
+ * logic here — a guard that lives inside the identity helper is a guard nobody
+ * can see they are relying on.
+ *
+ * WHY THIS FILE IS ADOPTED RATHER THAN WRITTEN. D-173 supersedes D-158, which
+ * specified administrator-configurable session timeouts as NEW work; they
+ * already existed here, bounded and live, and had been debugged twice. The two
+ * bugs the comments below record — an idle check based on `session.updatedAt`
+ * that a security review found unenforceable, and the fail-safe-to-strict
+ * degradation on a database blip — are exactly what an engineer starting fresh
+ * would not know to reproduce. Do not build a parallel timeout mechanism.
  */
 
 import { headers } from "next/headers";
@@ -30,17 +39,14 @@ import {
 import { auth } from "./auth";
 
 /**
- * Absolute session cap (Section 9.2): a session may not be renewed beyond this
- * age regardless of activity. Better Auth's sliding `expiresIn` provides the
- * 30-minute IDLE timeout; this provides the ABSOLUTE timeout, enforced here
- * because Better Auth has no built-in absolute cap.
+ * Absolute session cap: a session may not be renewed beyond this age regardless
+ * of activity. Enforced HERE because Better Auth has no built-in absolute cap.
  *
- * The enforced value is now ADMIN-CONFIGURABLE (Settings → Security), read via
- * `getConfiguredSecurityPolicy()` — a per-request-cached, fail-safe-to-default
- * query (a DB blip degrades to this same default, never to "no cap"). This
- * constant remains the DEFAULT/fallback value (720 min = 12h, the platform's
- * original baseline) — it is what an install with no configured policy yet
- * uses, and what a read error falls back to.
+ * The enforced value is ADMINISTRATOR-CONFIGURABLE, read via
+ * `getConfiguredSecurityPolicy()` — a per-request-cached query that degrades to
+ * the strictest allowed bound on a database blip, never to "no cap". This
+ * constant is the DEFAULT (720 min = 12 h, D-173): what an instance with no
+ * configured policy yet uses.
  */
 export const SESSION_ABSOLUTE_TIMEOUT_SECONDS =
   SESSION_TIMEOUT_MINUTES.default * 60;
@@ -72,20 +78,20 @@ export interface CurrentSession {
   userAccount: CurrentUserAccount;
   person: CurrentPerson;
   /**
-   * Was a second factor proven for THIS session (`Session.mfaEvidence`,
-   * security review 2026-08-04 — closing the Entra/Microsoft app-TOTP-bypass
-   * gap `documentation/security.md` documents)? `null` means NOT proven —
-   * same fail-toward-strict convention as `requiresMfaEnrollment`. Consumed by
-   * `requiresMfaStepUp` (Identity module) alongside `twoFactorEnabled`
-   * (`getMyAuthMethods`, ACCOUNT-scoped) to decide whether the admin/org area
-   * gates must send the caller through a step-up verify before continuing.
+   * Was a second factor proven for THIS session? See `Session.mfaEvidence` in
+   * schema.prisma. `null` means NOT proven — fail toward strict.
    *
-   * OPTIONAL on the type (not just nullable) purely so the many hand-built
-   * `CurrentSession` test fixtures across the suite that predate this field
-   * keep compiling without every one of them being touched — every REAL
-   * session this module returns always sets it (to a value or explicit
-   * `null`), never leaves it `undefined`. Treat `undefined` the same as
-   * `null` (not proven) at every call site.
+   * PHASE 0.4: the step-up GATE that consumes this — "an administrative surface
+   * requires a second factor to have been proven for THIS session, not merely
+   * enrolled on the account" — is part of the permission work (D-147). The
+   * evidence is recorded from day one anyway, because a session that predates
+   * the gate would otherwise have no honest value to report and would have to
+   * be treated as proven or force everyone to sign in again.
+   *
+   * OPTIONAL on the type (not just nullable) so a hand-built `CurrentSession`
+   * test fixture need not set it — every REAL session this module returns
+   * always sets it, to a value or an explicit `null`, never leaves it
+   * `undefined`. Treat `undefined` the same as `null` at every call site.
    */
   mfaEvidence?: SessionMfaEvidence | null;
 }
@@ -126,11 +132,11 @@ function idleWriteThrottleSeconds(sessionIdleTimeoutMinutes: number): number {
  * Rejects (returns null) when:
  *   - there is no valid Better Auth session;
  *   - the session has exceeded the ADMIN-CONFIGURED absolute timeout
- *     (Section 9.2) — read via the settings module, cached per-request and
+ *     — read via the settings module, cached per-request and
  *     falling back to the default on any error, so this check is always live
  *     without ever hard-failing the auth path;
  *   - the session has exceeded the ADMIN-CONFIGURED IDLE timeout
- *     (FD-AUTHN-30e) — a SECOND, INDEPENDENT check from the app-owned
+ *     — a SECOND, INDEPENDENT check from the app-owned
  *     `Session.lastSeenAt` column (see the long comment inline below for why
  *     `session.updatedAt` cannot be used for this — security review
  *     2026-08-03 found it made the idle check unenforceable), first-to-fail
@@ -143,7 +149,7 @@ function idleWriteThrottleSeconds(sessionIdleTimeoutMinutes: number): number {
  *   - the linked UserAccount no longer exists or has been DISABLED — so a
  *     session already in flight stops working the moment its account is
  *     disabled, complementing the login-time block in the auth config
- *     (Section 9.2, defense in depth).
+ *     (defence in depth).
  *
  * Like the absolute-timeout check, an idle-timeout rejection does NOT delete
  * the underlying session row — same documented cosmetic-accuracy tradeoff as
@@ -156,6 +162,16 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
 
   const { session } = result;
 
+  // PHASE 0.4: D-173 selects the idle window by PERMISSION — a principal
+  // holding any permission in the high-risk set gets
+  // `sessionIdleTimeoutMinutesElevated`, everyone else the standard value,
+  // strictest wins on overlap, and an unrecognised principal gets the
+  // strictest. That predicate is the high-risk permission set, which needs
+  // `requirePermission` / `resolveReach` (D-147) — phase 0.4. Until then EVERY
+  // principal gets the standard window, which is the LOOSER of the two for an
+  // elevated one. Named here rather than hidden: this is the one place the
+  // selection goes once the permission set exists, and no domain module ships
+  // before it does.
   const { sessionAbsoluteTimeoutMinutes, sessionIdleTimeoutMinutes } =
     await getConfiguredSecurityPolicy();
 
@@ -163,8 +179,9 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     (Date.now() - new Date(session.createdAt).getTime()) / 1000;
   if (ageSeconds > sessionAbsoluteTimeoutMinutes * 60) return null;
 
-  // FD-AUTHN-30e / regression fix (security review 2026-08-03, PR #174):
-  // idle activity is tracked in our OWN `Session.lastSeenAt` column,
+  // REGRESSION FIX, carried across from the template's history with its
+  // reasoning intact (security review 2026-08-03). Idle activity is tracked in
+  // our OWN `Session.lastSeenAt` column,
   // deliberately NOT `session.updatedAt` above. Verified against
   // node_modules/better-auth/dist/api/routes/session.mjs: `auth.api.getSession()`
   // itself refreshes `updatedAt` (and `expiresAt`) BEFORE returning, whenever
@@ -229,7 +246,7 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
           // including this one — regardless of it not being named in `data`.
           // Pin it back to its already-current value so this throttled
           // bookkeeping write cannot change its refresh cadence, which
-          // `./sessions.ts` and `SessionsPanel` document (and test) as
+          // `./sessions.ts` documents as
           // Better Auth's own coarse ~5-minute `SESSION_REFRESH_AGE_SECONDS`
           // cadence, not this throttle window.
           updatedAt: session.updatedAt,
@@ -280,10 +297,9 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     },
   });
 
-  // Only an ACTIVE account may hold a session. This rejects a DISABLED account
-  // AND a self-registered PENDING_VERIFICATION one (Phase 7b) whose email is
-  // not yet verified — defense in depth against a session issued before the
-  // status changed.
+  // Only an ACTIVE account may hold a session. This rejects a DISABLED
+  // account: defence in depth against a session issued before the status
+  // changed.
   if (!account || account.status !== UserAccountStatus.ACTIVE) return null;
 
   return {
@@ -312,10 +328,9 @@ export async function requireCurrentSession(): Promise<CurrentSession> {
 }
 
 /**
- * Revokes ALL sessions for a UserAccount by deleting its session rows
- * (Section 9.2 — session invalidation / revocation). Call this when disabling
- * an account or when a user requests "sign out everywhere". Returns the number
- * of sessions revoked.
+ * Revokes ALL sessions for a UserAccount by deleting its session rows. Call
+ * this when disabling an account or when a user requests "sign out everywhere".
+ * Returns the number of sessions revoked.
  */
 export async function revokeAllSessionsForUser(
   userAccountId: string,

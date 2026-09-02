@@ -1,0 +1,15 @@
+{
+  "common": {
+    "brand": "SplashTrack",
+    "loading": "Loading…"
+  },
+  "landing": {
+    "title": "SplashTrack",
+    "tagline": "Pupil tracking for swim schools.",
+    "foundationNotice": "The foundation is in place. There is no functionality yet — the first module follows."
+  },
+  "errors": {
+    "notFound": "This page does not exist.",
+    "unexpected": "Something went wrong. Please try again."
+  }
+}

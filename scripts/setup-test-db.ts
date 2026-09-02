@@ -19,15 +19,18 @@
  *      time.
  *   4. Resets the audit trail (TRUNCATE "AuditEvent"). The test database
  *      PERSISTS across runs and audit rows are append-only, so they accumulate
- *      unbounded. The platform-wide audit-export tests assert a COMPLETE
- *      (un-truncated) export, which holds only while the whole trail sits below
- *      the export cap (MAX_EXPORT_LIMIT) — after enough runs the accumulated
- *      rows cross it and those tests flip to `truncated: true`. Audit rows from
- *      a PRIOR run carry no meaning for a fresh run (every test seeds its own),
- *      and the hash chain is a from-genesis walk, so a FULL truncate is the only
- *      chain-safe reset (a partial delete would orphan `previousHash` links and
- *      break integrity verification). Runs in `pretest`, before vitest starts,
- *      so it only ever clears leftovers from earlier runs.
+ *      unbounded — and `verifyAuditChain` walks from genesis, so a chain
+ *      carrying every row every prior run ever wrote gets slower and less
+ *      meaningful with each one. Rows from a PRIOR run carry no meaning for a
+ *      fresh run (every test seeds its own), and a FULL truncate is the only
+ *      chain-safe reset: a partial delete would orphan `previousHash` links and
+ *      make integrity verification report tampering that never happened. Runs
+ *      in `pretest`, before vitest starts, so it only ever clears leftovers.
+ *
+ *      This is the TEST database and nothing else. The production audit trail is
+ *      append-only by design (D-149) and is never truncated — retention there
+ *      goes through checkpointing (D-168, phase 0.4), precisely so a legitimate
+ *      retention run does not break the chain permanently.
  */
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
