@@ -22,6 +22,40 @@ time or produces a wrong artefact that CI will not catch. `low` — a paper defe
 
 ---
 
+## Summary
+
+| Severity | Count | Findings |
+|---|---|---|
+| **blocker** | 5 | B-3, B-7, B-12, B-13, B-17 |
+| **high** | 7 | B-1, B-4, B-6, B-8, B-10, B-18, B-20 |
+| **medium** | 6 | B-2, B-5, B-11, B-14, B-16, B-19 |
+| **low** | 2 | B-9, B-15 |
+
+**The three worst.**
+
+1. **B-17** — audit chain checkpointing is ranked the #2 most retrofit-hostile
+   mechanism in the product, is assigned to no phase, and is specified nowhere;
+   meanwhile audit retention as specified (`DELETE`, floor 12 months) breaks the
+   hash chain on its first run and leaves `audit:verify` permanently red.
+2. **B-12** — the D-096 crypto envelope binds AAD to table and column *names*,
+   while D-159, D-100 and D-056 all schedule renames of encrypted tables and
+   columns. Neither `key:rotate` nor any v1 CI check detects the result, and an
+   AAD failure is indistinguishable from corruption. This is build-order item 1.
+3. **B-13** — D-095 commits v1 to a hand-written logical export/import engine
+   for every column type, justified in the decision itself by the D-047 restore
+   matrix, which `00-overview.md` §3.5.1 removed from v1. Chapter 14 still
+   specifies the `pg_dump` alternative in full.
+
+**Could an engineer start Monday?** Yes — on Phase 0 and on the parts of Phase 1
+that are unambiguous, and that is real, well-specified work. But they cannot
+finish Phase 1 without answers to B-12, B-13 and B-17, and they cannot start the
+settings work at all (B-3, B-4) or the scope model's write half (B-10) as
+written. Four of the five blockers are answerable in a single sitting; none of
+them requires new design work, only a choice between options the chapters
+already contain.
+
+---
+
 ## Findings
 
 ### B-1 — D-135's "adopt as they are" is false for `person-reference-sync.test.ts`: the test hard-codes eight column names that D-056 deletes
@@ -1022,4 +1056,112 @@ fixed so the gate is proven non-vacuous.
 
 ---
 
-_(continued — verified claims below)_
+### B-20 — D-096's new envelope reuses the version tag `v1`, which the inherited code already uses for a different four-field layout
+
+**Severity: high**
+
+**The design's claim.** `13-configuration-and-setup.md` §5.1, D-096:
+
+> Every encrypted value is stored as **`v1:<keyId>:<nonce>:<ct>`**
+
+and §5.2, D-097:
+
+> One `src/lib/crypto/envelope.ts` holds a
+> `DECRYPTORS: Record<FormatVersion, Decryptor>` registry and a
+> `CURRENT_FORMAT`. … A committed golden-vector test carries **one entry per
+> format ever shipped**.
+
+**The evidence.** The template's existing envelope is *also* `v1` and *also*
+four colon-separated fields, with a different meaning in positions 2 and 3:
+
+`WebAppTemplate/src/modules/identity/infrastructure/secret-crypto.ts:29,67-70`
+
+```ts
+const FORMAT = "v1";
+…
+  if (parts.length !== 4 || parts[0] !== FORMAT) {
+    throw new Error("Malformed encrypted secret.");
+  }
+  const [, ivB64, tagB64, ctB64] = parts;
+```
+
+So the inherited layout is `v1:<iv>:<tag>:<ct>` and the proposed one is
+`v1:<keyId>:<nonce>:<ct>`. A `DECRYPTORS` registry keyed on the version tag
+cannot tell them apart — both are `"v1"` with four fields — so the new decryptor
+reads a `keyId` out of an IV and a nonce out of a GCM tag. The failure is a
+garbage decrypt or an authentication error, not a clean "unknown format", which
+is exactly the class D-049 and D-097 exist to eliminate.
+
+This is not hypothetical, because the code that writes the old format is
+inherited and live from day one: the Entra client secret
+(`identity/infrastructure/secret-crypto.ts`) and the notification-provider
+secret (`notifications/infrastructure/secret-crypto.ts`) — the two divergent
+copies the design correctly identifies, with different HKDF labels
+(`"entra-login-secret-encryption-v1"` at `identity/…:27` and
+`"notification-provider-secret-encryption-v1"` at `notifications/…:26`), both
+`FORMAT = "v1"`. Any secret entered into the setup wizard or the settings page
+before the envelope lands is written in the old layout under a `v1` tag.
+
+**What it costs.** Trivial to avoid now (call the new format `v2`, register the
+template's layout as `v1` in `DECRYPTORS` with its two HKDF labels, and ship
+golden vectors for both). Expensive to discover: the symptom is an
+unreadable SMTP password or an un-decryptable medical note, and B-12 means an
+AAD failure looks identical.
+
+**Recommendation (do not apply).** Amend D-096 to name the new envelope `v2:`,
+and make D-097's golden-vector file's *first* entries the two inherited `v1`
+purposes — which is also the only way the "one entry per format ever shipped"
+promise is true on day one rather than from the second format onward.
+
+---
+
+## CLAIMS ABOUT THE TEMPLATE I VERIFIED AS TRUE
+
+Every statement below is one the design makes about `WebAppTemplate` or the
+prototype. I checked each against the source. All of these hold, and several are
+unusually precise — the design is materially more accurate about its foundation
+than it was at `report-build.md`.
+
+**The two claims the previous review falsified are now correctly stated.**
+
+| Design statement | Verified against | Verdict |
+|---|---|---|
+| `13-…` §4.1: *"The template's own comment at `src/lib/auth/auth.ts:507-509` says the opposite — the Entra login configuration 'is read once at auth-context construction and so only applies on the next restart/redeploy'"* | `auth.ts:507-509`, verbatim: *"which is read once at auth-context construction and so only applies on the next restart/redeploy"* | **True, quoted accurately, and the inverted claim is gone.** The correction is properly attributed (F-105) and generates a real decision (D-106) rather than being silently patched |
+| `13-…` §3.1.1: *"there is no `SECRET_KEY`"* in the template | `grep -rn SECRET_KEY src/ prisma/ docker* Makefile` → no matches | **True.** And the three incompatible lifecycles are now one statement in one place (D-112) |
+
+**Claims about the CI pipeline.**
+
+| Design statement | Verified against | Verdict |
+|---|---|---|
+| `06-…` §2.1: *"`.github/workflows/ci.yml` has **three jobs** — `verify`, `e2e` and `migrate-populated`"* | `ci.yml:22`, `:110`, `:196` | **True** |
+| §2.1: *"There is **no container build, no `npm audit` gate, no CodeQL, no secret-scanning job, and no axe assertion anywhere in `tests/`** — grep finds axe only in prose"* | Nothing matching `npm audit|codeql|gitleaks|trufflehog` in `.github/workflows/`; `grep -rn axe tests/ package.json` returns only two unrelated prose matches (`tests/e2e/README.md:344`, `tests/e2e-live/lib/totp-serial.ts:21` — both the English word "relaxes") | **True, and precisely stated** |
+| §2.1: *"Migration against populated DB — Inherited: applies base migrations, populates rows, then applies the PR's migrations"* | `ci.yml:240` *"Resolve base commit"*, `:253` *"Apply BASE migrations, then populate representative rows"*, `:264` *"Apply THIS PR's new migrations on the populated database"* | **True** |
+| §1: *"`deploy-uat.yml` in the template runs `docker compose build` **on the target host**"* | `deploy-uat.yml:37,40` — `COMPOSE="docker compose -f docker-compose.uat.yml --env-file $ENV_FILE"` then `$COMPOSE build`, over SSH on the target | **True** |
+| §2.1: *"`apps/web/.env` is currently **tracked** and in history, which must be resolved before the repository is public"* | `git ls-tree -r --name-only main` on SplashTrack lists `apps/web/.env`; it holds `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `DATABASE_URL` among 13 keys | **True, and it is a genuine Phase-0 blocker.** Rotation is required, not just a `git rm` |
+
+**Claims about the application code.**
+
+| Design statement | Verified against | Verdict |
+|---|---|---|
+| `05-…` §5 rule 6: *"The template's `AuditEvent` is a tamper-evident hash chain whose appends serialize on a **Postgres advisory lock**"* | `audit-repository.ts:114` — `await tx.$executeRaw\`SELECT pg_advisory_xact_lock(${AUDIT_APPEND_LOCK_KEY})\`` | **True.** The template's own comment (`:24-28`) even concedes the volume assumption the design questions: *"Audit writes are infrequent (sensitive actions only), so global serialization is acceptable"* |
+| `05-…` §1: *"`blob-storage.ts` supports only `"local"` and throws on anything else; there is no S3 client in `package.json`"* | `src/lib/uploads/blob-storage.ts:94-101` — `const driver = process.env.STORAGE_DRIVER?.trim().toLowerCase() \|\| "local"; switch … default: throw new Error(\`Unknown STORAGE_DRIVER … Supported drivers: "local".\`)`; no S3 dependency in `package.json` | **True** |
+| `13-…` §5.2: *"the template's `decryptSecret` **throws on any format mismatch** … There are also **two independent copies of the file with different HKDF labels and separate `FORMAT` constants** (`identity` and `notifications`)"* | `identity/infrastructure/secret-crypto.ts:29` `FORMAT = "v1"`, `:27` `KEY_INFO = "entra-login-secret-encryption-v1"`, `:67-68` throws; `notifications/infrastructure/secret-crypto.ts:28` `FORMAT = "v1"`, `:26` `KEY_INFO = "notification-provider-secret-encryption-v1"` | **True in every particular.** See B-20 for the consequence the design did not draw |
+| `05-…` §2: *"Validation — Zod. **To be added.** … It is in neither — no `zod` in `package.json`, no imports"* and `13-…` §3.2's F-108 | `grep -n zod package.json` → no match, in both repositories | **True** |
+| `05-…` §3: *"The template is **flat-root**: `src/`, with `@/*` mapped to `./src/*`"* | `tsconfig.json:21-23` — `"paths": { "@/*": ["./src/*"] }`; `src/` at the repository root | **True**, and the D-021 reversal it justifies is correct |
+| `06-…` Phase 2: *"the platform-super-admin branch inside `requirePermission`, which is **real code and not just prose**"* | `access-control/application/composable-permissions.ts:23` — `if (auth.grantedVia === "platform_super_admin") {` | **True** |
+| `05-…` §4: *"Scoped `ApiCredential`s are inherited from the template"* | `prisma/schema.prisma:951` `model ApiCredential`, plus `tests/unit/api-credential-validation.test.ts` | **True** |
+| `05-…` §2: *"i18n — next-intl, cookie-based locale. Inherited (ADR-006). **NL default**"* | `src/i18n/config.ts:19` — `export const defaultLocale: Locale = "nl";`, with `messages/nl.json` and `messages/en.json` | **True** |
+| `14-…` §3.1: *"`postgresql-client` must actually be in the image — **it is not today**"* | `Dockerfile` — no `apt-get`/`apk add` of `postgresql-client`; the only `postgresql` match is a placeholder `DATABASE_URL` at `:39` | **True** |
+| `05-…` §5.1: *"`tests/unit/migration-safety.test.ts` blocks the unsafe `ADD COLUMN … NOT NULL` without a default"* | `tests/unit/migration-safety.test.ts:36-46` — the `ADD_NOT_NULL` regex plus the separate `DEFAULT` check | **True** (the *"adopt as they are"* qualifier is B-2) |
+| `05-…` §5.1: *"`person-reference-classification.ts` + `person-reference-sync.test.ts` **is** D-014's registry-with-a-test … checked **bidirectionally**"* | `person-reference-sync.test.ts:116-146` — one assertion for schema-columns-missing-from-the-map, one for map-entries-missing-from-the-schema, plus a third requiring a written reason for every `RETAIN_BY_DESIGN` | **True, and the design under-sells it** — the mandatory-reason assertion is a third control it does not mention (the *"as they are"* qualifier is B-1) |
+| `05-…` §5.1: *"the build goes red the moment a domain model adds a `Person` reference without a registry entry"* | Same test, the `missing` assertion; the classification file's header calls itself *"the forcing function, for every Person-referencing column, going forward"* | **True** |
+| `01-…` §1.1.1 / D-056: the template carries *"a tenant-scoping client extension, per-row tenant columns, a platform-versus-organisation settings duality, and a platform role and bootstrap layer"* | `src/lib/database/organization-scope.ts` (`ORG_SCOPED_MODELS`/`ORG_SCOPE_EXEMPT_MODELS`, `tests/unit/organization-scope-sync.test.ts`); `prisma/schema.prisma:923 model PlatformRoleAssignment`, `:1045 model PlatformBootstrap`, `:1165 model PlatformSettings`; `access-control/application/platform-role-service.ts` | **True** — all four exist and are substantial |
+| `00-…` §2.2: the prototype *"has no `Person`/`UserAccount` split … no branding system, no CMS, no API layer, and no consent or retention model"* | Prototype `main` has 12 models against the template's 35; none of the above present | **True** |
+
+**One capability the design misses in the template's favour** — recorded here
+because the brief asks for the verified list to carry the same weight as the
+defects: `src/lib/auth/session.ts` + `src/lib/settings/config.ts` already
+implement a live, admin-configurable, floor-and-ceiling-bounded session idle and
+absolute timeout with fail-safe-to-strict degradation. That is D-150's `bounded`
+class and most of D-158, already built and already debugged twice. See B-5.
+
