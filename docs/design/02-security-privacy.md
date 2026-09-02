@@ -29,12 +29,32 @@ Inherited from the template (Better Auth), unchanged:
   timeout matters unusually much: tablets are shared at the poolside and left
   unlocked. Proposal: idle 30 min for instructor roles, 15 min for admin roles,
   absolute 12 h. See open decision OD-6.
-- **MFA is mandatory** for `platform.super_admin` and organisation
-  administrator roles. Passkeys are supported and preferred — they are also the
-  best answer to "wet hands, shared tablet, hostile to typing passwords".
-- Sessions invalidate immediately when an account is disabled.
+- **MFA is mandatory, bound to permissions rather than to role names (D-130).**
+  Any principal holding any permission in the **high-risk set** —
+  `organization.settings.manage`, `identity.providers.manage`, `roles.assign`,
+  `roles.manage`, `accessgroups.assign`, `privacy.*`, `audit.read`,
+  `backup.*`, `students.medical.*` — at **any** scope must have a verified
+  second factor. Enforced twice: at login, and **at grant time**, so granting a
+  high-risk permission to an account with no factor fails rather than creating
+  an unprotected administrator. The earlier text named `platform.super_admin`
+  and "organisation administrator roles"; the first does not exist (D-056) and
+  the second is not a checkable predicate, because roles are user-definable.
+  Passkeys are supported and preferred — they are also the best answer to "wet
+  hands, shared tablet, hostile to typing passwords".
+- **The MFA mandate is not a setting.** It is an *invariant* in the settings
+  classification of §4.1: not editable in the UI, not clearable by
+  `settings:reset`, no override flag. A mandate that ships as a checkbox is a
+  default, and the account that can clear it is the account it protects.
+- Sessions invalidate immediately when an account is disabled. That is a
+  consequence of disabling, **not** a containment control — bulk revocation is
+  a breach-response capability and lives in `07-operations.md` §1.4 (D-128).
 - Step-up re-authentication for: role changes, API credential creation, MFA
-  reset, bulk export, erasure, certificate revocation.
+  reset, bulk export, erasure, certificate revocation. **Step-up is a freshness
+  control, not an authorization control** — it proves the person at the keyboard
+  is the account holder, and it is worth nothing against an actor who *is* the
+  account holder. Every place this document leans on step-up alone against an
+  insider threat is a place that also needs an anti-amplification rule (§2.6),
+  an audit event, or a notification to a second administrator.
 
 **Decision D-008 (reaffirmed, with the alternative examined) — Use Better Auth
 as a self-hosted library for identity and sessions; do not write our own
@@ -89,33 +109,205 @@ hardcoded provider to a registry of N providers, using Better Auth's
 and issuer validation enabled by default.
 
 Per provider the registry stores: display name, protocol, issuer/discovery URL,
-client id, encrypted client secret, scopes, claim→field mapping, whether
-just-in-time account creation is allowed, and which role a JIT-created account
-receives (**default: none**).
+client id, encrypted client secret, scopes, claim→field mapping, and whether
+just-in-time account creation is allowed.
 
-**Trade-off.** Runtime-configurable providers mean a misconfiguration can lock
-an organisation out of its own instance. Two mandatory mitigations: local
-administrator login can never be disabled while it is the only working method,
-and a provider configuration must survive a **test connection** before it can
-be enabled. Storing secrets in the database also makes the encryption key a
-first-class operational concern — the same key management question as OD-7.
+**Status: out of v1** (D-120, `00-overview.md` §3.5.1). The first and only
+operator for the next year runs no Entra, no Google Workspace and no Keycloak,
+and a provider registry is purely additive. D-035 is retained on paper. The
+hardening below is therefore **not** a v1 build item — it is the set of
+preconditions that must be satisfied *before* the registry is built, recorded
+now because the registry as originally specified was an account-takeover
+primitive and would have been built that way.
 
-### 1.3 Session security at the poolside — a domain-specific control
+**Trade-off.** Storing secrets in the database makes key management a
+first-class operational concern (answered since OD-7 was written: D-112's
+`SECRET_KEY_FILE` and D-114's two-level envelope).
+
+#### D-035 is not safe as originally specified
+
+The registry as first written let anyone holding `organization.settings.manage`
+add an identity provider they control, map its `email` claim onto an existing
+account, pass the mandatory "test connection" against their own IdP, and sign in
+as the instance administrator. MFA on the local account is not touched, because
+the local method is never used. A second path: edit only the *token endpoint* of
+an existing provider and leave the stored secret in place — on the next login the
+application posts that client secret to an attacker-controlled endpoint. The
+promise that the secret is "never returned to any client" is true and irrelevant;
+a control that hides a secret from reads while allowing a redirect of where it is
+*sent* is not a control. Finding **F-110**.
+
+**Decision D-140 — Identity-provider administration is a separate, high-risk
+permission; external identities link on `(issuer, sub)` only; JIT creates
+nothing.** Every clause is a precondition for building the registry:
+
+| Rule | Why |
+|---|---|
+| `identity.providers.manage` is its own permission, never implied by `organization.settings.manage`, in the high-risk set that compels MFA (§1.2) | "Office manager can edit settings" must not mean "office manager can mint administrators" |
+| Create / enable / edit of a provider requires step-up **and** raises a high-severity audit event **and** notifies every `ORGANIZATION`-scoped administrator | The threat is an authorised insider, so step-up alone is worth nothing (§1.2). A second pair of eyes is the control |
+| An external identity is bound to a `UserAccount` **only** by `(issuer, sub)`, established either by a link ceremony performed while already authenticated locally, or by an administrator naming the external subject explicitly | The email claim is attacker-chosen in the attack above. `(issuer, sub)` is the only pair an attacker cannot assert about *someone else's* IdP |
+| Email is never a linking key. If it is ever used to *suggest* a link, it requires `email_verified = true` **and** an administrator-approved domain allow-list, and still requires confirmation | Same reason, stated so nobody re-adds it as a convenience |
+| **JIT provisioning creates nothing.** The "which role a JIT account receives" field is deleted, not defaulted to none | A field whose only safe value is "none" should not exist; the next person to read it will treat it as a feature. OD-8's own recommendation, promoted from recommendation to rule |
+| Changing the issuer, token or userinfo endpoint **clears the stored client secret** and forces re-entry | Kills the exfiltration-by-redirect path structurally rather than by review |
+| An account holding any `ORGANIZATION`-scoped grant may not authenticate through an external provider unless that account is explicitly opted in, per account | The highest-value accounts do not get their authentication delegated by an administrator's settings change |
+| Provider destinations are fetched through the egress-controlled client of §1.2.2 | Discovery URLs are admin-supplied and server-fetched (B-17) |
+
+**Reason.** Every one of these is cheap while the registry is on paper and
+expensive once it exists. Recording them here means the registry cannot be
+built from D-035 alone.
+**Trade-off.** Linking on `(issuer, sub)` means an organisation migrating IdPs
+must re-link accounts rather than relying on stable email addresses. That is the
+correct friction: an email address is an identifier the organisation does not
+control.
+
+#### The lockout safeguard as written cannot be enforced
+
+The original trade-off named two "mandatory mitigations": *local administrator
+login can never be disabled while it is the only working method*, and *a
+provider must survive a test connection before it can be enabled*. Neither
+works, and both were load-bearing:
+
+- **Trivially bypassed.** Configure a second provider — including one the
+  attacker controls — and local login is no longer "the only" method. Every
+  check passes at every step.
+- **"Working" is not decidable.** A provider that passed a test at 14:00 stops
+  working at 14:05: certificate expiry, a tenant policy change, an admin removed
+  from an Entra group, a discovery endpoint the *application* can reach and
+  *users* cannot. The application cannot observe any of that. It is a
+  point-in-time assertion sold as a continuous invariant.
+- The test-connection gate has the same shape: it proves the application can
+  reach the IdP once, not that a human can log in through it.
+
+**Decision D-141 — The recovery path from an authentication misconfiguration is
+the break-glass CLI, stated plainly; the enforceable invariant is a local
+administrator with a verified second factor, checked at the database.**
+
+- The documentation says, in the words an operator needs: *"Misconfiguring SSO
+  can lock you out of your own instance. Recovery is `splashtrack
+  admin:grant-admin` from the host. Do not enable SSO on an instance you cannot
+  reach a shell on."* The break-glass CLI (`13-configuration-and-setup.md` §7)
+  is genuinely sound because it depends on host access rather than on a
+  network-reachable secret — so it, not the deleted claim, is the control.
+- At least one **local** `ORGANIZATION`-scoped account with a **verified** MFA
+  factor must exist at all times. Enforced as a database-level invariant, and
+  re-evaluated on every change to authentication settings, on every role
+  revocation and on every account disable — not only at the moment SSO is
+  switched on.
+- The test-connection gate is kept, and demoted honestly: it catches typos. It
+  is not a safety net.
+
+**Reason.** An unenforceable safeguard is worse than an absent one, because the
+design stops looking for the real control. Finding **F-111**.
+**Trade-off.** The honest statement is less reassuring than the deleted claim.
+It is also the one an operator can act on.
+
+### 1.2.2 Admin-supplied URLs are fetched through one egress-controlled client
+
+Four surfaces let an administrator name a destination the *server* then
+connects to: the OIDC discovery/issuer URL (§1.2.1), the SMTP test-send
+(`13-configuration-and-setup.md` §7), the backup destination endpoint when one
+ever exists (`14-…` §3.2, out of v1 per D-103) and the version check
+(`03-deployment-model.md` §2.1). The words SSRF and egress appeared nowhere in
+the design set. Finding **F-118**.
+
+**Decision D-142 — Every outbound request to an administrator-configured
+destination goes through one shared client with a deny-by-default egress
+policy.**
+
+- Deny RFC1918, loopback, link-local (including `169.254.169.254`), and the
+  IPv6 equivalents (`::1`, `fc00::/7`, `fe80::/10`, IPv4-mapped forms), unless
+  an explicit, audited **"allow private networks"** setting is enabled — which
+  a self-hoster running an internal Keycloak or an internal SMTP relay
+  legitimately needs, and which is exactly why it must be a deliberate,
+  recorded act rather than the default.
+- **Resolve, then pin the resolved address** for the life of the request, so a
+  name that resolves publicly on validation and privately on connection (DNS
+  rebinding) does not slip through.
+- No redirect following. Hard connect and total timeouts. A response size cap.
+- **Never return the response body, status line or a distinguishing error to
+  the client.** The UI says "test failed"; the detail goes to the server log.
+  An error message that differs between "connection refused" and "connection
+  timed out" is a port scanner.
+
+**Reason.** The instance is typically the only thing the organisation has
+exposed, and three of these four surfaces exist specifically so an administrator
+can point the server at an address they choose. Without this, the settings page
+is a proxy into the operator's LAN and, on a cloud host, a path to the
+instance-metadata service.
+**Trade-off.** A self-hoster whose IdP or mail relay is on the same private
+network must find and enable one setting before the test succeeds, and the
+error will not tell them why. The setting's help text says so; the alternative
+is a scanner shipped by default.
+
+### 1.3 Session security at the poolside — what replaced `SHARED_DEVICE`
 
 The instructor workflow runs on a shared device in a wet, public environment.
-This is a genuine threat the generic template does not address.
+That threat is real and the generic template does not address it. The *control*
+originally proposed for it does not survive contact with the environment.
 
-**Decision D-009 — Introduce a "session device mode" for shared tablets.**
-A session may be marked `SHARED_DEVICE`, which (a) shortens idle timeout,
-(b) suppresses PII beyond first name + photo in list views, (c) blocks export,
-bulk operations and all admin routes outright, and (d) requires step-up to
-leave the attendance/skills context.
-**Reason.** Least privilege applied to *context*, not just role. An instructor
-does not need the member administration on the pool deck, so the pool-deck
-session should not be able to reach it even though the role technically could.
-**Trade-off.** A second dimension in authorization checks, which adds
-complexity to a security-critical path. Mitigated by implementing it as a
-single deny-list evaluated in `requirePermission`, not scattered per route.
+**Decision D-009 — (Superseded by D-143 and D-120.) A session could be marked
+`SHARED_DEVICE`, shortening idle timeout, suppressing PII, blocking export and
+admin routes, and requiring step-up to leave the attendance context.** Retained
+here as history because three of its four behaviours are kept — by simpler
+means.
+
+**Why it did not survive.** It was **opt-in by the party it restricts.** "A
+session *may be marked* `SHARED_DEVICE`" never said by whom. If the instructor
+chooses at login it is voluntary, and the one of its four behaviours they meet
+first — the shortened idle timeout, on a wet tablet, with a queue of children —
+is the one they will turn off. If it is a device cookie, whoever holds the
+tablet clears it. If it is a network heuristic, that was never stated. And it
+was cited as *the* mitigation for two separate High risks and for FM-13, so the
+strongest control in the poolside threat model was a self-declaration.
+Finding **F-127**.
+
+**Decision D-143 — Device mode is a property of an administrator-enrolled
+device or of the role, never of the session holder. In v1 it is not built at
+all; its effect is obtained from the permission set and the idle timeout.**
+
+What v1 actually ships (D-120, `00-overview.md` §3.5.1):
+
+- The **Instructor role holds no export, no bulk-operation and no
+  administration permission at any scope.** This is behaviour (c), obtained
+  structurally, and it holds whether the instructor is on the pool deck, at
+  home, or on a stolen tablet. It cannot be un-marked because there is nothing
+  to mark.
+- A **short idle timeout** for instructor sessions (OD-6), applied by role.
+- Nothing else. No second dimension in `requirePermission`, no context deny-list.
+
+If a device mode returns later, these are its terms: an administrator **enrols**
+a poolside tablet, and every session originating from that device is in shared
+mode with no way for the session holder to leave it. Alternatively it binds to
+the role — instructor sessions are shared-mode unless on an admin-enrolled
+personal device. Either way the party restricted is not the party who sets it.
+
+**On suppressing PII, which was stated backwards.** D-009 suppressed "PII
+beyond **first name + photo**". For a child a photograph is far more identifying
+than a surname — that is why it is on the class list at all. Suppressing the
+name while displaying the face is not minimisation, it is minimisation
+theatre. §4 states a third rule again ("suppressed only for non-assigned
+groups"), so the design disagreed with itself in two places. **The rule, stated
+once, is §4's photograph paragraph**, corrected there: first name and surname
+initial on shared surfaces, **photograph revealed per student on explicit tap**,
+that reveal audited. This section does not restate it.
+
+**Reason.** Least privilege applied to *context* was the right instinct and the
+wrong mechanism. Applying it to the *role* gets three of the four behaviours
+with no new axis in the security-critical path, and gets them
+non-negotiably.
+**Trade-off.** An instructor who legitimately needs an export must ask an
+administrator, or hold a second grant. Given that the poolside export is the
+exfiltration path this control exists to close, that is the intended outcome.
+
+**A standing constraint on everything in this chapter.** Poolside is a wet
+iPad, possibly with no wifi, replacing pen and paper. **A security control that
+adds friction to the poolside moment loses to paper** — and when it loses, the
+instructor stops using the application entirely and the organisation gets no
+audit trail, no attendance data and no controls at all. Where a control in this
+document would be unrealistic there, this chapter says so rather than
+specifying it and letting the build discover it. Concretely: no step-up at the
+poolside, no re-authentication between students, no per-record confirmations in
+the attendance flow, and no control whose failure mode is "the lesson stops".
 
 ---
 
@@ -136,8 +328,12 @@ Person ──< RoleAssignment >── Role ──< RolePermission >── Permis
               └── scope: { type, id }        ← the granular axis
 ```
 
-`RoleAssignment(personId, roleId, scopeType, scopeId)` where `scopeType` is one
-of:
+```text
+RoleAssignment(personId, roleId, scopeType, scopeId,
+               validFrom, validUntil?, grantedByPersonId)
+```
+
+where `scopeType` is one of:
 
 | Scope type | Meaning | Example |
 |---|---|---|
@@ -159,7 +355,48 @@ enum member returns with the portal that needs it.
 
 The same person may hold several assignments simultaneously: instructor of two
 groups, planner for one location, and a member of the organisation. Their
-effective reach is the **union** of their grants.
+effective reach is the **union** of their grants — which is why the *narrowing*
+rules in §2.2 have to be part of coverage itself: a union can never be made
+smaller by adding a rule elsewhere.
+
+**Decision D-144 — A grant carries its own validity, and validity is evaluated
+inside the guard.** `validFrom`, an optional `validUntil`, and
+`grantedByPersonId` are part of the tuple, not conventions.
+
+- `validUntil` is **mandatory for `SESSION` scope** — schema-level, not
+  documentation-level. D-068 already says the grant "carries its own
+  `validFrom`/`validTo`"; §2.4 already says External examiner is "always with an
+  expiry" and Internal examiner "time-bounded". None of that was expressible in
+  the tuple as written.
+- Expiry is enforced in `requirePermission` and `resolveReach`, **not** by a
+  cleanup job. A job that has not run yet is an open grant; a predicate cannot
+  be behind schedule.
+- `grantedByPersonId` is what makes §2.6's anti-amplification rule auditable
+  after the fact rather than only preventable in the moment.
+- Expiring and expired grants are surfaced in the administration UI, and staff
+  grants default to a bounded `validUntil` rather than an open one.
+
+**The deprovisioning gap this partly covers, stated rather than papered over.**
+SCIM is deferred (`00-overview.md` §3.3) and the IdP registry is out of v1, so
+when an organisation eventually connects one, an instructor removed from the
+corporate directory on their last day keeps their SplashTrack `UserAccount`,
+their local password if set, their passkey and their `GROUP`-scoped access to
+children's records until an administrator notices. Three responses, none of
+which is SCIM: the documentation carries an **offboarding checklist** as a named
+operator duty; the administration area ships an **"accounts that have not
+authenticated in N days"** report; and expiry is the *default* for staff grants
+rather than the exception, which converts an unbounded oversight into a bounded
+one.
+
+**Reason.** Without validity fields, the external examiner who assessed one
+Saturday in March keeps `exams.assess` and `exams.results.record` on that
+session **forever** — and because results are append-only (D-062) an amendment
+they make years later becomes the effective result. Nobody at the swim school
+has any reason to look at that assignment again. Finding **F-113**.
+**Trade-off.** Two more columns on the tuple every guard reads, and an
+administrator must choose an end date for grants that feel permanent. Instructor
+and administrator grants may leave `validUntil` null; the scopes where a
+bounded window is the whole point cannot.
 
 ### 2.2 The authorization question
 
@@ -177,11 +414,77 @@ Coverage is defined per scope type, once, and nowhere else:
 | Scope type | Covers |
 |---|---|
 | `ORGANIZATION` | Every resource in the installation |
-| `UNIT` | **That unit only** — every group, session, student and exam session directly beneath it. No descendant walk (D-121) |
-| `GROUP` | That group, its scheduled sessions, and the students in it *for the period of their membership* |
+| `UNIT` | **That unit only** — every group, session, student and exam session directly beneath it. No descendant walk (D-121). A student's *profile* is governed by their **home unit** only (D-145) |
+| `GROUP` | That group, its scheduled sessions, and — while the membership **and** the holder's instructor assignment are both **currently active** — the *group-scoped relations* of the students in it. Not the whole student record (D-145) |
 | `COURSE` | That course, its levels, its enrolments, and **all** its exam sessions |
 | `SESSION` | **That one session's roster only** — the students on it, for the window the grant is valid, and (for an exam or aftest session) the assessment/results being recorded there. Nothing else, not the course, not the students' other records |
-| `SELF` | Records whose subject is the holder |
+| `SELF` | Records whose subject is the holder, for the enumerated permission set of D-146 — never by implication |
+
+**Decision D-145 — Coverage is per *relation*, not per entity, and every
+membership-derived coverage is evaluated live.**
+
+The table above previously read: `GROUP` covers "the students in it *for the
+period of their membership*". That sentence is ambiguous in the way that
+matters. Does it mean the instructor's access lasts only *during* the
+membership, or that the instructor may see records *dated within* that period?
+In a union-of-grants model over an append-only membership table that D-059
+deliberately keeps for life, the natural implementation is the second — and it
+means **every instructor who has ever taught a child retains read access to that
+child's complete record permanently.** Finding **F-114**.
+
+Two rules, stated so the implementation cannot land on the wrong reading:
+
+1. **Live evaluation.** `GROUP` coverage requires an `GroupMembership` that is
+   active *at query time* **and** an `InstructorAssignment` for the holder that
+   is active *at query time*. A lapsed membership row and a past assignment
+   grant nothing. The same holds for `SESSION` (already the case, D-068 resolves
+   from the roster at check time) and for `UNIT` via the group's current unit.
+2. **Per-relation coverage.** Scope covers relations, not the `Person` node. A
+   `GROUP`-scoped `students.read` returns identity basics plus **this group's**
+   progress and attendance. It does **not** return the student's other groups,
+   attendance at other locations, other enrolments, exam history, or guardian
+   relationships. Those need `COURSE`, `UNIT` or `ORGANIZATION`. The
+   scope-escape tests assert on the **fields returned**, not only on whether the
+   row was reachable (`06-delivery.md` §2.1).
+
+**And the cross-unit case, which the union makes silently permissive.**
+`StudentProfile` carries a *home* `unitId`; `Group` carries its own; sessions
+inherit from the group. A child registered at Zuidbad who attends a summer
+course at Noordbad is otherwise reachable in full by the Location Manager of
+both, and because effective reach is a union the broader answer always wins.
+Cross-location courses and shared facilities are normal in this domain, not an
+edge case. **The rule: the home unit governs the student's profile; the group's
+unit governs that group's attendance and progress only.** This composes with
+rule 2 above rather than being a special case.
+
+**Reason.** An instructor teaching Sanne on Tuesdays needs Sanne's first name,
+her medical flag if they hold it, and this group's progress. Handing them her
+failed exam attempts at another location, three years after they last taught
+her, is not a bug an audit trail fixes afterwards. This is the *primary internal
+threat* named in §6.2, and per-entity coverage is how it happens.
+**Trade-off.** Coverage becomes a per-relation matrix rather than one sentence,
+and the student-detail screen must render partially for a `GROUP`-scoped
+instructor. Both were going to be true the first time anyone asked why an
+instructor could read a diploma history.
+
+**Decision D-146 — `SELF` is an explicit, seeded role assignment with an
+enumerated permission set, never an implicit scope match.**
+
+The table above previously granted `SELF` to "every authenticated person,
+**implicitly**". An implicit scope match means
+`requirePermission('students.medical.read', { student: self })` can succeed for
+an authenticated person **holding no grant at all** — deny-by-default (§1.1
+rule 2) defeated by a rule in the same document. Finding **F-124**.
+
+- `SELF` is a seeded `Role` assigned at account creation like any other, subject
+  to §2.6 and visible in the administration UI.
+- Its permission set is closed and enumerated: `people.read` on one's own
+  `Person`, `students.read` on one's own `StudentProfile`, own skill progress,
+  own attendance, own awards, own consent records. **Never** `students.medical.*`,
+  never `students.notes.*`, never anything about another person — a guardian
+  reading a child's record is not `SELF` and has no scope in v1 (D-122).
+- Adding a permission to the `SELF` set is a security-relevant change requiring
+  review, in the same class as adding one to the high-risk set of §1.2.
 
 **Decision D-121 — `UNIT` is a flat scope in v1: it covers the unit itself, not
 a tree of descendant units.** There is one pool (`00-overview.md` §3.5.1). A
@@ -227,6 +530,17 @@ role assignment rather than an independent access mechanism — they record *who
 assessed*, not *who may*. **Blocks D-085** (`15-assessment-and-fees.md` §3):
 the four-eyes gate on exam candidacy cannot ship without this.
 
+**The visiting NRZ delegate is the fifth case, and v1 answers it with paper.**
+A delegate needs to see one exam session's candidate list and nothing else,
+which is precisely a `SESSION` grant — so the scope type *covers* them, and if
+a delegate is ever given an account this is the grant they get, with a
+`validUntil` on the session's date (D-144). v1 does not give them one: D-094
+(`15-…` §7) hands them a **printed** candidate list, because the requirement is
+that a person beside the pool can read twelve names, and paper achieves that
+with no account lifecycle, no credential and no stranger authenticating against
+a database of children's records. The scope type exists for the four cases that
+genuinely need an account; the delegate is not one of them.
+
 **Decision D-030 — Authorization is always resource-referenced; a bare
 permission check is not sufficient.**
 **Reason.** `hasPermission('students.read')` is meaningless in a scoped world —
@@ -245,13 +559,12 @@ For lists and searches, the inverse question is asked once and turned into a
 filter:
 
 ```text
-resolveReach(session, 'students.read') → { units: [...], groups: [...], all: false }
+resolveReach(session, 'students.read') → Reach
 ```
 
-Repositories accept a reach object and constrain the query with it. A single
-helper, used everywhere, means there is one place to get list filtering right —
-one place to get list filtering right, which is the boundary that actually
-exists in a single-organisation installation.
+Repositories accept a `Reach` and constrain the query with it. A single helper,
+used everywhere, means there is one place to get list filtering right — which is
+the boundary that actually exists in a single-organisation installation.
 
 **Decision D-031 — Reach resolution is centralised and repositories cannot be
 called without it.**
@@ -260,6 +573,61 @@ exposure, because a missed filter silently returns everything. Making reach a
 required repository argument turns a silent over-fetch into a type error.
 **Trade-off.** Repository signatures are noisier. Worth it — this is now the
 highest-risk code path in the application.
+
+**Decision D-147 — `Reach` is an opaque type covering every scope type, and it
+is constructible only by `resolveReach`.**
+
+The earlier signature returned `{ units, groups, all }`. The scope enum has six
+members; that object represented two of them plus a boolean. An internal
+examiner (`COURSE`) or an aftest assessor (`SESSION`) resolved to
+`{units: [], groups: [], all: false}` — empty reach, every list denies them, and
+the candidate list they are physically standing there to assess is blank. The
+developer fixing that at 17:00 on an exam Saturday widens the object ad hoc or
+passes `{all: true}`, on the code path D-031 calls the highest-risk in the
+application. Finding **F-112**.
+
+```text
+type Reach =                                    // discriminated union, one variant per scope type
+  | { kind: 'ORGANIZATION' }                    // producible only from an ORGANIZATION grant
+  | { kind: 'UNITS';    unitIds:    Id[] }
+  | { kind: 'GROUPS';   groupIds:   Id[] }
+  | { kind: 'COURSES';  courseIds:  Id[] }
+  | { kind: 'SESSIONS'; sessionIds: Id[]; window: DateRange }
+  | { kind: 'SELF';     personId:   Id }
+  | { kind: 'NONE' }                            // the honest result of holding no grant
+  | { kind: 'UNION';    of: Reach[] }           // effective reach is a union of grants (§2.1)
+```
+
+- **Opaque.** The type carries a private brand (a non-exported unique symbol
+  field) and exports no constructor. A literal cannot be written at a call site,
+  in a test helper, or in a hurry. D-031 claimed a required argument "turns a
+  silent over-fetch into a type error"; a required argument enforces *presence*,
+  and `{units: [], groups: [], all: true}` was a valid literal TypeScript would
+  accept anywhere a reach was required. The compiler was checking that the
+  question was asked, not that it was answered by the authority.
+- **No `all: boolean`.** Organisation-wide reach is a variant that only an
+  `ORGANIZATION`-scoped grant can produce, so "everything" is a resolution
+  outcome rather than a field anyone can set.
+- **`NONE` is explicit**, so "this principal reaches nothing" is distinguishable
+  from "reach was never resolved" in both code and logs.
+- Repositories translate each variant into a `where` clause; a repository that
+  does not handle a variant fails to compile rather than returning unfiltered
+  rows.
+- `06-delivery.md` §2.1's scope-escape gate already requires asserting that a
+  `Reach` **cannot be constructed outside `resolveReach()`**; this is the shape
+  that makes that assertion possible. Its per-module cases must include a
+  `COURSE`-scoped and a `SESSION`-scoped principal specifically — the two the
+  old shape could not express at all.
+
+**A note on the reviewer's framing.** The finding that raised this called
+`all: false` a "default-open shape". It is not: `false` is default-*closed*, and
+a forgotten field would deny rather than over-return. The real defect is the two
+above — incomplete coverage of the scope enum, and forgeability — and they are
+sufficient on their own.
+**Trade-off.** A union type is more work per repository than an object with
+three fields, and a genuinely new scope type becomes a compile error in every
+repository at once. That is the intended cost: the alternative is a repository
+that silently ignores a variant it does not know about.
 
 ### 2.4 Starter roles
 
@@ -273,8 +641,13 @@ highest-risk code path in the application.
 | External examiner | `SESSION`, always with an expiry | One exam session only. A `Person` with no membership (D-052) |
 | Independent aftest assessor | `SESSION`, always with an expiry | Grades one *aftest*, held by an instructor who is not the student's own (D-085, `15-assessment-and-fees.md` §3) |
 | Member Administrator | `UNIT` or `ORGANIZATION` | People, **memberships** and student administration, enrolments — three distinct concepts (`01-domain-model.md` §3.1) |
-| Content Editor | `ORGANIZATION` | Public pages and branding. **No person data** |
+| Content Editor | `ORGANIZATION` | Public pages and branding. **No person data — and explicitly no `inquiries.read`** (§2.5). Inquiries arrive through the website and the `Inquiry` table lives in the `pages` module, so the natural bundle would have violated this role's own guarantee by module layout alone |
 | Read-only Viewer | `UNIT` | Oversight and reporting |
+
+**Every starter role above is a *starting point*, not a fixed object.** Roles
+are user-definable, which is why no normative rule in this design binds to a
+role name (D-130): the MFA mandate, the alert rules and the high-risk set all
+bind to permissions.
 
 **No Guardian role in v1.** A guardian's authority to consent on a child's
 behalf is a `PersonRelationship` fact (§5.4), not an authorization grant — there
@@ -290,8 +663,12 @@ second organisation — other organisations run entirely independent deployments
 
 ### 2.5 Permission catalogue
 
-Unchanged in content from the earlier design, but every key is now evaluated
-against a scope. Domain additions:
+Every key is evaluated against a scope. **This is the catalogue; a permission
+referenced anywhere in the design set and absent here is a defect, not a
+shorthand.** That is how `roles.assign` came to be cited as a high-risk
+permission in `07-operations.md` §1.3 while existing nowhere (F-109), and how
+several others below were referenced by chapters 07, 13, 14 and 15 without ever
+being defined.
 
 ```text
 people.read            people.create         people.update
@@ -310,14 +687,54 @@ skills.assess          skills.revoke
 attendance.read        attendance.record     attendance.amend
 
 exams.read             exams.manage          exams.assess
-exams.results.record   certificates.issue    certificates.revoke
+exams.results.record   exams.candidacy.override
+certificates.issue     certificates.revoke
 
 planning.read          planning.manage
 
+fees.read              fees.manage           fees.export
+
 pages.read             pages.manage          branding.manage
+inquiries.read         inquiries.manage
+
+roles.read             roles.assign          roles.manage
+accessgroups.read      accessgroups.assign   accessgroups.manage
+
+identity.providers.read      identity.providers.manage
+sessions.read                sessions.revoke
+
+backup.run             backup.download       backup.restore
+backup.settings.manage
+
 organization.settings.manage                 audit.read
+audit.report           diagnostics.read
 privacy.export         privacy.erase
 ```
+
+**The additions, and what each closes:**
+
+| Key(s) | Closes |
+|---|---|
+| `roles.read` / `roles.assign` / `roles.manage`, `accessgroups.*` | **F-109.** Role assignment is the highest-privilege operation in the product and had no permission at all. `roles.assign` grants an existing role; `roles.manage` edits *which permissions a role carries*, which is strictly stronger and must not be bundled with assignment |
+| `identity.providers.read` / `.manage` | D-140 — separated from `organization.settings.manage` so "can edit settings" does not mean "can mint administrators" |
+| `sessions.read` / `sessions.revoke` | The active-session inventory and global revocation that `07-operations.md` §1.4 (D-128) ships for Article 33 containment. Revocation is an emergency power and is separately grantable |
+| `audit.report` | The "what did this account do" report (D-128). Distinct from `audit.read`: reading events is oversight, compiling a per-actor dossier is an investigation |
+| `backup.run` / `.download` / `.restore` / `.settings.manage` | `07-operations.md` §1.3 already binds alerts to "the backup permissions" and `14-…` §3.3 (D-042) calls the download "the single most dangerous UI element". Four separate keys because taking a backup, exfiltrating one, overwriting the database with one, and redirecting where they go are four different powers |
+| `diagnostics.read` | **F-125.** `13-configuration-and-setup.md` §8's page names no permission. It reveals version, migration state, backup posture and *whether a newer release with a security advisory exists* — a machine-readable answer to "is this instance exploitable?" if it is ever reachable unauthenticated. `ORGANIZATION`-scoped, authenticated always. Its "safe to paste into a public issue" property (no secrets, no PII) is good and is kept: pasteability and authentication are independent properties |
+| `inquiries.read` / `inquiries.manage` | **F-115.** Public inquiry free text routinely contains health data about a named child (§5.3) and was reachable through `pages.manage` |
+| `fees.read` / `.manage` / `.export` | Referenced by `01-domain-model.md` §5's reach column and by `15-assessment-and-fees.md` §6; never defined |
+| `exams.candidacy.override` | D-085's four-eyes gate is "overridable only with an explicit permission". This is it. The override rate is a number a chair can act on, which is the whole trade in D-085 |
+
+**Decision D-156 — The diagnostics page requires `diagnostics.read` at
+`ORGANIZATION` scope and is never served unauthenticated.** Its "safe to paste
+into a public issue" property is about *content* — no secrets, no personal data
+(F-20) — and is independent of who may open it. `13-configuration-and-setup.md`
+§8 currently names no permission at all, which is the actual defect: whether the
+page is authenticated was never stated either way, and the natural
+implementation of "a diagnostics page for support" is that it is not.
+**Trade-off.** One more permission to grant before a volunteer can produce the
+artefact a support issue asks for. Cheaper than a scanner learning which
+instances are running a version with an open advisory.
 
 **Decision D-010 (unchanged) — Medical/pastoral notes have their own permission
 pair and their own audit event type.**
@@ -329,12 +746,124 @@ automatically see a child's medical history; that requires
 gracefully when the field is unreadable. This is the highest-risk data in the
 product; the cost is justified.
 
-### 2.6 Access groups
+**Decision D-148 — There is one *protected free text* class, and everything in
+it is encrypted, audited on read, and excluded from exports by default —
+regardless of which of the two permission pairs gates it.**
+
+D-010 says "medical/pastoral notes have their own permission **pair**" —
+singular. The catalogue defines **two** pairs, and §5.3 names only medical
+remarks as special category. The gap between them is where pastoral notes fell:
+gated by `students.notes.*`, which reads like an ordinary teaching permission a
+Location Manager hands out without thinking, and therefore plausibly
+unencrypted, unaudited and present in every export and every backup in plain
+text. Finding **F-115**.
+
+Pastoral free text in this domain is *"moeder zit in de opvang"*, *"via
+jeugdzorg aangemeld"*, *"mag niet opgehaald worden door vader"*. That is more
+sensitive than an allergy, and it may be special category by inference — health,
+family situation, or criminal-adjacent. The same is true of assessment remarks
+(D-087, `15-…` §5) and of public inquiry free text (§5.3).
+
+**The class, stated once:**
+
+| Field | Gated by | Rationale |
+|---|---|---|
+| Medical remarks, allergies, physical limitations | `students.medical.*` | Special category, Art. 9 |
+| Pastoral / safeguarding notes | `students.notes.*` | Special category by inference; safeguarding-adjacent |
+| Assessment remarks (`AssessmentCriterionResult`) | `students.notes.*` | D-087: a developmental observation about a minor's body |
+| `Inquiry` free text | `inquiries.read` | Unauthenticated public input that routinely volunteers a child's health (§5.3) |
+
+Everything in the class is: **column-encrypted** under the D-096 envelope
+(`v1:<keyId>:<nonce>:<ct>` with AAD binding table, column, primary key and key
+id); **audited on read**, not only on write; **excluded from exports unless
+explicitly requested** by a requester who holds the gating permission, with the
+fail-loudly rule of D-153; and **never written to operational logs** (§5.7).
+
+**Two pairs are kept rather than folded into one**, against the reviewer's
+recommendation. The recommendation — fold pastoral into `students.medical.*` —
+would mean the instructor who must know a child has epilepsy also reads the note
+about the family's situation. Those are different needs held by different people,
+and collapsing them would *reduce* least privilege in the name of protecting it.
+What was actually wrong was that protection tracked the *permission pair* rather
+than the *data*. Now it tracks the data, and the pairs stay separate.
+
+**And a control at the capture point, which matters more than either.** The real
+risk in a free-text field is what staff type into it. Every field in this class
+carries a short, non-dismissable line at the point of entry: what this field is
+for, that it is visible to anyone holding the permission, that it is retained
+for a stated period, and that it is not the place for a diagnosis or a
+third-party allegation. This is the cheapest control in the chapter and the only
+one that reduces the *amount* of special-category data rather than guarding it
+after the fact.
+
+### 2.6 No amplification, no scope escape by grant
+
+**Decision D-139 — A granter may grant only permissions they themselves hold,
+only at or below their own scope, and only for a validity window within their
+own. Enforced in the grant service, not in the UI.**
+
+Three invariants, checked on every path that creates or modifies a
+`RoleAssignment`, an `AccessGroup` assignment, or a `Role`'s permission set:
+
+1. **No amplification.** The set of permissions being granted must be a subset
+   of the permissions the granter holds. A Planner cannot grant
+   `students.medical.read` because they do not hold it.
+2. **Scope confinement.** The scope of the grant must be at or below the scope
+   at which the granter holds that same permission. A `UNIT`-scoped Location
+   Manager cannot grant anything `ORGANIZATION`-scoped, and cannot grant at a
+   unit that is not theirs — which under D-121's flat `UNIT` means their own
+   unit and nothing else.
+3. **Window confinement.** `validFrom`/`validUntil` must fall inside the
+   granter's own window for that permission. A `SESSION`-scoped assessor cannot
+   issue a grant that outlives their own.
+
+The same three apply to `Role` editing (`roles.manage`) — adding a permission to
+a role is a grant to everyone holding it — and to `AccessGroup`s (§2.7), which
+bundle *permissions plus scopes* into one assignable object and would otherwise
+be a clean bypass of all three.
+
+**Reason.** Without this, every other control in this chapter is decorative.
+A Location Manager opens People & roles, assigns themselves an
+`ORGANIZATION`-scoped administrator role or an access group containing
+`students.medical.read`, and holds every medical note in the swim school. Step-up
+is no obstacle — it is their own password and their own second factor (§1.2) —
+and the audit event records a role change that looks entirely legitimate.
+Finding **F-109**.
+**Trade-off.** An administrator who genuinely needs to delegate something they
+do not hold must first be granted it themselves, visibly. Bootstrap is the
+obvious edge: the first administrator is created by the setup wizard
+(`13-…` §6.3) or the break-glass CLI, both of which are outside the grant
+service and both of which are host-access-proven. There is no in-application
+path that produces a permission from nothing.
+
+**Both invariants are scope-escape test cases**, per module, under D-032: a
+granter attempting to grant a permission they lack, and a granter attempting to
+grant at a wider scope, are both denied — asserted at the service, because the
+UI hiding the option is not authorization (§1.1 rule 1).
+
+### 2.7 Access groups
 
 For organisations that need bundles rather than per-resource assignments, the
 inherited `AccessGroup` primitive (ADR-018/019) groups permissions and scopes
 into a named, reusable set — "Zwemles-instructeur Zuidbad" — assigned in one
 action. This is convenience over the model above, never a bypass of it.
+
+"Never a bypass" is now a rule rather than an intention. An `AccessGroup`
+bundles *permissions plus scopes* into one assignable object, which makes it the
+most convenient possible amplification primitive: assign one named thing, gain a
+permission at a scope the granter never held. So:
+
+- Assigning an access group requires `accessgroups.assign`; **defining or
+  editing one** requires `accessgroups.manage`, which is strictly stronger and
+  separately granted.
+- §2.6's three invariants are evaluated against the **expanded** contents of the
+  group — every (permission, scope) pair it contains — both when the group is
+  edited and when it is assigned. Editing a group is a grant to everyone
+  currently holding it, so the check runs against the editor at edit time and
+  the group's membership is re-evaluated.
+- An access group is a **projection**, never a second source of truth: it
+  produces ordinary `RoleAssignment` rows subject to D-144's validity, and
+  `requirePermission` never consults it directly.
 
 ---
 
@@ -349,10 +878,15 @@ replaces them is narrower but still layered:
 2. **Scope enforcement.** `requirePermission(..., resourceRef)` for writes and
    single-resource reads; `resolveReach()` for lists. Deny by default, including
    on unexpected failure.
-3. **Scope tests.** Every module ships tests asserting that a `GROUP`-scoped
-   instructor cannot read, write, or list outside their groups, and that a
-   `UNIT`-scoped role cannot escape its subtree. These replace the old
-   scope-escape suite is non-optional for Definition of Done.
+3. **Scope-escape tests.** Every module ships tests asserting that a
+   `GROUP`-scoped instructor cannot read, write or list outside their groups;
+   that a `UNIT`-scoped role cannot reach another unit (`UNIT` is **flat** in
+   v1, D-121, so "escape its subtree" no longer describes anything); that a
+   `SESSION`-scoped principal cannot reach outside their session **or its
+   window**; that a `Reach` cannot be constructed outside `resolveReach`
+   (D-147); and that neither grant invariant of §2.6 can be violated. These
+   replace the deleted tenancy suite and are **non-optional for Definition of
+   Done**. Their minimum content is stated once, in `06-delivery.md` §2.1.
 
 **Decision D-032 — Scope-escape tests are mandatory per module.**
 **Reason.** The old isolation suite existed because query-predicate tenancy is
@@ -367,8 +901,57 @@ see them.
 ### 3.1 Raw SQL
 
 `$queryRaw` / `$executeRaw` bypass reach filtering, which is the boundary that
-matters here. They still require an explicit reviewer sign-off and
+matters here — **and they bypass the audit trail's append-only property, which
+is the boundary that matters after an incident.** The lint rule that flags them
+was justified only by the first. They require an explicit reviewer sign-off and
 are flagged by a lint rule.
+
+### 3.2 Audit integrity — what "append-only" rests on
+
+"Append-only. Never updated, never deleted by application code"
+(`07-operations.md` §1.2) is a statement about *intent*. The template makes it
+partly structural: `AuditEvent` is a **tamper-evident hash chain** — each row
+hashes its content plus the previous row's hash — so deletion or modification is
+detectable by a verification pass (`05-technical.md` §5). Two gaps remain, and
+they are the ones that matter to a compromised administrator (FM-7's own
+scenario). Finding **F-116**.
+
+**Decision D-149 — Audit integrity has three parts: the chain, a database role
+that cannot delete, and a retention floor the settings layer refuses to cross.**
+
+1. **The chain is verified, and the verification is somewhere a human sees it.**
+   A `splashtrack audit:verify` command plus a chain-status line on the
+   diagnostics page (`13-…` §8). A tamper-evident record nobody ever checks is
+   tamper-*evident* in the same way an unwatched camera is.
+2. **A separate database role with `INSERT`-only grant on `AuditEvent`**,
+   `UPDATE` and `DELETE` revoked. The application writes audit events as that
+   role and everything else as its ordinary role. This composes with D-116 (the
+   application's role is not a superuser) — without D-116 the separation is
+   decorative, because a superuser can grant itself back. Deletion by the
+   retention job runs as a third, narrowly-scoped path with its own audit event.
+3. **A hard retention floor.** Audit retention is an organisation-configurable
+   policy under D-065, so the cheapest way to destroy the evidence of an
+   exfiltration is to set audit retention to one day and let the maintenance job
+   do it legitimately. The settings layer refuses any value below the floor
+   (§4.1), and lowering audit retention at all is a high-severity audit event.
+
+**And the retention mismatch it exposes.** Audit is retained 24 months while
+exam results are retained up to 10 years (`01-domain-model.md` §5). The record
+of *who* recorded a diploma outcome is therefore destroyed eight years before
+the outcome it evidences — in a design that justifies append-only results with
+"a parent disputes a diploma decision". **Audit events evidencing a data class
+are retained at least as long as that class**, or the mismatch is stated in the
+privacy screen as a limit on what the organisation can reconstruct. This is a
+hand-off to `01-domain-model.md` §5 and `07-operations.md` §1.2, not settled
+here.
+
+**Reason.** The three questions a breach requires (D-128) are all answered from
+the audit trail. If the actor who caused the breach can also edit it, the
+Article 33 assessment is built on evidence the suspect controls.
+**Trade-off.** A second database connection with different grants, and an
+operator pointing `DATABASE_URL` at a managed database must create two roles
+rather than one. The documentation gives the exact statements, as it already
+must for D-116.
 
 ## 4. Application security controls
 
@@ -377,31 +960,95 @@ are flagged by a lint rule.
 | Input validation | Zod schemas at every boundary; validation is a module concern, colocated with the service |
 | Output encoding | React escaping by default; CMS content is sanitised server-side against an allow-list |
 | CSRF | Better Auth cookie protections + `SameSite`; Server Actions carry framework protection |
-| Rate limiting | `RateLimitCounter` (inherited) on login, password reset, export, public forms |
-| Secrets | Never in the repository. Environment-injected; GitHub Environments hold deploy secrets; secret scanning + push protection block accidents |
+| Rate limiting | `RateLimitCounter` (inherited), **with lockout**, on: login, password reset, export, public forms, **MFA/TOTP verification**, **setup-token submission** (D-101), **recovery-token entry at restore** (D-115), and the signed backup-download link (D-042). See below |
+| Secrets | Never in the repository. One bootstrap secret via `SECRET_KEY_FILE`, everything else derived — stated once in `13-configuration-and-setup.md` §3.1.1 (D-112), not restated here. GitHub Environments hold deploy secrets; secret scanning + push protection block accidents |
+| Server-side requests | All administrator-configured destinations go through one egress-controlled client: private ranges denied by default, resolve-and-pin, no redirects, no response detail returned to the client (§1.2.2, D-142) |
 | Encryption in transit | TLS everywhere, HSTS, no mixed content. Internal service-to-database traffic is TLS as well |
-| Encryption at rest | Full-disk/volume encryption plus **column-level encryption for medical/pastoral notes** (D-013) |
+| Encryption at rest | Full-disk/volume encryption plus **column-level encryption for the protected free-text class** — medical remarks, pastoral notes, assessment remarks and inquiry free text (D-013 as extended by D-148), under the D-096 envelope |
 | File uploads | `UploadedAsset` (inherited): type allow-list, size limits, served through an authorising route — never a public bucket path. **EXIF stripped from photos** |
 | Dependency security | Dependabot + `npm audit` gate; high/critical blocks merge |
 | Headers | CSP (nonce-based), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | Abuse | Public forms behind rate limits and a bot check; no user enumeration in any error message |
 
-**Decision D-013 — Column-level encryption for special-category data only.**
+**On rate limiting, and what was missing.** The list previously covered login,
+password reset, export and public forms. It did **not** cover MFA verification —
+a 6-digit TOTP without throttling is brute-forceable, and MFA is the stated
+compensating control for the highest-privilege accounts in the product (§1.2,
+FM-7). Nor the setup token, nor the recovery token at restore, both of which sit
+on the **unauthenticated** setup surface and both of which are bearer
+credentials over the whole database. Rate limiting alone is insufficient for
+these three: they need **lockout with an audited failure event**, because an
+attacker who is merely slowed down still gets there overnight. Finding
+**F-117**.
+
+**Decision D-013 — Column-level encryption for the protected free-text class
+only** (extended by D-148 from "medical/pastoral notes" to the four fields
+listed there).
 **Reason.** Encrypting everything at column level breaks search and sorting for
 no proportionate benefit when the volume is already encrypted at rest.
-Encrypting the two highest-risk columns (medical/pastoral notes) means a
-database dump or a backup leak does not expose health data about children.
+Encrypting the highest-risk columns means a database dump or a backup leak does
+not expose health data about children.
 **Trade-off.** Those fields become unsearchable and key management becomes a
 real operational duty (rotation, escrow, restore). We accept unsearchability —
-nobody needs to full-text search medical remarks — and OD-7 tracks the key
-management decision.
+nobody needs to full-text search medical remarks. **OD-7 is answered** and
+should be closed against D-112 (`SECRET_KEY_FILE` as the single root), D-114
+(two-level envelope: a random master key wrapped by Argon2id over the printed
+recovery token, per-archive data keys) and D-096 (`v1:<keyId>:<nonce>:<ct>` with
+AAD). Cloud KMS is not needed and would contradict D-064's self-hosted premise.
 
-**Photographs deserve explicit mention.** Swim schools photograph children for
-identification on class lists. A photo of a minor is personal data, arguably
-biometric-adjacent, and is the field most likely to be added casually. It is
-therefore: consent-gated (`consent` module), suppressed in `SHARED_DEVICE`
-sessions only for non-assigned groups, EXIF-stripped, served through an
-authorising route, and deleted on erasure. Finding **F-04**.
+### 4.1 Security-critical settings are invariant or bounded
+
+`13-configuration-and-setup.md` §3.2 puts "password policy, session timeouts,
+rate limits" in a live-editable Authentication/Security settings category. That
+is right for most of them and wrong for a few, and the design never said which
+few. Is "MFA mandatory for the high-risk permission set" one of those settings?
+If yes, the mandate is a checkbox that anyone reaching
+`organization.settings.manage` — or `splashtrack settings:reset` — can clear. If
+no, that was stated nowhere. Finding **F-117**.
+
+**Decision D-150 — Every setting is classified `free`, `bounded` or
+`invariant`, and the classification is part of the setting's schema, not a
+convention.**
+
+| Class | Meaning | Examples |
+|---|---|---|
+| `free` | Edit at will. The overwhelming majority | branding, email templates, feature toggles, lesson defaults |
+| `bounded` | Editable within a hard floor/ceiling enforced by the setting's own schema, which `settings:reset` also respects | session idle ≤ 8 h and absolute ≤ 12 h; rate limits ≥ a stated minimum; audit retention ≥ 12 months (§3.2); any retention ≤ the platform maximum; backup retention ≤ the shortest special-category retention, or a diagnostics warning (D-104) |
+| `invariant` | Not editable in the UI at all, not clearable by `settings:reset`, no override flag | MFA required for the high-risk permission set (§1.2); reach filtering; audit append-only; the `SELF` permission set; the egress deny-list's *existence* (its allow-private-networks flag is `free` and audited) |
+
+Changing a `bounded` setting to its floor, and any attempt to change an
+`invariant`, is a high-severity audit event. `13-configuration-and-setup.md`
+§3.2 already says the settings registry "is the single source of truth for
+validation" — this is where that claim earns its keep, and it is a hand-off to
+that chapter.
+
+**Reason.** A security control that ships as a default is a suggestion. The
+distinction between "we chose 30 minutes" and "you may not choose 30 days" is
+the entire difference between a policy and a control.
+**Trade-off.** An operator with a legitimate reason to exceed a bound must
+change code rather than a setting. For a self-hosted product that is a real
+cost, and it is the correct one for a list this short.
+
+**Photographs deserve explicit mention, and the rule for them is stated here
+and nowhere else.** Swim schools photograph children for identification on class
+lists. A photo of a minor is personal data, arguably biometric-adjacent, and is
+the field most likely to be added casually. It is therefore: consent-gated
+(`consent` module), EXIF-stripped, served through an authorising route, deleted
+on erasure **and on withdrawal of photo consent** (D-152), and — on any surface
+visible to people who are not the child's own instructor — **not rendered by
+default**.
+
+The earlier rule, in the deleted D-009, suppressed "PII beyond first name **+
+photo**". That is backwards: for a child a photograph is far more identifying
+than a surname, which is exactly why it is on the class list. Suppressing the
+name while displaying the face is not minimisation. §1.3 stated one rule and
+this section stated another ("suppressed only for non-assigned groups"), so the
+design disagreed with itself. **The rule:** list views show first name and
+surname initial; **the photograph is revealed per student on an explicit tap,
+and that reveal is audited.** One tap is affordable at the poolside — it is one
+tap the instructor already makes to open the child — and the class list stops
+being a face book of every child in the building for anyone holding the tablet.
+Finding **F-04**.
 
 ---
 
@@ -416,8 +1063,15 @@ software does not make the SplashTrack project a processor.**
   the purposes and means of processing.
 - The **SplashTrack project** publishes software. It processes no personal data
   on anyone's behalf and is therefore **not** a processor by virtue of
-  publishing. No data processing agreement arises between the project and an
-  organisation from use of the software alone.
+  publishing. Stated as fact rather than as a conclusion about anyone's
+  obligations: *the project receives no personal data from your installation and
+  performs no processing on your behalf. Whether any agreement is required
+  between you and any party is your assessment to make with your own advisor.*
+  The earlier phrasing — and `10-findings.md` F-05's "**no DPA is needed**
+  between us" — states a legal conclusion about the reader's obligations, in a
+  document whose own trade-off paragraph says it "states the roles and points to
+  the questions; it does not answer them for anyone". Finding **F-126**; the
+  F-05 sentence is a hand-off to `10-findings.md`.
 - A **third party** may still be a processor **depending on the deployment**: a
   hosting provider, a managed-database vendor, an email relay, or a consultant
   operating the instance for the organisation. Those relationships need their
@@ -454,13 +1108,41 @@ An organisation opts *in* to collecting more, never out.
 
 ### 5.3 Special-category data
 
-The only special-category data SplashTrack collects is **health-related**:
-medical remarks, allergies, physical limitations relevant to water safety.
+The special-category data SplashTrack collects is **health-related**: medical
+remarks, allergies, physical limitations relevant to water safety. It is
+collected in three places, not one — and only the first was ever designed for:
 
-Rules: separate permission pair (D-010); column-encrypted (D-013); every read
-audited; excluded from all exports unless the export explicitly requests it and
-the requester holds `students.medical.read`; hard-deleted (not anonymised) from
-**live storage** at 12 months after enrolment ends; never present in logs, ever.
+1. The `students` medical fields, on a registered child.
+2. Pastoral notes and assessment remarks, which are special category *by
+   inference* and are treated as such (D-148).
+3. **Public inquiry free text**, which nobody specified as special category and
+   which routinely is.
+
+**On inquiries — the one that was invisible.** The `Inquiry` table takes free
+text from an unauthenticated public form. In this domain the first message a
+parent sends is very often *"mijn zoon heeft epilepsie en is bang in het water —
+is dat een probleem voor de lessen?"*. As originally designed, `Inquiry` reach
+was instance-wide, D-013's encryption covered `students` columns only, D-010's
+audit rules covered `students.medical.*` reads only, and the table lives in the
+`pages` module — so the Content Editor, whose role catalogue entry says in bold
+"**No person data**", would plausibly have been given access to health data about
+named children by module layout alone. Finding **F-115**.
+
+Inquiry free text is therefore in the protected class (D-148): encrypted under
+the same envelope, gated by `inquiries.read` and **never** by `pages.manage`,
+audited on read, excluded from the Content Editor bundle explicitly, and
+retained 6 months by default. In addition, and more usefully than any of that:
+the public form carries a plain line asking people **not** to include medical
+information, with the structured *"zijn er medische bijzonderheden?"* field
+appearing only after registration, where it is gated and encrypted. Reducing the
+collection beats protecting the collection.
+
+Rules for the whole class: separate permission pairs (D-010, D-148);
+column-encrypted (D-013); every read audited; excluded from all exports unless
+the export explicitly requests it and the requester holds the gating permission
+— **and if they do not, the export refuses rather than silently omitting**
+(D-153); hard-deleted (not anonymised) from **live storage** at 12 months after
+enrolment ends; never present in logs, ever.
 
 **The 12-month figure is a live-storage promise, not a total one.** A deleted
 row can still be present in an already-taken encrypted backup until that
@@ -519,6 +1201,63 @@ would imply they can be withdrawn, which would break the organisation's own
 records. `legalBasis` exists precisely so the distinction is explicit per
 purpose.
 
+**Decision D-152 — `Consent` records consent and nothing else; withdrawal is
+valid only where `legalBasis = CONSENT`; and every consent purpose declares its
+withdrawal cascade.**
+
+The model as written permits a row with `legalBasis = CONTRACT` **and** a
+populated `withdrawnAt` — which the paragraph above spends its length arguing
+must not happen. The UI and the retention job would then either treat withdrawal
+of a contractual basis as if it were withdrawal of consent, or ignore it; both
+are wrong and neither is detectable. Finding **F-120**.
+
+- `withdrawnAt` / `withdrawnByPersonId` are valid **only** where
+  `legalBasis = CONSENT`. Enforced as a schema constraint, not a UI rule.
+- **Objection** to processing under legitimate interest (Art. 21) is a
+  different event with a different outcome — it is assessed, and may be
+  refused — and is recorded as its own `ProcessingObjection`, never as a
+  withdrawal.
+- The **register of lawful bases per purpose and data class already exists**:
+  it is the `lawfulBasis` column of `01-domain-model.md` §5 (D-110), which feeds
+  `RetentionPolicy.lawfulBasis`. So the reviewer's proposed third table — a
+  separate `ProcessingBasis` register — is **not adopted**: it would be a second
+  home for a fact already recorded, and D-134 exists to stop exactly that. What
+  is adopted is the constraint above, which is the part that was actually
+  missing.
+- **Every consent purpose declares its withdrawal cascade**, in the same place
+  the purpose is defined, because withdrawal with no stated consequence is
+  theatre. Photo consent withdrawn ⇒ the photograph and every published
+  derivative are deleted, audited, and the class list falls back to initials.
+  Publication-of-results consent withdrawn ⇒ the published item is unpublished.
+  Marketing consent withdrawn ⇒ suppression, not deletion of the person. F-04
+  said photos are deleted "on erasure"; withdrawal of photo consent is the far
+  more common event and had no consequence at all.
+
+**Decision D-151 — Guardian authority expires by operation of law at the age of
+digital consent, and the system computes that rather than waiting for someone to
+set a `validTo`.**
+
+A swim school's eight-year-olds become sixteen-year-olds well inside the
+retention window. Parental authority to consent lapses on a birthday, not on an
+administrator remembering. As written, the `ON_BEHALF_OF` consent record stays
+apparently valid indefinitely. Finding **F-119**.
+
+- Authority expiry is **derived** from `Person.dateOfBirth` — a column the model
+  already holds — against a configurable age-of-consent setting (NL: 16), and is
+  evaluated at read time like every other validity in this chapter (D-144).
+- Consents whose authority has lapsed are marked **requiring re-consent**, not
+  silently invalid and not silently valid, and appear in the privacy admin
+  queue with the child's own contact route.
+- The same computation flags the adjacent lifecycle change: a member who reaches
+  the age of consent may exercise their own rights, so `SELF` reach and the
+  guardian's practical access diverge on that date.
+
+**Reason.** It is a computed condition over one column and a date — the cheapest
+control in this section — and it is the single most predictable consent failure
+in this domain.
+**Trade-off.** The organisation acquires a queue of re-consent tasks it did not
+have on paper. It had the obligation on paper; it simply could not see it.
+
 ### 5.5 Data subject rights
 
 | Right | Mechanism | Who can run it |
@@ -535,19 +1274,56 @@ sharp edges are (its `OrganizationBranding.updatedByPersonId` comment
 documents a real Article 17 rollback incident). SplashTrack extends the same
 transaction with the domain tables rather than inventing a parallel path.
 
-**Access/inzage is staged, not fully specified — Finding F-88.** The export
-above discloses more than the requesting organisation may realise: guardian
-details, instructor names on sign-offs, staff-authored notes and audit actor
-ids are other people's personal data with no preview or redaction pass, while
-erasure next door requires one. Separately, medical data is included only when
-the *requester* (the staff member running the export) holds
-`students.medical.read` — but the entitled party in an Article 15 request is
-the **data subject**, so a member administrator without that permission
-produces an export that looks complete and is silently missing the health
-data. **Required before this ships:** reuse the erasure preview pattern for
-export, including what is disclosed about third parties, and make the export
-**fail loudly** (refuse, naming the missing permission) rather than silently
-omitting a category. Not designed further here.
+**Access/inzage — the specification F-88 staged for this chapter.** The export
+discloses more than the requesting organisation may realise: guardian details,
+instructor names on sign-offs, staff-authored notes and audit actor ids are
+other people's personal data, with no preview or redaction pass, while erasure
+next door requires one. Separately, medical data is included only when the
+*requester* — the staff member running the export — holds
+`students.medical.read`, but the entitled party in an Article 15 request is the
+**data subject**, so a member administrator without that permission produces an
+export that looks complete, is delivered as the organisation's Article 15
+response, and is silently missing the health data. The mechanism converts a
+permission boundary into a compliance failure with no signal. Finding **F-121**.
+
+**Decision D-153 — The Article 15 export refuses rather than omits, redacts
+third parties by default, and ships a generated annex.** Four parts:
+
+1. **Fail loudly.** If any data class in scope is unreadable by the requester,
+   the export **refuses to generate**, naming the missing permission and the
+   number of withheld records: *"This export omits N special-category records
+   and cannot be used as an Article 15 response. It requires
+   `students.medical.read`."* There is no "export anyway" button. Fulfilling an
+   Article 15 request therefore requires an `ORGANIZATION`-scoped principal
+   holding both `privacy.export` and the gating permissions — which is the
+   honest description of who can answer one.
+2. **Third-party redaction by default.** Other people's personal data is
+   redacted unless it is *inseparable from the subject's own record*, and the
+   distinction is made per relation, not per field: a guardian relationship is
+   the subject's data *and* the guardian's, and is included with the guardian's
+   contact details removed; an instructor's name on a sign-off is included
+   (a subject is entitled to know who assessed them); a staff-authored note
+   about the subject is included, with any named third party redacted; audit
+   actor ids are rendered as a role and a date, not a name.
+3. **The erasure preview pattern, reused.** Before anything is generated, the
+   operator sees what will be disclosed, split into "about the subject" and
+   "**about other people**". `04-ux.md` §4.6 already carries this requirement
+   for the screen; this is the rule it implements.
+4. **A generated annex.** Article 15 requires stating the **recipients**, the
+   **retention period** and the **source** of the data, and the export was
+   specified as records only. All three are derivable: retention from the
+   `RetentionPolicy` table (D-065/D-110), source from the record's own
+   provenance (self-registration, staff entry, import), recipients from the
+   organisation's configured processors plus a standing statement that the
+   project is not one (D-064). The annex is generated, not typed, so it cannot
+   drift from the policy table it describes.
+
+**Reason.** An export that quietly omits the most sensitive category is worse
+than no export: the organisation believes it has complied and the subject
+believes they have seen everything.
+**Trade-off.** A member administrator can no longer fulfil a subject access
+request alone. That is not a regression — they could not fulfil one correctly
+before either; the difference is that now they find out.
 
 **Decision D-014 — Erasure is a single transaction with an explicit table
 registry.**
@@ -557,6 +1333,49 @@ forgets to register a new table. A central registry with a test asserting that
 merge.
 **Trade-off.** The registry is a shared file that every module edits — mild
 coupling, deliberately accepted for a compliance-critical path.
+(The registry and its bidirectional test already exist in the template —
+`person-reference-classification.ts` + `person-reference-sync.test.ts`, D-135 —
+and are adopted rather than rebuilt.)
+
+**Decision D-154 — `AuditEvent` is an *enumerated, justified exemption* in the
+erasure registry, not an absence from it.**
+
+D-014's registry must contain **every** table referencing `Person`, with a test
+asserting completeness. `AuditEvent` records an actor person id and a target id;
+it references `Person`. It is simultaneously declared append-only, never updated
+and never deleted by application code (`07-operations.md` §1.2). Both cannot
+hold. Either erasure nullifies actor and target ids — destroying the
+accountability record the product thesis rests on, and mutating an append-only
+table — or `AuditEvent` is silently exempted from the registry whose
+completeness test is the entire mechanism preventing forgotten tables. As
+specified, the test would **fail on a correct implementation**. Finding
+**F-122**.
+
+The registry therefore has two kinds of entry, and every table has one:
+
+| Entry | Behaviour on erasure |
+|---|---|
+| `erase` | The default: anonymise or delete per D-065 |
+| `exempt(ground, until)` | Retained, with a **named lawful ground recorded in the registry file itself** and an expiry |
+
+`AuditEvent` is `exempt`, on the ground of the controller's Article 5(2)
+accountability obligation — supported, where a specific dispute exists, by
+Art. 17(3)(e) (legal claims). The exemption is **visible in the registry and
+enumerated in the erasure report given to the data subject**, rather than being
+an absence nobody can see. The completeness test asserts every `Person`-
+referencing table has *an* entry, of either kind, which is a check that can pass
+on a correct implementation.
+
+The same shape already applies to `Charge` and `Payment` (D-092, financial
+retention ground, pseudonymised rather than deleted), so this generalises an
+exemption the design had already accepted as a special case.
+
+**Reason.** An exemption that is invisible is indistinguishable from an
+omission, and the difference matters precisely when someone is auditing whether
+the erasure was complete.
+**Trade-off.** The erasure report becomes longer and less satisfying to read:
+the subject is told what was kept and why. That is the requirement, not a
+concession.
 
 ### 5.6 Retention and erasure — policy-driven
 
@@ -615,6 +1434,59 @@ rather than inherit ours; the setup wizard and documentation therefore ship
 sensible defaults **as proposals**, clearly marked as requiring the
 organisation's own confirmation. Finding **F-27**.
 
+**Decision D-155 — `ANONYMISE` has one mechanical definition, and a data class
+that cannot meet it may only be `DELETE` or `REVIEW`.**
+
+This section spends a page arguing that pseudonymisation is not anonymisation.
+The retention table then prescribed `ANONYMISE` for attendance — strip
+`studentProfileId`, keep `sessionId` and timestamps — while `GroupMembership` is
+time-bounded and retained and session dates are known. A group holds around
+twelve children: re-identification of a large share of the stripped rows is a
+join and a counting argument. The design had re-created the exact error it had
+just refuted, one document away, and would then have told a parent their child's
+attendance was "anonymised". Finding **F-123**.
+
+**The definition, and the only one this design uses:** `ANONYMISE` means
+**destroying the row-level record and retaining only a pre-computed aggregate,
+at a granularity that cannot be reduced to an individual** — no identifier, no
+foreign key, no timestamp finer than the aggregation window, and suppression of
+any cell below a small-count threshold. An aggregate is kept because it was
+**computed and stored**, never because a row was stripped. If a class cannot
+meet that bar, its only honest options are `DELETE` or `REVIEW`.
+
+This has already been applied where it bit hardest: attendance is now `DELETE`
+(D-111, `01-domain-model.md` §5.3), and §5.2's reasoning about certificate
+registers — a certificate number that can be looked up is, by design,
+re-identifiable — is the same test reached independently. The rule is stated
+here so the next data class is not decided by intuition.
+
+**On `REVIEW`, and what the shipped default actually does.** Seven of the
+retention classes default to `onExpiry: REVIEW`, and `REVIEW` means *nothing
+happens automatically*. A volunteer administrator who has never opened the
+privacy screen performs no reviews, so the shipped default behaviour of a
+privacy-by-default product is: retain every person, every profile, every diploma
+and every consent record indefinitely, behind a queue nobody reads. Two things
+are true at once and both belong in the record:
+
+- The **honest part**: v1 does not ship the policy engine (D-120 moved it out;
+  R-25 ships retention constants, one scheduled job and the D-014 erasure
+  transaction). So `REVIEW` in v1 is a documented "we do not delete this
+  automatically", not a queue. Saying so is better than shipping a queue nobody
+  opens and calling it a mechanic.
+- The **required part**: where a `lawfulBasis` is unresolved it prints as
+  *unresolved* (D-110), and the diagnostics page and the privacy screen name the
+  count of unresolved bases and overdue reviews. Visible and slightly annoying
+  beats silent.
+
+**One reviewer proposal is not adopted:** blocking completion of the setup
+wizard until every data class's lawful basis is confirmed. A volunteer
+configuring a swim school on a Sunday evening will click through thirteen legal
+questions to reach the thing they came for, and the design would then have
+*recorded confirmations* that are worth less than the honest blanks it started
+with — false comfort of exactly the kind D-063 and D-065 exist to prevent. The
+`unresolved` marker plus a persistent, countable warning gets the visibility
+without manufacturing the consent.
+
 ### 5.7 Logging without personal data
 
 Operational logs (pino) carry: request id, org id, person id (**opaque id
@@ -672,7 +1544,10 @@ different retention and different readers.
 | Internet → App | No trust in any client input | Validation at every entry point |
 | App → Data (write / single read) | Every protected operation calls `requirePermission(perm, resourceRef)` | Lint rule requiring the guard; code review |
 | App → Data (lists) | Every list query is constrained by `resolveReach()` | Reach is a required repository argument (D-031) |
-| Scope → wider scope | A `GROUP`-scoped role cannot reach the unit; a `UNIT`-scoped role cannot escape its subtree | Scope-escape tests per module (D-032) |
+| Scope → wider scope | A `GROUP`-scoped role cannot reach the unit; a `UNIT`-scoped role cannot reach another unit (`UNIT` is flat, D-121); a `SESSION`-scoped role cannot reach outside its roster or its window | Scope-escape tests per module (D-032); `Reach` constructible only by `resolveReach` (D-147) |
+| Grant → wider grant | No actor may grant a permission they do not hold, at a scope wider than their own, or for a window longer than their own | Enforced in the grant service, not the UI (D-139); scope-escape test cases per module |
+| Ordinary → protected free text | Medical, pastoral, assessment and inquiry free text: separate permission, audited **read**, encrypted with AAD | D-010, D-013, D-148, D-096 |
+| App → an administrator-named destination | Private ranges denied, address pinned after resolution, no redirects, no response detail returned | One shared egress-controlled client (D-142) |
 | Ordinary → special-category | Separate permission, audited, encrypted | D-010, D-013 |
 | DEV → UAT → PROD | Artifacts promote; data never does | CI/CD design (`06-delivery.md`) |
 | Lucky → PROD | **No path exists.** Not "restricted" — absent | No credentials issued (`06-delivery.md` §4) |
@@ -683,14 +1558,28 @@ different retention and different readers.
 
 | Scenario | Mitigation |
 |---|---|
-| Instructor tablet stolen from pool deck | `SHARED_DEVICE` mode, short idle timeout, no export, remote session revocation |
-| **Instructor browses students they don't teach** | `GROUP`-scoped grants; reach-filtered lists; scope-escape tests. **This is now the primary internal threat** |
-| Location manager reads another location's records | `UNIT` scope walks down the tree only, never sideways or up |
-| Org admin exports the whole member base and leaves | Export requires step-up, is rate-limited, raises a high-severity audit event |
+| Instructor tablet stolen from pool deck | Short idle timeout by role; the Instructor role holds no export, bulk or admin permission at any scope (D-143); session revocation from the breach-response inventory (D-128) |
+| **Instructor browses students they don't teach** | `GROUP`-scoped grants; reach-filtered lists; **per-relation coverage evaluated live** (D-145); scope-escape tests on the fields returned. **This is now the primary internal threat** |
+| **Instructor retains access to a child they taught two years ago** | Coverage requires an *active* membership and an *active* instructor assignment at query time (D-145) — the append-only membership history grants nothing |
+| Location manager reads another location's records | `UNIT` is **flat** (D-121) — it covers that unit only, never a descendant, never sideways, never up. A student who crosses units is governed by their **home** unit for their profile (D-145) |
+| **Location manager grants themselves an organisation-scoped role** | No amplification, scope confinement, window confinement — enforced in the grant service (D-139), tested per module. `roles.assign` exists and is in the MFA-compelling high-risk set |
+| **Settings administrator adds their own identity provider and logs in as instance administrator** | `identity.providers.manage` is separate and high-risk; linking is `(issuer, sub)` only, never email; JIT creates nothing; `ORGANIZATION`-scoped accounts are opt-in for external authentication (D-140). The registry is also out of v1 |
+| Org admin exports the whole member base and leaves | Export requires step-up, is rate-limited, raises a high-severity audit event. **Step-up is not a control against this actor** (§1.2) — the audit event, the notification and the grant expiry are |
+| **Administrator deletes the audit rows recording what they did**, or lowers audit retention to one day | Hash-chained events with a verification pass surfaced on diagnostics; `INSERT`-only database role on `AuditEvent`; audit retention is a `bounded` setting with a 12-month floor (D-149, D-150) |
+| **Settings page used to scan the operator's internal network**, or to reach cloud instance metadata | One egress-controlled outbound client: private ranges denied by default, resolve-and-pin against DNS rebinding, no redirects, no response detail returned (D-142) |
+| **Content editor reads health data about a named child** via the website inquiry inbox | `inquiries.read` is its own permission, never implied by `pages.manage`; inquiry free text is encrypted and audited; the public form asks people not to send medical detail (D-148, §5.3) |
+| **A populated database is put back into unauthenticated setup mode** by deleting one row | Setup mode requires zero `UserAccount`, `Person` and `RoleAssignment` rows as well as no bootstrap record; data without the record is `TAMPERED` — refuse to serve (D-099) |
 | Parent guesses another child's record via ID | Opaque non-sequential IDs; scope check on every fetch; no enumeration |
 | Public site used to enumerate members | Public surface never queries person tables (`03-deployment-model.md` §5.1) |
 | Malicious/compromised dependency | Lockfile, Dependabot, audit gate, no post-install scripts from new deps without review |
 | Compromised Lucky / prompt injection via issue text | No PROD path, no real data, no secret access; all output arrives as a reviewed PR (`06-delivery.md` §4.3) |
-| Backup exfiltration | Backups encrypted per instance; special-category columns separately encrypted |
+| Backup exfiltration | Backups encrypted per instance under a per-archive data key (D-114); protected free-text columns separately encrypted; v1 writes to a mounted volume only, with no remote destination to redirect (D-103) |
+| **Restoring an archive someone else supplied** | A `.stbak` from any source other than the operator's own instance is untrusted input; the export is a structured logical export the application reads itself, and the database role is not a superuser (D-095, D-116) |
 | **Compromise of one customer's instance** | Blast radius is one organisation. No shared credentials, no control plane, no lateral path (D-029) |
-| **Operator with fleet deploy rights** | The genuinely dangerous principal now. Per-instance credentials in protected environments, required reviewers, all deploys audited — finding **F-14** |
+
+The table previously ended with a row for an **"operator with fleet deploy
+rights"**, called "the genuinely dangerous principal now" and pointing at F-14.
+That row is deleted: the fleet model is gone (`03-deployment-model.md` §1.1) and
+F-14 is closed, so it described a principal that does not exist — in a table an
+implementer reads as a to-do list. `07-operations.md` FM-6 carries the same
+stale assumption and is flagged for that chapter.
