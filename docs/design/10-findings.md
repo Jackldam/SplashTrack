@@ -1307,3 +1307,24 @@ segments", the genesis constant decided now as
 F-133's three-document hand-off. Phase 1 in `06-delivery.md` §5. The limits are
 stated rather than implied: the checkpoint MAC defeats an attacker with database
 write access, not one with host access and `SECRET_KEY`.
+
+### F-138 — v1 committed to a hand-written export engine whose only guard had been cut, while the alternative was still fully specified
+**Severity: critical (blocker).** D-095 chose a logical export over `pg_dump`
+and justified the risk with one sentence: *"it must be kept in step with the
+schema — which is exactly what the restore matrix (§4.3.1) tests on every pull
+request anyway."* That matrix is D-047, which `00-overview.md` §3.5.1 and
+`06-delivery.md` §2.1 move out of v1. The justification was removed after the
+decision was made and the decision was not revisited. At the same time
+`14-…` §4.2.1 specified the `pg_dump` restore path in full behind an *"if v1
+nonetheless"* — so two mechanisms differing by weeks of work and by which threat
+model applies were both specified to implementation depth, and Phase 1 carried
+them as a single bullet.
+**Response.** D-169. The logical export is the only mechanism, decided on format
+permanence rather than on threat model: the archive format is written into every
+backup from the first one, and D-048/D-049 oblige every later version to keep
+reading it, so shipping dumps now means owning a dump reader forever in the
+version where untrusted archives actually arrive. The dump path is reduced to
+the terms under which it could return. The removed guard is replaced by a
+round-trip test inside the existing integration-test job, asserting row counts,
+exact primary-key preservation (the D-167 AAD binds the primary key), encrypted
+columns decrypting, and the audit chain verifying.

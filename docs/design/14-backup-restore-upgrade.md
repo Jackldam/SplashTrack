@@ -264,9 +264,57 @@ expressed, not the one where it must be filtered. Filtering an attacker-supplied
 dump (§4.2) is achievable but is a permanent allow-list to maintain against a
 format designed to be expressive.
 **Trade-off.** We own the export/import code, including every column type and
-every future schema change. If v1 nonetheless ships `pg_dump`, §4.2's
-restrictions are **mandatory, not advisory**, and `postgresql-client` must
-actually be in the image — it is not today (`03-…` §1.2).
+every future schema change.
+
+#### 3.1.1 One mechanism, and the guard that keeps it honest
+
+D-095's own risk paragraph named exactly one control — *"it must be kept in step
+with the schema, which is exactly what the restore matrix (§4.3.1) tests on every
+pull request anyway"* — and that matrix (D-047) was subsequently moved out of v1
+(`00-overview.md` §3.5.1, `06-delivery.md` §2.1). The load was removed from under
+the load-bearing sentence. Meanwhile §4.2.1 continued to specify the `pg_dump`
+path to implementation depth behind an *"if v1 nonetheless"*, so two mechanisms
+that differ by weeks of work and by which threat model applies were both
+specified, and Phase 1 carried them as one bullet. Finding **F-138**.
+
+**Decision D-169 — D-095 stands: the logical export is the v1 mechanism and the
+only one. `pg_dump`/`pg_restore` is out of scope, not an alternative. The
+schema-drift guard D-095 relied on is replaced by a round-trip test that needs
+no prior release to exist.**
+
+**Why the logical export and not the cheaper option.** The honest argument for
+`pg_dump` is that D-095's threat — a stranger supplying a "known-good starter
+backup" — needs a community of strangers, and D-162 makes v1 exactly one
+deployment operated by its author. That argument fails on the thing this pass
+exists to protect. **The archive format is written into every backup file from
+the first one**, and D-048/D-049 oblige every later version to keep reading what
+earlier versions wrote. Shipping `pg_dump` archives in v1 and switching to a
+logical export in v2 means owning a `pg_dump` *reader* permanently, in the
+version where untrusted archives actually arrive — which is strictly worse than
+writing the logical export now. This is a format decision, and format decisions
+are the retrofit-hostile class D-165 refuses to defer.
+
+Two secondary reasons, both verified: `postgresql-client` is **not** in the
+`Dockerfile` today, so the "cheap" option is not free; and `pg_dump`'s output
+format is tied to a server version the operator controls, in a product whose
+reference compose the operator may repoint at any managed PostgreSQL.
+
+**The guard.** A **round-trip test**, part of the export/import work item rather
+than a new CI gate: export a seeded database, import it into an empty one, and
+assert row counts per table, **primary keys preserved exactly** (mandatory — the
+D-096/D-167 AAD binds the primary key, so an importer that renumbers rows
+produces a database whose every encrypted value fails to authenticate), every
+encrypted column decrypting to known plaintext, and the audit chain verifying
+against its checkpoints (D-168). It runs in the existing integration-test job,
+which is already a blocking check, and it is the subset of D-047 that protects
+what D-095 is worried about without needing a prior release to exist.
+
+**Trade-off.** The export/import engine is real work — every Prisma column type,
+and a per-release obligation to keep it in step — and Phase 1's *"backup,
+restore and the recovery token"* bullet is therefore a larger item than the
+`pg_dump` reading of it. That is a scope fact this decision makes visible rather
+than one it creates; sizing it is `06-delivery.md`'s business, not this
+chapter's.
 
 **Decision D-102 — The archive uses a framed AEAD construction with per-chunk
 sequence numbers and an explicit final-chunk marker; the manifest is
@@ -434,23 +482,20 @@ This is a non-negotiable property of what we ship, stated alongside "runs as
 non-root" (`03-…` §1.2). It bounds the blast radius of *every* SQL-injection
 class in the product, not only this one.
 
-**If v1 nonetheless replays a dump** rather than adopting D-095's logical export,
-these restrictions are mandatory:
+**The dump-replay path is not built** (D-169). This chapter previously specified
+it in full behind an *"if v1 nonetheless"*, which left two mechanisms specified
+to implementation depth and one bullet of Phase 1 covering either. The restore
+reads a logical export the application wrote and validates every value against
+the schema it already owns; there is no SQL to filter, because there is no SQL.
 
-- `pg_restore --no-owner --no-acl --no-comments`, custom format only, into a
-  **freshly created empty schema**.
-- An **allow-list of object types**: tables, indexes, constraints, sequences.
-  Hard rejection of functions, triggers, extensions, event triggers, and
-  `COPY … FROM PROGRAM`. Anything outside the allow-list **aborts the restore**
-  — it is not skipped with a warning, because a partial restore of a file we
-  have just decided is hostile is not a recovery.
-- The allow-list is enforced by inspecting the archive's table of contents
-  before execution, not by grepping SQL text.
-
-**Trade-off.** An operator restoring a legitimately unusual database — one
-carrying an extension they added by hand — is refused and must add it
-deliberately after the restore. Correct: the alternative is an allow-list with a
-hole in it.
+Recorded for the day someone proposes it again — these are the **terms**, not a
+specification: custom format only, `pg_restore --no-owner --no-acl
+--no-comments` into a freshly created empty schema; an allow-list of object
+types (tables, indexes, constraints, sequences) enforced by inspecting the
+archive's table of contents rather than by grepping SQL, with anything outside
+it aborting rather than being skipped; and `postgresql-client` actually present
+in the image, which it is not today. Reintroducing the path means meeting all of
+them and superseding D-169.
 
 #### 4.2.2 A restore that cannot decrypt refuses (D-166)
 

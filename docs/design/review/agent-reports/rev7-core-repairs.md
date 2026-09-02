@@ -142,3 +142,37 @@ number from `07-…` §1 and `01-…` §5.
 administrator with host access can forge a checkpoint. The decision says so, and
 also says what S-7 asked for: the `INSERT`-only role bounds an external SQL
 primitive, not the compromised administrator D-149 is written against.
+
+---
+
+## Defect 4 — B-13: two export mechanisms, one bullet · **closed** · D-169, F-138
+
+**What I decided, and on what grounds.** D-095 stands. I did *not* decide it on
+the reviewer's framing (which mechanism is safer against a hostile archive),
+because under D-162 that argument now runs the other way — one deployment
+operated by its author has no community of strangers supplying starter backups.
+I decided it on **format permanence**: the archive format is written into every
+backup file from the first one, D-048/D-049 oblige every later release to keep
+reading what earlier ones wrote, and shipping `pg_dump` archives in v1 means
+owning a dump reader permanently in the version where untrusted archives
+actually do arrive. Two verified secondary facts support it —
+`postgresql-client` is not in the `Dockerfile`, and dump format is tied to a
+server version the operator controls.
+
+The loser is deleted from §4.2.1 rather than kept behind an "if": what remains
+is four lines of *terms* for anyone who proposes it again, explicitly not a
+specification.
+
+**On the guard.** The round-trip test is written into D-169 as part of the
+export/import work item and it runs inside the **existing** integration-test
+blocking check. I deliberately did not add a row to `06-delivery.md` §2.1's
+table — adding a gate is scope, and that belongs to the scope pass. The
+assertion set includes one the reviewer did not name and which is not optional:
+**primary keys preserved exactly**, because D-096/D-167 bind the primary key
+into the AAD, so an importer that renumbers rows yields a database where every
+encrypted value fails to authenticate.
+
+**Flagged, not changed.** D-169 makes Phase 1's "backup, restore and the
+recovery token" bullet visibly larger than the `pg_dump` reading of it. That is
+a sizing consequence for the scope pass; I stated it in the decision and touched
+no estimate.
