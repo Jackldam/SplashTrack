@@ -1091,3 +1091,82 @@ the 12-month floor applying only to classes with no longer-lived subject. If
 that is rejected on volume grounds, D-149's own fallback — stating the limit in
 the privacy screen — must be made a shipped requirement rather than an
 alternative, and `07-…` §1's `≥ 24 months` must point at whichever answer wins.
+
+---
+
+### S-19 — F-126 corrected one legal conclusion about the reader's obligations and left the symmetric one standing in D-128
+
+**Severity: low** · **CONFIRMED**
+
+`02-…` §5.1 (D-064/F-126) sets the standard the design holds itself to:
+
+> The earlier phrasing — and `10-findings.md` F-05's "**no DPA is needed**
+> between us" — states a legal conclusion about the reader's obligations, in a
+> document whose own trade-off paragraph says it "states the roles and points to
+> the questions; it does not answer them for anyone".
+
+`07-…` §1.4 (D-128), added in the same wave:
+
+> The controller must be able to assess and, where required, notify within
+> 72 hours (Article 33) and notify the data subjects themselves for high-risk
+> breaches (Article 34) — and this is **health data about children**, so the
+> Article 34 high-risk threshold is met by default **rather than argued about**.
+
+**Why it is the same class.** "Whether Article 34 applies to your breach" is a
+determination the controller makes on the facts of that breach — the assessment
+Article 34(1) requires, and which 34(3) can displace entirely (encryption
+rendering the data unintelligible is 34(3)(a), and this product encrypts the
+protected class and the archives, so the exemption is not hypothetical here).
+Telling a swim school it is *met by default rather than argued about* answers,
+in the project's voice, the exact question F-126 says the project does not
+answer. It is also the more consequential direction of the two: F-05's error
+under-stated an obligation the reader might then miss; this one instructs a
+volunteer to notify every parent without the assessment the Article requires,
+which is itself a decision with consequences.
+
+The design's own instinct is already right one paragraph away — the incident
+checklist is framed as *"the deadlines that apply to you", not as advice on
+whether they apply*. The sentence above is that advice.
+
+**Recommended fix (do not apply here).** Restate as a design premise rather than
+a legal conclusion, in the same shape D-064 now uses: *"This installation holds
+health data about children. We have therefore designed for the case where
+Article 34 notification is required, so that the capability exists if your
+assessment concludes it is. Whether it is required for a given breach is your
+assessment, and Article 34(3) may bear on it."* The engineering consequence —
+build the capability — is unchanged, which is the point: the capability never
+needed the legal conclusion to justify it.
+
+---
+
+## FIXES VERIFIED SOUND
+
+One line per decision. *Closes* = the original finding cannot be re-run against
+the chapter text. *Partially closes* = the mechanism is real and something
+load-bearing is still open. *Restates* = the shape changed and the attack does
+not.
+
+- **D-139 (grant amplification)** — **Partially closes.** `roles.*`/`accessgroups.*` exist, the three invariants are normative, in the grant service, in the abuse table and in D-032's test set; but invariant 2 rests on a scope ordering no chapter defines (**S-4**) and invariant 3 is vacuous for the null-window granters who issue the grants that matter (**S-5**).
+- **D-140 (IdP as takeover primitive)** — **Closes.** Every limb of A-2 is answered structurally: separate high-risk permission, `(issuer, sub)`-only linking, email barred as a key, the JIT-role field deleted rather than defaulted, endpoint change clears the secret, `ORGANIZATION` accounts opt-in per account, discovery through the egress client. Weakened only by its notification limb (**S-6**).
+- **D-141 (lockout/break-glass invariant)** — **Partially closes.** Chapter 02's reasoning and the database-level invariant are correct and enforceable; the deleted claim survives verbatim in `13-…` §7's "safety rails", which is the section an implementer of the settings layer reads (**S-3**).
+- **D-142 (SSRF on admin destinations)** — **Closes for the four named surfaces.** Deny-by-default ranges, resolve-and-pin, no redirects, no distinguishing error — a complete answer to B-17. Production SMTP delivery sits outside the client and is the one of these that runs unattended (**S-6**).
+- **D-143 (`SHARED_DEVICE`)** — **Closes.** The self-declaration defect is genuinely removed: the control is now the Instructor role's permission set, which cannot be un-marked. Its second limb is now bounded by D-158, which reintroduces role-name binding and an 8-hour ceiling (**S-10**).
+- **D-144 (grant validity)** — **Restates.** The tuple gained `validFrom`/`validUntil`/`grantedByPersonId` and expiry moved into the guard, both correct; nothing bounds the value, so B-7's examiner still holds `exams.results.record` on that session indefinitely (**S-5**).
+- **D-145 (`GROUP` coverage)** — **Closes.** Live evaluation of membership *and* instructor assignment, per-relation coverage, the home-unit rule for cross-unit students, and scope-escape tests asserting on fields returned rather than rows reachable. The best-executed fix in the set.
+- **D-146 (`SELF`)** — **Closes.** The implicit scope match is gone, the set is closed and enumerated, and additions are a reviewed security change. Its protection is filed in the wrong mechanism (**S-11**), which does not reopen the original finding.
+- **D-147 (`Reach`)** — **Closes.** Branded opaque union, one variant per scope type plus `NONE`/`UNION`, `all: boolean` removed, non-exhaustive repositories fail to compile, and the constructibility assertion is carried into `06-…` §2.1. It also correctly rejects the reviewer's "default-open" framing while keeping the two real defects.
+- **D-148 (protected free-text class)** — **Closes on the data.** Protection now tracks the class rather than the permission pair, the two pairs are kept for the right reason, and the capture-point control is the strongest thing in §2.5. It introduces an unpriced read-audit cost on the poolside path (**S-9**).
+- **D-149 (audit integrity)** — **Partially closes.** Chain verification surfaced to a human and the `INSERT`-only role are both real; the chain cannot survive the retention deletion the same decision mandates (**S-7**), the deleting path lives in the same process (**S-7**), and the retention floor it sets is explicitly unreconciled (**S-18**).
+- **D-150 (bounded/invariant settings)** — **Partially closes.** The classification is the right mechanism and the MFA mandate is genuinely protected by it; three of the four `invariant` entries name objects the settings registry cannot reach (**S-11**), the bounded ceilings disagree across three chapters (**S-10**), and one "bound" carries a documented-reason escape hatch that makes it a warning (D-104 vs D-150).
+- **D-151 (guardian authority expiry)** — **Closes as a rule.** Derivation from `dateOfBirth`, read-time evaluation, re-consent queue — the cheapest control in the chapter, correctly placed. It depends on a field the importer will fill from an unknown file with no stated integrity rule, and its output has no v1 exerciser (**S-16**).
+- **D-152 (consent vs objection)** — **Closes.** The constraint is schema-level, `ProcessingObjection` is separated with the right semantics, withdrawal cascades are declared where each purpose is defined, and the reviewer's third register table is refused for the correct reason (D-134, not convenience).
+- **D-153 (Article 15 export)** — **Closes the omission.** Fail-loud, per-relation third-party redaction, the erasure preview reused, and a generated annex that cannot drift from the policy table. It manufactures a standing account holding every protected-class permission at organisation scope (**S-14**).
+- **D-154 (erasure vs audit)** — **Closes for `AuditEvent`.** The `erase`/`exempt(ground, until)` split makes the completeness test pass on a correct implementation and makes the exemption visible in the erasure report, which is exactly what B-12 asked for. The two kinds cannot express D-092's pseudonymised financial rows, which the decision claims they already do (**S-12**).
+- **D-155 (`ANONYMISE`)** — **Closes.** A mechanical definition, applied where it bit hardest, with `DELETE`/`REVIEW` as the only honest alternatives and the shipped-default dishonesty (`REVIEW` does nothing in v1) stated rather than papered over. Undermined only by `PSEUDONYMISE` surviving as a fourth `onExpiry` value in `01-…` §5 (**S-12**).
+- **D-156 (diagnostics)** — **Closes the permission question.** `diagnostics.read`, `ORGANIZATION`-scoped, authenticated always, with pasteability correctly identified as an independent property. That property was not then re-examined against what the page now renders (**S-15**).
+
+**And the three added today, which the brief asked about specifically:**
+
+- **D-157 (importer)** — the *ordering* discipline is right and unarguable, and the consent rule ("writes zero `Consent` rows") is the best line in it. As an untrusted-input surface it is unspecified: no permission, no execution context, no parser limits, and its output feeds two unsanitised CSV exports (**S-13**).
+- **D-158 (session timeouts)** — correctly `bounded` rather than `free`, and correctly set by someone other than the party restricted, which is what D-143 needed. It then binds a security control to role names in direct contradiction of D-130, disagrees with D-150 on the absolute ceiling, and needs a registry dimension that does not exist (**S-10**).
+- **D-161 (guardian portal to v2)** — the removal reasoning holds and D-147 does make re-adding `RELATED` a compile error everywhere it must be handled. The foreclosure it warns about has already happened once, in the direction it did not anticipate: `02-…` §5.5 states a self-service withdrawal right whose only named exercisers have no v1 account (**S-16**).
