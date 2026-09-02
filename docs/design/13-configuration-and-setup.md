@@ -160,8 +160,18 @@ and prints the command that generates one:
 docker compose run --rm app splashtrack secret:init --out ./secrets/secret_key
 ```
 
-**Decision D-113 — Key material is never inside a backup archive. The backup
-writer excludes the key-material path explicitly, and CI asserts it.**
+**Decision D-113 (amended by D-166) — Key material is never inside a backup
+archive **in the clear**. The backup writer excludes the key-material path
+explicitly, and CI asserts it.**
+
+*The amendment, stated here because this is D-113's home:* `14-…` §2.3 (D-166)
+puts a **token-wrapped** key record in the archive header, carrying the backup
+master key and `SECRET_KEY`. That is ciphertext under a KEK the archive does not
+contain, so every property below is unchanged — the exclusion of the `DATA_DIR`
+key-material path, the CI grep for the raw key bytes and the key file's name,
+and "the file alone is inert". What D-166 changes is that the file *plus the
+token* now recovers the instance, which is what D-040 always claimed and could
+not do.
 **Reason.** `14-…` §3.1 captures the uploaded assets from `DATA_DIR`. If key
 material also lived under `DATA_DIR` and assets were captured as a directory
 tree, **the archive would contain its own decryption key** — and every claim
@@ -393,11 +403,20 @@ crypto code that can never be deleted. Both are the point.
 Consequences the documentation must state plainly:
 
 - Losing `SECRET_KEY` means every encrypted value becomes unreadable and every
-  secret must be re-entered. It is not recoverable from a database backup alone.
-- A database backup without `SECRET_KEY` is therefore *safer* to move around,
-  which is a feature.
+  secret must be re-entered. It is not recoverable from a **database** backup —
+  a `pg_dump`-shaped copy of the tables — and it *is* recoverable from a
+  SplashTrack `.stbak` archive plus the recovery token, which is precisely what
+  makes the Recovery Kit two artefacts rather than three (`14-…` §2.3, D-166).
+  That is the only recovery path; there is no escrow and no reset.
+- A raw database copy without `SECRET_KEY` is therefore *safer* to move around.
+  A `.stbak` is not in that category, and never was: it is protected by the
+  token, not by the absence of key material. The rule is one sentence — **the
+  token is what the archive's security rests on** — and it is why D-115 gives it
+  an entropy floor and D-042 guards the download.
 - Rotating `SECRET_KEY` requires the re-encryption command that ships with the
-  image, and the command must state **exactly** what it covers.
+  image, and the command must state **exactly** what it covers. Rotation also
+  re-wraps the key record carried in future archives (D-166); archives already
+  written keep the key they were written with, and the command says so.
 
 `splashtrack key:rotate` re-wraps, in one resumable pass per column, keyed by
 `keyId`:
@@ -567,9 +586,12 @@ D-099), so it cannot be re-opened once an installation holds any data:
 6. Done → bootstrap record written, /setup permanently closed
 ```
 
-Step 4's recovery token is a **passphrase over the backup master key**, not the
-bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-114). The
-wizard displays the token; it never displays `SECRET_KEY`.
+Step 4's recovery token is a **passphrase over the archive's key record**, not
+the bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-114,
+D-166). The wizard displays the token; it never displays `SECRET_KEY`. The
+acknowledgement text states what the token recovers: the archive **and** the
+instance's own key material, so the operator understands that the two artefacts
+they were told to keep are genuinely sufficient and genuinely necessary.
 
 **Decision D-100 — The first-run record is `InstallationBootstrap`, not
 `PlatformBootstrap`.** The template's enforced-singleton record is reused, but
@@ -638,6 +660,8 @@ docker compose exec app splashtrack settings:reset    --key …
 docker compose exec app splashtrack settings:list
 docker compose exec app splashtrack setup:token --new           (D-101)
 docker compose run  --rm app splashtrack secret:init --out …    (D-112)
+docker compose run  --rm app splashtrack secret:recover --file … --token … --out …
+                                                                (14 §4.2.2, D-166)
 docker compose exec app splashtrack key:rotate                  (§5.3)
 docker compose exec app splashtrack bootstrap:clear-tampered    (D-099)
 ```
@@ -701,3 +725,8 @@ It additionally surfaces:
   indicator (`14-…` §3.2, D-103).
 - Whether any encrypted column still holds ciphertext under a superseded
   `keyId` — the resumability signal D-096 makes possible.
+- A **key-custody check** beside the recovery-token acknowledgement: whether the
+  running `SECRET_KEY`'s fingerprint matches the fingerprint recorded in the most
+  recent archive (`14-…` §2.3, D-166). A mismatch means the newest backup can no
+  longer be restored into this instance without `secret:recover`, and the
+  operator should learn that from a diagnostics line rather than from a flood.

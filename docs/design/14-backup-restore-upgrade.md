@@ -31,15 +31,20 @@ also the only arrangement that actually works.
 ## 2. The Recovery Kit
 
 **Decision D-040 — Recovery is two artefacts: a backup file and a recovery
-token. Both are required; neither is useful alone.**
+token. Both are required; neither is useful alone.** What makes that true on a
+*fresh host* is specified in §2.3 (D-166) — as originally written it was false,
+and the restore succeeded anyway.
 
 ```text
 ┌── splashtrack-backup-2026-08-31T0300.stbak ──┐   ┌── Recovery token ──┐
-│  header: format, keyId, wrapped data key     │   │  STK1-XXXX-XXXX-…  │
-│  manifest (version, schema, counts, date)    │ + │  ≥128 bits         │
-│  logical export + uploaded assets            │   │  passphrase over   │
-│  framed AEAD, per-archive data key           │   │  the master key    │
-└───────────────────────────────────────────────┘   └────────────────────┘
+│  header: format, keyId,                      │   │  STK1-XXXX-XXXX-…  │
+│    token-wrapped key record (§2.3, D-166)    │   │  ≥128 bits         │
+│    wrapped data key                          │ + │  passphrase over   │
+│  manifest (version, schema, counts, date,    │   │  the wrapped key   │
+│    key fingerprint)                          │   │  record            │
+│  logical export + uploaded assets            │   └────────────────────┘
+│  framed AEAD, per-archive data key           │
+└───────────────────────────────────────────────┘
 ```
 
 **Reason.** A backup of this application is a complete copy of personal data
@@ -92,6 +97,10 @@ recovery token  ──Argon2id──▶  KEK  ──unwraps──▶  master key
 - The master key is also derivable as `HKDF(SECRET_KEY, info="backup-master-v1")`
   for the bootstrap case (`13-…` §3.1.1), so a fresh install has a master key
   before any archive exists.
+- **The wrapped-master-key record travels in the archive header**, not only in
+  the database — salt, Argon2id parameters and the wrapped master key. Without
+  this the restore sequence in §4.2 cannot run at all on a fresh host: the
+  database that held the record is the database being restored. See §2.3.
 
 **Reason.** Every property the Recovery Kit promises — printable, storable,
 revocable when a volunteer leaves, safe to keep old archives — requires the
@@ -127,6 +136,102 @@ Handling rules, all of which were missing:
   recovery-token entry generally.
 - Diagnostics keeps the "recovery token acknowledged: yes/no" check (F-24) and
   adds the date of the last re-display.
+
+### 2.3 The Kit as specified did not recover, and the restore did not say so
+
+**This is the failure the whole chapter exists to prevent, reconstructed by the
+fix that closed it once already.** D-112 makes `SECRET_KEY` the root of every
+application key, including the one that encrypts medical columns and the one
+that encrypts TOTP secrets. D-114 makes the *token* the root of the backup
+envelope. D-040 then tells the operator the Kit is two artefacts. Compose them
+on the day the Kit is for:
+
+> The building floods. The operator holds the `.stbak` and the printed token —
+> exactly what they were told to keep. They bring up a fresh container. It
+> refuses to start without `SECRET_KEY_FILE` (§3.1.1 of `13-…`), so they run the
+> documented `secret:init` and generate a **new** `SECRET_KEY`. They restore.
+> The token unwraps the master key, the master key unwraps the data key, the
+> framed AEAD verifies, `migrate deploy` is clean, **row counts match the
+> manifest**, and §4.2 tells them they are done.
+
+What they have is an instance in which every medical remark, pastoral note,
+assessment remark and inquiry free text (the D-148 protected class) is
+permanently undecryptable, every stored settings secret is dead, and every TOTP
+enrolment fails against an instance where MFA is mandatory and not clearable
+(D-150) — so it has also locked out every administrator it just restored.
+Nothing failed. No chapter told the operator that `SECRET_KEY` was part of the
+Kit; `13-…` §5.3 came closest and then sold the separation as a feature. This is
+**F-135**, and it is D-049's own failure mode ("the restore *succeeds* and the
+contents are quietly unreadable") arriving through a different door.
+
+**Decision D-166 — The Recovery Kit stays two artefacts, because the archive
+header carries a token-wrapped key record containing the master key **and**
+`SECRET_KEY`; and a restore that cannot decrypt refuses instead of succeeding.**
+
+Three parts, all required.
+
+**1. The key record travels with the archive, wrapped by the token.**
+
+```text
+archive header
+  └─ key record  ─── AEAD under KEK = Argon2id(recovery token, salt) ───┐
+       salt, Argon2id parameters                                        │
+       master key      (unwraps this and every archive's data key)      │
+       SECRET_KEY      (the D-112 root: medical, settings, TOTP, auth)  │
+       keyFingerprint  = HKDF(SECRET_KEY, info="key-check-v1"), 16 bytes│
+                                                        cleartext ──────┘
+```
+
+The record is bound as AAD to the archive's manifest digest, so it cannot be
+spliced from one archive into another. The fingerprint is the one field outside
+the wrap: it is a one-way function of the key, it identifies *which* key an
+archive needs without revealing it, and it is what §4.2 compares against the
+running instance.
+
+**2. D-113 is amended, not overridden.** Key material is still never in the
+archive *in the clear*, the `DATA_DIR` key-material path is still explicitly
+excluded from the asset capture, and the CI test still greps every shipped
+fixture for the raw key bytes and the key file's name. What the header holds is
+ciphertext under a KEK the archive does not contain. "The file alone is inert"
+is unchanged; what changes is that the file *plus the token* is now sufficient,
+which is what D-040 always claimed.
+
+**3. The restore refuses rather than succeeds.** §4.2 gains a mandatory
+**decryptability proof** before the restore is reported complete, and a hard
+refusal when it fails — see §4.2.2.
+
+**Reason.** The alternative — a third artefact — was considered and rejected.
+It is the technically cleaner answer and it loses on the failure it creates: an
+operator who must keep three things keeps two, and the one they drop is the one
+with no printed sheet, no wizard acknowledgement and no diagnostics check. Jack's
+requirement is verbatim *"een backup-file plus een token waarmee ik snel weer
+up-and-running ben"*, and a design that quietly needs a third artefact does not
+meet it — it just fails later and worse. Recovery must be possible with what the
+product told the operator to keep.
+
+**Trade-off, stated plainly because it is real.** Archive + token now yields
+`SECRET_KEY`, and therefore the Better Auth signing key — so a holder of both can
+forge sessions against a *live* instance, not only read the archive's contents.
+That is a genuine increase over the previous (non-functioning) design. It is
+accepted for three reasons: a holder of archive + token can already read every
+medical note, exam result and stored secret in the school, so the marginal
+capability is small; the token is revocable by re-wrapping (D-114), and the
+re-wrap now covers the whole key record, so a departing volunteer's copy is
+genuinely retired; and the alternative failure is total, silent and permanent.
+
+**What this obliges elsewhere:**
+
+- **Rotation.** `key:rotate` and token rotation both re-wrap the key record.
+  Rotating the token re-wraps in place for the *live* instance; archives already
+  written keep the old token, which is unchanged from D-114 and must be stated
+  in the rotation command's output.
+- **The wizard.** Step 4's acknowledgement text names what the token now
+  recovers: the archive, and the instance's own key material. It still never
+  displays `SECRET_KEY` (`13-…` §6.3).
+- **Diagnostics.** Beside "recovery token acknowledged", the page reports
+  whether the running `SECRET_KEY`'s fingerprint matches the fingerprint in the
+  most recent archive — a custody check the operator can act on *before* the
+  building floods.
 
 ---
 
@@ -283,14 +388,19 @@ Jack wants it. The wizard's first question becomes:
 
 ```text
 upload .stbak + paste recovery token
-  → unwrap master key (Argon2id) → unwrap this archive's data key
+  → unwrap the key record (Argon2id over the token)     ← master key + SECRET_KEY
+  → compare key fingerprints                            ← §4.2.2 (D-166)
+       mismatch → STOP. Nothing is written. Offer key recovery.
+  → unwrap this archive's data key
   → authenticate the manifest as its own AEAD message   ← before any parsing
   → authenticate the archive body (framed AEAD, D-102)  (fail → stop, nothing touched)
   → parse manifest, compare versions       (see 4.3 — old backups are
                                              restored then migrated forward)
-  → restore into a freshly created empty schema, allow-listed (§4.2.1)
+  → restore into a freshly created empty schema (§4.2.1)
   → run any newer migrations forward
   → verify row counts against the manifest
+  → PROVE DECRYPTABILITY                                ← §4.2.2 (D-166)
+       any failure → the restore is reported FAILED, not complete
   → done: log in with your existing accounts
 ```
 
@@ -341,6 +451,61 @@ these restrictions are mandatory:
 carrying an extension they added by hand — is refused and must add it
 deliberately after the restore. Correct: the alternative is an allow-list with a
 hole in it.
+
+#### 4.2.2 A restore that cannot decrypt refuses (D-166)
+
+The previous verification step was *row counts against the manifest*. Row counts
+prove that rows arrived. They prove nothing about whether their contents can
+still be read, which is the only failure mode that is both silent and permanent.
+Two checks replace it. Neither is optional and neither may be skipped by a flag.
+
+**Before anything is written — the fingerprint gate.** The key record's
+`keyFingerprint` is compared against `HKDF(running SECRET_KEY, "key-check-v1")`.
+On a mismatch the restore **stops with nothing written** and offers the one
+useful action instead of a lecture:
+
+```bash
+docker compose run --rm app splashtrack secret:recover \
+    --file backup.stbak --token STK1-… --out ./secrets/secret_key
+```
+
+which unwraps the archive's `SECRET_KEY` with the token, writes it to the named
+path at mode 0600, prints nothing of the key itself, and tells the operator to
+mount it as `SECRET_KEY_FILE` and restart. The restore is then re-run and the
+fingerprints match. This is why the key record is in the header: without it this
+command cannot exist and the mismatch is terminal.
+
+The gate is a refusal, not a repair: the application never silently adopts a key
+from an uploaded file, because §4.2.1 makes an archive from any other source
+untrusted input, and a restore that installs an attacker's key material would be
+the worst version of that.
+
+**After the restore — the decryptability proof.** Before the wizard reports
+success it decrypts, through the ordinary application read path and the D-096
+envelope:
+
+| Proof | Why this one |
+|---|---|
+| One row per encrypted **column** in the schema, chosen as the newest non-null value | Covers every `(table, column)` AAD binding actually in use — the check D-167 exists to protect |
+| Every stored settings secret decrypts and its `secretSet` flag agrees | A dead SMTP password is invisible until the night a notification matters (`02-…` §1.2 leans on notification for five separate controls) |
+| Every `UserAccount` with an enrolled TOTP factor: the stored secret decrypts and a token generated from it verifies | MFA is mandatory and not clearable (D-150). A restore that lands with dead second factors has locked out the people it restored |
+| The audit chain verifies against its checkpoints | `02-…` §3.2 (D-168) |
+
+Any failure means the restore is reported **FAILED**, names the class that could
+not be read, and leaves the instance in the boot state machine's `TAMPERED`-free
+equivalent of "restored but not serviceable": it refuses to open the application
+and offers the same `secret:recover` path. A partially readable school is not a
+recovery, and telling the operator so at minute five is the entire value of the
+Kit.
+
+**D-105's fixture assertion is restated accordingly.** It read *"an enrolled
+TOTP still verifies — against the same recovery token"*, which asserts against
+the wrong root: per D-112 the TOTP key derives from `SECRET_KEY`, not from the
+token, so as written the assertion either passes vacuously (one `SECRET_KEY`
+throughout the workflow) or tests something the production path does not do. It
+now reads: **restore under a freshly generated `SECRET_KEY` and assert the
+documented outcome** — the fingerprint gate refuses, `secret:recover` succeeds,
+and the second pass decrypts. That is the case the operator will actually hit.
 
 ### 4.3 Restoring an OLD backup into a NEW version — the core promise
 
@@ -433,8 +598,8 @@ Releases API, restores each into `HEAD`, migrates, and then asserts:
 | Every `Person` readable | Full read of each row through the application's own repositories |
 | Every award resolves | Each `Award` resolves to a non-superseded `ExamResult` (D-062) |
 | **Every encrypted column decrypts to known plaintext** | Fixture plaintexts are known; compare (D-096) |
-| **An enrolled TOTP still verifies** | Against the same recovery token — the assertion that catches `13-…` §5.3's rotation hazard |
-| Audit chain verifies | Full chain walk |
+| **An enrolled TOTP still verifies** | **Restore under a freshly generated `SECRET_KEY`** and assert the §4.2.2 outcome: the fingerprint gate refuses, `secret:recover` succeeds, the second pass verifies. Stated once in §4.2.2 (D-166); this row does not restate it |
+| Audit chain verifies | Segment walk against checkpoints (`02-…` §3.2, D-168) |
 
 The two rows in bold are the ones F-25 called "the nastiest" case and then left
 out of the very test meant to cover it: a restore that succeeds while the

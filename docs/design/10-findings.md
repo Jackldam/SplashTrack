@@ -1230,3 +1230,29 @@ data classes and where they live, purposes and lawful bases, retention defaults
 and the backup horizon (D-104), recipients, security measures, and the residual
 risks the design already names (F-07, F-17, F-23). Necessity, proportionality
 and risk acceptance are left blank for the controller.
+
+### F-135 — The Recovery Kit did not recover, and the restore reported success anyway
+**Severity: critical.** D-112 (`SECRET_KEY` is the root of every application
+key), D-114 (the token is the root of the backup envelope) and D-040 ("two
+artefacts, neither useful alone") compose so that a restore onto a fresh host —
+the case the Kit exists for — *succeeds* under a newly generated `SECRET_KEY`
+while every value in the D-148 protected class is permanently undecryptable,
+every stored settings secret is dead, and every TOTP enrolment fails against an
+instance where MFA is mandatory and not clearable. Row counts matched; the
+schema verified; the wizard said "done". No chapter told the operator that
+`SECRET_KEY` was part of the Kit — `13-…` §5.3 came closest and then sold the
+separation as a feature. Two secondary defects surfaced with it: the
+wrapped-master-key record lived only in the database being restored, so §4.2's
+sequence could not run on a fresh host at all; and D-105's TOTP assertion was
+stated against the recovery token, which is not the root the TOTP key derives
+from, so the CI job either passed vacuously or asserted something production
+does not do.
+**Response.** D-166. The archive header carries a token-wrapped key record
+(master key, `SECRET_KEY`, plus a cleartext key fingerprint), so the Kit is
+genuinely two artefacts; the restore compares fingerprints before writing
+anything and stops with a `secret:recover` path on a mismatch; and success is
+reported only after a decryptability proof — one row per encrypted column, every
+settings secret, every enrolled TOTP, the audit chain. D-113 is amended (wrapped,
+never plaintext) rather than overridden, and D-105's assertion is restated as
+"restore under a freshly generated `SECRET_KEY` and assert the documented
+outcome".
