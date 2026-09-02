@@ -42,18 +42,40 @@ Reference: `/root/projects/WebAppTemplate` (`7db6488`). Copy deliberately, file
 by file, not wholesale — every file that arrives should be one someone decided
 to keep.
 
-- [ ] Next.js app shell, TypeScript config, ESLint, Prettier
-- [ ] Prisma setup and the `Person` / `UserAccount` split
-- [ ] Better Auth wiring (`src/lib/auth/`), local accounts + TOTP MFA
-- [ ] Session handling — **`src/lib/auth/session.ts` and
-      `src/lib/settings/config.ts` already implement live, bounded,
-      admin-configurable session timeouts.** Adopt them; do not build a parallel
-      mechanism (see D-158, corrected).
-- [ ] Audit infrastructure (`AuditEvent`, hash chain)
-- [ ] Test harness: Vitest, Playwright config
-- [ ] `tests/unit/migration-safety.test.ts` and the person-reference registry +
-      sync test — adopt as they are (D-135), after verifying they do what the
-      design claims.
+**Done 2026-09-03. Full record in `phase-0.2-extraction-report.md`** — what
+landed, what was left behind and why, every `PHASE 0.4:` marker, the design
+claims that turned out to be false, and the real done-check output.
+
+- [x] Next.js app shell, TypeScript config, ESLint, Prettier
+- [x] Prisma setup and the `Person` / `UserAccount` split
+- [x] Better Auth wiring (`src/lib/auth/`), local accounts + TOTP MFA. Passkeys
+      came too (D-132 puts them in v1 with a password + TOTP fallback); no
+      external identity provider
+- [x] Session handling — adopted, not rebuilt. Bounds narrowed to
+      `02-security-privacy.md` §4.1.2 and the third key added. **The
+      permission-based selection between the standard and elevated idle window
+      is phase 0.4**: it needs the high-risk permission set
+- [x] Audit infrastructure (`AuditEvent`, hash chain), plus an integration test
+      that asserts the chain actually notices an interior row being edited
+- [x] Test harness: Vitest (two projects), Playwright config. 28 tests, four
+      against a real Postgres
+- [x] `tests/unit/migration-safety.test.ts` and the person-reference registry +
+      sync test — adopted (D-135). **Verified: both do what the design claims.**
+      Two adjustments were needed on arrival (a stale allowlist entry and a
+      parser floor naming models that do not exist here); details in the report
+
+Three defects found by running it rather than reading it, all fixed:
+
+- [x] Better Auth 1.7 needs an `Account.issuer` column the template lacks — a
+      fresh install of the template breaks identically. `better-auth` and
+      `@better-auth/passkey` are now pinned exactly
+- [x] `POST /api/auth/sign-up/email` was publicly reachable and created an
+      ACTIVE account. Now denied by default; only server-side provisioning may
+      create an account
+- [x] Nine high-severity advisories on the pinned `next@16.2.10`, including a
+      middleware/proxy bypass on Turbopack with a single locale — which is this
+      application's exact shape, and middleware is where its security headers
+      live. On `16.3.4`
 
 ## 0.3 Remove the multi-tenant machinery
 
