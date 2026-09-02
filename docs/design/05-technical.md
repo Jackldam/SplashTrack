@@ -214,7 +214,16 @@ costs nothing:
    features and must be kept).
 5. Every migration that touches personal data states its retention and erasure
    impact in the PR description.
-6. **One audit event per aggregate write, not per row.** The template's
+6. **Every migration that touches an encrypted column states which case it is.**
+   The D-096 envelope's AAD binds `(columnId, primary key, keyId)`. A rename is
+   safe by construction — `columnId` is a stable registry identifier, never the
+   physical name (D-167) — but a migration that **changes a row's primary key,
+   splits a table, or moves an encrypted value into another row must decrypt
+   with the old `(columnId, pk)` and re-encrypt with the new one inside the same
+   migration**. Getting this wrong is silent, unrecoverable data loss that
+   reports itself as corruption. The rule is stated once, in
+   `13-configuration-and-setup.md` §5.1.1.
+7. **One audit event per aggregate write, not per row.** The template's
    `AuditEvent` is a tamper-evident hash chain whose appends serialize on a
    **Postgres advisory lock**. The domain model requires one transaction per
    group registration; at 30 students that is 30 attendance events and, naively,

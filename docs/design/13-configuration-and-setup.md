@@ -346,9 +346,10 @@ only, and values are **never returned to any client** — the admin API exposes 
 
 ### 5.1 The envelope
 
-**Decision D-096 — Every encrypted value is stored as
+**Decision D-096 (as corrected by D-167) — Every encrypted value is stored as
 `v1:<keyId>:<nonce>:<ct>`, authenticated with AAD binding
-`(table, column, primary key, keyId)`.**
+`(columnId, primary key, keyId)`, where `columnId` is a stable logical
+identifier and *not* the physical table and column name.**
 
 D-049 versioned the ciphertext *format* but not the *key*, and nothing bound a
 ciphertext to its location. Both omissions are load-bearing:
@@ -371,8 +372,76 @@ remain under `keyId=1`" is a query. With AAD, a relocated ciphertext fails to
 authenticate. Finding **F-101**.
 
 **Trade-off.** Envelopes get longer and every read site must pass its own
-`(table, column, pk)`. That is a small, mechanical cost, and it is paid at the
-call site rather than discovered in a child's medical record.
+`(columnId, pk)`. That is a small, mechanical cost, and it is paid at the call
+site rather than discovered in a child's medical record.
+
+#### 5.1.1 What the AAD binds to, and what a migration must do
+
+D-096 as first written bound the AAD to the **table and column names**. Two of
+its four components are identifiers this design has already committed to
+changing: D-159 makes every schema identifier English *"without exception"* and
+OD-10's closure adds that chapters using Dutch terms as identifiers are
+*"corrected when the module is written"*; D-100 renames `PlatformBootstrap` to
+`InstallationBootstrap`; D-056 merges `PlatformSettings` — a table holding
+settings-registry secrets, which D-096's own rotation table lists as encrypted —
+into the organisation singleton. **Renames are scheduled, not hypothetical.**
+
+A rename changes the AAD, so every existing ciphertext in that column fails to
+authenticate — indistinguishably, by design, from the tampering the AAD exists
+to detect. Neither mechanism that looks like it would catch this does:
+`key:rotate` is keyed by `keyId` (§5.3), which a rename does not change; and
+R-20 runs migrations unattended at container start, *after* the pre-migration
+backup, so the backup holds ciphertext bound to the old names and the running
+instance can read neither. An AAD failure on a medical note is silent data loss
+wearing a corruption-shaped error message. Finding **F-136**.
+
+**Decision D-167 — The AAD binds to a stable `columnId` from a committed
+encrypted-column registry, never to the physical name. A migration that changes
+the primary key of a row holding an encrypted value must decrypt and re-encrypt
+that value inside the same migration.**
+
+```ts
+// src/lib/crypto/encrypted-columns.ts — the registry, one entry per column
+{ columnId: "student.medical_remarks",   model: "StudentProfile", field: "medicalRemarks", purpose: "medical-v1" }
+{ columnId: "settings.secret_value",     model: "OrganizationSettingSecret", field: "value", purpose: "settings-secret-v1" }
+```
+
+- **`columnId` is assigned once and never changes.** It is not derived from the
+  model or field name; those are ordinary mutable columns of the registry entry.
+  A rename edits `model`/`field` and leaves `columnId` alone, so no ciphertext
+  is disturbed. A `columnId` is never reused for a different column, because
+  reuse is precisely the ciphertext-portability D-096 exists to prevent.
+- **The registry is bidirectionally test-enforced**, in the shape D-135 already
+  adopts for `person-reference-sync.test.ts`: every registry entry resolves to a
+  real model and field, and every field the schema marks as encrypted has an
+  entry. A rename that forgets to update the mapping fails the build rather than
+  the decryption.
+- **The primary key stays in the AAD.** That is the binding that stops child A's
+  allergy note being copied into child B's row, and it is not obtainable from
+  anything stable-by-construction. The consequence is a rule, not a hope: **any
+  migration that changes a row's primary key, splits a table, or moves an
+  encrypted value to another row must decrypt with the old `(columnId, pk)` and
+  re-encrypt with the new one, in the same migration.** This is added to
+  `05-technical.md` §5 as rule 7, next to the retention-impact rule, because the
+  PR description is where it will be checked.
+- **A migration touching an encrypted column declares it.** The migration-safety
+  test already blocks one class of unsafe migration; this adds a second
+  assertion: a migration whose SQL names a model carrying a registered encrypted
+  column fails unless the PR states which of the two cases it is (name-only, so
+  nothing to do; or key-changing, so re-encryption is required and present).
+
+**Reason.** The alternative — "state that renames must decrypt and re-encrypt" —
+was the reviewer's other option and it is weaker for the same reason
+deny-lists are weaker than structure: it makes correctness depend on every
+future author remembering an obligation that only bites months later, on a path
+that runs unattended at container start. Binding to an identifier that has no
+reason to change removes the class. The re-encrypt rule is still stated, because
+the primary key genuinely cannot be made immutable-by-construction, and one
+narrow rule is enforceable where a broad one is not.
+
+**Trade-off.** One more registry file that every encrypted column must be added
+to, and a `columnId` vocabulary that is permanent — a typo in one is a name we
+live with forever. Both are cheap next to a rename that reads as tampering.
 
 ### 5.2 One decryptor registry, and a test that enforces it
 

@@ -70,3 +70,35 @@ with the detail stated once in §4.2.2 and the matrix row pointing at it; `13-�
 §5.3's two rotation bullets corrected; wizard step 4's acknowledgement text;
 `secret:recover` added to §7's break-glass list; a key-custody line added to the
 diagnostics page beside the token-acknowledgement check.
+
+---
+
+## Defect 2 — B-12: the AAD bound to names that are scheduled to change · **closed** · D-167, F-136
+
+**What was wrong.** Verified against the chapters: `13-…` §5.1 bound the AAD to
+`(table, column, primary key, keyId)`, while D-159, D-100 and D-056 each plan a
+rename of a table holding encrypted values. `key:rotate` is keyed by `keyId`
+(`13-…` §5.3) and cannot see a rename; R-20 runs migrations unattended after the
+pre-migration backup, so both copies become unreadable at once.
+
+**What I wrote.** D-167, in `13-…` §5.1.1 — the AAD binds `(columnId, primary
+key, keyId)` against a committed encrypted-column registry whose `columnId` is
+assigned once, never derived from a name and never reused. Renames edit the
+registry's `model`/`field`, not the identifier. The registry is bidirectionally
+test-enforced in the same shape D-135 adopts for `person-reference-sync.test.ts`,
+so a forgotten mapping fails the build instead of the decryption.
+
+**What I rejected, partly.** The reviewer offered "or state explicitly that any
+migration renaming an encrypted column must decrypt-and-re-encrypt". I did not
+take that as the primary mechanism — it makes correctness depend on every future
+author remembering an obligation that bites months later on an unattended path.
+I kept a narrow version of it, because the primary key genuinely cannot be made
+stable by construction and it is the component that stops one child's ciphertext
+being pasted into another child's row: `05-technical.md` §5 gains rule 6,
+covering key-changing migrations only.
+
+**Not taken.** B-20 (the new envelope reusing the version tag `v1`, which the
+inherited `secret-crypto.ts` copies already use for a different four-field
+layout) is adjacent to this and squarely in the same mechanism, but it is not on
+the list I was given and it interacts with D-097's golden vectors. It is worth a
+decision before the first encrypted byte is written.

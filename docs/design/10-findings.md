@@ -1256,3 +1256,26 @@ settings secret, every enrolled TOTP, the audit chain. D-113 is amended (wrapped
 never plaintext) rather than overridden, and D-105's assertion is restated as
 "restore under a freshly generated `SECRET_KEY` and assert the documented
 outcome".
+
+### F-136 — The encryption AAD bound to names the design had already scheduled to rename
+**Severity: critical (blocker).** D-096 bound the envelope's AAD to
+`(table, column, primary key, keyId)`. D-159 renames schema identifiers to
+English *"without exception"* and corrects chapters *"when the module is
+written"*; D-100 renames `PlatformBootstrap`; D-056 merges `PlatformSettings`,
+which holds encrypted settings-registry secrets. A rename changes the AAD, so
+every existing ciphertext in that column fails to authenticate —
+indistinguishably, by design, from tampering. Neither guard reaches it:
+`key:rotate` is keyed by `keyId`, which a rename does not change, and R-20 runs
+migrations unattended at container start *after* the pre-migration backup, so
+the backup holds ciphertext bound to the old names and the running instance can
+read neither. The failure surfaces as a corruption-shaped error on a medical
+note.
+**Response.** D-167. The AAD binds `(columnId, primary key, keyId)`, where
+`columnId` is a permanent identifier in a committed encrypted-column registry
+and the model/field names are ordinary mutable fields of the registry entry; the
+registry is bidirectionally test-enforced in the shape D-135 already adopts for
+`person-reference-sync.test.ts`. The primary key stays in the AAD because it is
+what stops ciphertext moving between rows, so one narrow rule remains: a
+migration changing a row's primary key, splitting a table or moving an encrypted
+value must decrypt and re-encrypt inside the same migration
+(`05-technical.md` §5 rule 6).
