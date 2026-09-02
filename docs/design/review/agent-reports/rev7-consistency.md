@@ -695,3 +695,104 @@ If a reader-facing list is wanted there, generate it from one named constant and
 say so.
 
 ---
+### C-16 — The retention table uses a fourth `onExpiry` value, `PSEUDONYMISE`, that the enum is stated three times as not having — and that D-155 explicitly rules out
+
+**Severity: high.**
+
+Side A — the enum, stated normatively in three places, always with three values.
+`02-security-privacy.md` §5.6, the `RetentionPolicy` model:
+
+> ```text
+> RetentionPolicy
+>   …
+>   onExpiry           **DELETE | ANONYMISE | REVIEW**
+> ```
+
+`01-domain-model.md` §5, the preamble to the retention table itself:
+
+> Each is a `RetentionPolicy` the organisation confirms or changes, with
+> `onExpiry` being **`DELETE`, `ANONYMISE` or `REVIEW`** (`02-security-privacy.md`
+> §5.6, D-065).
+
+`09-decision-register.md` D-065:
+
+> Retention and erasure are policy-driven per data class: purpose, lawful basis,
+> trigger, expiry action (**`DELETE`/`ANONYMISE`/`REVIEW`**)
+
+and D-155 closes the set explicitly:
+
+> `ANONYMISE` means destroying the row-level record … **A class that cannot meet
+> this may only be `DELETE` or `REVIEW`.**
+
+Side B — `01-domain-model.md` §5, two rows of the same table whose preamble
+states the three-value enum:
+
+> | Charges | `fees` | `fees.read` | Legal obligation — fiscal administration |
+> Charge due date | 7 years | **`PSEUDONYMISE`** (D-092) |
+> | Payments | `fees` | `fees.read` | Legal obligation — fiscal administration |
+> Received date | 7 years | **`PSEUDONYMISE`** (D-092) |
+
+backed by `09-decision-register.md` D-092 ("erasure **pseudonymises** the charge
+rather than deleting it") and OD-4 ("erasure must pseudonymise the charge rather
+than delete it").
+
+**Why it matters.** `onExpiry` is a persisted enum on a table an implementer
+writes on day one of the privacy module. Built from the stated enum it has three
+members, and the two `fees` rows are then unrepresentable — the developer picks
+`DELETE` (destroying bookkeeping, which D-092 exists to prevent) or `REVIEW`
+(nothing happens automatically, per §5.6's own warning) or silently adds a
+fourth member nobody reviewed. This is not a wording slip: §5.6 spends a page
+establishing that pseudonymisation is *not* anonymisation and D-155 closes the
+set on exactly that reasoning, so adding `PSEUDONYMISE` is a substantive
+decision that has been taken in a table cell and nowhere else.
+
+Note the finding is about the *enum*, not about D-092's substance — retaining a
+pseudonymised financial record on a fiscal ground is coherent. What is missing is
+the fourth member being declared, defined (what exactly is stripped, and what
+survives) and reconciled with D-155's argument.
+
+**Recommended resolution.** Add `PSEUDONYMISE` to the enum in `02-…` §5.6, to
+D-065's register row and to `01-…` §5's preamble, with a one-paragraph
+definition in §5.6 stating that it is *not* anonymisation, that the record
+remains personal data, and that it is available only where a statutory retention
+ground is recorded. Amend D-155's closing sentence to name the three options.
+
+---
+
+### C-17 — `RetentionPolicy.dataClass` enumerates eight classes; the table it governs has twenty rows, and the enum still names the entity D-082 renamed
+
+**Severity: low.**
+
+Side A — `02-security-privacy.md` §5.6:
+
+> ```text
+> RetentionPolicy
+>   dataClass          person identity · attendance · progress · exam result ·
+>                      **certificate** · medical note · audit event · inquiry
+> ```
+
+Side B — `01-domain-model.md` §5's retention table, which is the instantiation
+of that model, carries twenty rows including classes absent from the enum:
+*Membership periods*, *Student profile*, *Assessment remarks*, *Charges*,
+*Payments*, *Consent records*, *Waitlist entries*, *Pre-migration backups*,
+*Operational logs*, *Public page content*, *Organisation settings & branding*,
+*Login credentials*.
+
+And `09-decision-register.md` D-082:
+
+> The existing **`Certificate` entity is renamed `Award`**; `AwardType.kind ∈
+> {DIPLOMA, CERTIFICATE}` carries the distinction
+
+**Why it matters.** Low — the `dataClass` line reads as illustrative ("·"
+separators, sentence-case labels) rather than as a closed enum, so most readers
+will not build a type from it. It is listed because (a) if anyone does treat it
+as the enum, twelve retention classes have no policy, and (b) `certificate` is
+the pre-D-082 entity name in a model sketch, which `15-…` §9 item 3 records as
+resolved for `01-…` and `04-…` only — chapter 02 was not in that pass's scope
+and still carries it.
+
+**Recommended resolution.** Either mark the `dataClass` line "illustrative — the
+authoritative class list is `01-domain-model.md` §5" (D-134's pointer form), or
+complete it. Rename `certificate` → `award` either way.
+
+---
