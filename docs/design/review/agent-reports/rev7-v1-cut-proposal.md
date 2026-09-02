@@ -662,3 +662,421 @@ Nothing new, except **B-4** (checkpointing) and **B-6** (`coversResource`), both
 of which are genuinely unbuilt work and are therefore costed in List C rather
 than hidden here. Everything else in List B is already inside the ~55-week
 baseline. **List B is not a budget line — it is a fence.**
+
+---
+
+## C — ADD TO v1 THAT IS NOT THERE
+
+Ranked by one test and one test only: **can Jack run a Tuesday evening without
+it?** Nothing else decides the order. Where an item is a spec fix rather than a
+feature, it is still here, because an engineer cannot build what nobody wrote.
+
+**Total: ~6.3 engineer-weeks.**
+
+---
+
+### C-1 — Session generation: a recurrence primitive and a closure calendar · **~1.0 w** · R-2
+
+**Nothing in this design set creates a lesson.** `planning` is a v1 module whose
+entire specification is one line — *"Schedule construction, locations,
+resources, assignment"* (`01-domain-model.md` §1.1). Grep across `00`–`10`,
+`13`–`15` for `holiday`, `vakantie`, `recurrence`, `recurring`: **zero hits**
+other than `FeeType.recurrence`. `04-ux.md` §4 specifies no planning workflow.
+
+**The moment it fails.** September. Six groups × ~36 sessions after school
+holidays and two pool closures = **216 `ScheduledSession` rows**, every one
+hand-created in a form before a single instructor can tap *Start session*,
+because `AttendanceEvent` is written against a session id. The flagship
+workflow — the entire product thesis — is unreachable until someone spends an
+evening typing.
+
+**What to build.** A `SessionSeries` (group, weekday, time, location, from/to)
+that generates `ScheduledSession` rows, plus an org-level **closure calendar**
+(school holidays imported once as dates, pool closures added by hand) that the
+generator skips.
+
+**Build it *with* `sessions`, before `attendance`** (R-17). `06-delivery.md` §5
+puts `planning` tenth of eleven, so under the current plan the first time anyone
+discovers whether a season can be generated at all is **after ten modules are
+built on the assumption that it can** — and recurrence-with-exceptions is the
+one part of this domain with genuinely fiddly edge cases (a moved lesson, a
+double week, a block starting mid-holiday). It also makes the DEV seed honest:
+a synthetic dataset generated the way production generates it.
+
+---
+
+### C-2 — The CSV importer from the incumbent's export · **~1.0 w** · R-29 / D-157 / OD-18
+
+**Promoted today.** It was already a v1 requirement, but OD-18's closure makes
+it **the only ingress there is**: no integrations in v1, so every pupil, member,
+guardian and contact detail arrives through this file or is typed by hand.
+
+**What is buildable now, before the file exists.** rev7-build **B-15** settles
+this and is right: everything the importer *is* is specified target-side and
+depends on nothing about the source — dry-run-then-commit, a per-row rejection
+report, unmapped columns **reported not dropped**, authority **never inferred**
+(refuse on any unmapped role value rather than silently granting), **zero
+`Consent` rows written** with a report of what could not be carried, and
+lossy-by-construction records seeded with one synthetic
+`StudentLifecycleEvent(JOINED)` and one `MembershipPeriod`. That is an importer
+framework with a pluggable mapping, testable against a synthetic fixture.
+
+**What is blocked.** Exactly one thing: the column mapping. **D-157** forbids
+specifying it in advance and is right — *"a column mapping guessed in advance
+fails on first contact with the real file, at the one moment a pilot cannot
+absorb failure."*
+
+**The one open ask for Jack in this whole document:** a sample export from the
+incumbent. Nothing else here waits on him.
+
+**Prerequisite:** `origin: IMPORTED_LEGACY` must exist on both append-only
+models **before** the first import runs (B-20 above). The rows that most need
+the marker are the ones written first.
+
+---
+
+### C-3 — The catalogue-authoring surface F-44 now requires · **~1.5 w** · new today
+
+**What changed.** F-44 dissolved: no NRZ catalogue is seeded. **An administrator
+authors the skill/criterion list and its links to certificates and diplomas
+inside the application.** That is the right call — it keeps the product generic,
+it removes a blocking data question (`15-…` §9 item 2), and it removes D-083's
+seed-and-fork machinery (`source = NRZ`, fork-on-edit: **−0.25 w**, banked in
+the total).
+
+**But it is a straight swap of a data problem for a UI problem, and the UI is in
+no estimate.** The entities exist on paper — `SchemeCriterion` (**D-084**),
+`CriterionSet` and the data-driven pass rule (**D-080**), one seeded `GradeScale`
+(**D-160**), `AwardType.kind ∈ {DIPLOMA, CERTIFICATE}` (**D-082**). What does not
+exist is any way for a human to create them.
+
+**What to build.** CRUD for criteria and criterion sets; assembling a set into a
+scheme version; binding a set to an `AwardType` with per-criterion
+`minimumGrade` overrides against `scheme.passFloor`; and — the part that is easy
+to get wrong — **versioning as a first-class action**: an `ACTIVE` scheme is
+never edited, editing produces version *n+1* and stamps `effectiveTo` on *n*
+(**D-081**). Plus a preview of the effective threshold per criterion, which
+`15-…` §2.2 already requires the assessment screen to render.
+
+**Why it ranks third and not tenth.** Skill sign-off is a Tuesday-evening
+workflow (`04-ux.md` §4.2, the flagship's twin), and it writes `SkillProgress`
+against a versioned criterion. With no catalogue there are no criteria, so there
+is no sign-off and no aftest. Attendance is the only poolside workflow that
+survives without this — and C-1 has to land first for attendance to exist at
+all.
+
+---
+
+### C-4 — Roster-based reach for a session's own instructor · **~0.1 w (one clause + tests)** · R-4
+
+**The gap between two decisions that were written to agree.** **D-109** models
+make-up lessons: `SessionRosterEntry` accepts *"a student who is not a member of
+the session's group"* with `source = GUEST`. **D-068** says `SESSION` scope
+covers *"the receiving instructor of a make-up lesson"*. But the receiving
+instructor is the group's **own** instructor and holds a `GROUP` grant, and
+`02-…` §2.2 is explicit that `GROUP` covers *"the group-scoped relations of the
+**students in it**"* — a guest is by construction not in it.
+
+**The moment it fails.** Sanne missed Tuesday and comes Thursday. An
+administrator adds the roster entry. Thursday's instructor opens the session:
+eleven names. Sanne is standing in the water and is not on the screen. For her
+to appear, an administrator must additionally mint a `SESSION`-scoped
+`RoleAssignment` for *that instructor* on *that session* with a mandatory
+`validUntil` (**D-144**) — at 16:55, in a workflow that exists in no screen.
+
+**The fix.** One clause in `02-…` §2.2's coverage table: an instructor assigned
+to a session may read the students on **that session's roster** for its window,
+whatever put them there. It narrows nothing — the guest was deliberately placed
+there by an administrator — and it removes the per-make-up grant entirely.
+
+**Do not skip the tests.** This is a coverage-rule change, so it needs its
+scope-escape cases in the same commit.
+
+---
+
+### C-5 — Lesson cancellation · **~0.1 w** · R-3
+
+`ScheduledSession.status` exists and its **values are enumerated nowhere** —
+unlike `AttendanceEvent.state`, `Enrolment.status`, `Charge.status` and
+`StudentLifecycleEvent.type`, which all get explicit enums in the same tables.
+
+**The moment it fails.** 16:10 Thursday, the pool calls: no lesson tonight.
+There is no cancel action, so the session stays `SCHEDULED`. At 19:00 it appears
+on Today as a session to register; tomorrow it appears forever in *"anything
+requiring attention (unregistered past sessions)"* (`04-ux.md` §1) — one
+permanent false alarm per cancelled lesson. The instructor's only move is to
+mark twelve children absent, which is a **lie written into an append-only
+evidence log** whose justification is safeguarding (D-061).
+
+**The fix.** `ScheduledSession.status ∈ {SCHEDULED, CANCELLED, COMPLETED}`, a
+cancel action carrying a reason, and three stated consequences: cancelled
+sessions are not "unregistered", attendance cannot be written against them, and
+the roster is retained.
+
+---
+
+### C-6 — Substitute assignment as an action, with a grant window that outlives the lesson · **~0.4 w** · R-5
+
+Two decisions collide. `04-ux.md` §4.0(3) commits to post-hoc entry as a
+first-class path — *"A v1 used post-hoc from paper is a legitimate, winning
+v1."* **D-144** makes `validUntil` schema-mandatory for `SESSION` scope,
+*"typically the session's date"*.
+
+**The moment it fails.** Marieke covers Groep A2 on Thursday, on paper, because
+the hall wifi is bad. Friday morning her grant has expired; `requirePermission`
+denies. Her options are to ask an administrator to re-issue a grant for a lesson
+that already happened, or to hand the sheet to someone else who records
+attendance **under their own name** in the log whose entire point is *"who said
+a child was present, and when they changed their mind"*.
+
+And there is no *action* that creates a substitution at all: **D-068** names the
+substitute as a case the scope type covers, and `InstructorAssignment` is a
+table with no workflow attached — no screen where a planner says *"Marieke
+covers Thursday"*.
+
+**The fix.** Default `SESSION` grants to `session.endsAt + N days`, N a
+`bounded` setting (**D-150**'s class already exists for exactly this),
+defaulting to 7. **Keep the mandatory `validUntil`** — it is right. And specify
+the substitute assignment as a planner action that issues the grant as a side
+effect, or the mechanism exists and the button does not.
+
+---
+
+### C-7 — Guardian communication: one screen, one templated message · **~0.6 w** · R-13
+
+**The product can record everything about a lesson and tell nobody anything.**
+There is no outbound message to a guardian anywhere in v1: P-06 defers
+notifications, the portal is v2 (**OD-5** / **D-161**), and `07-…` §1.4's
+delivery is for high-severity security events, to operators.
+
+**Three failures, weekly to termly:**
+- The pool closes Thursday. Twelve families need to know **today** — and without
+  C-5 the app cannot even represent the cancellation.
+- Sanne is confirmed for the exam on 14 March. Her parents need the date, the
+  time and the fee **D-089** just created — and **D-093** correctly forbids
+  putting arrears anywhere an instructor would mention them.
+- Sanne moves from B2 down to B1. **D-108** makes the reason a required field
+  *precisely* so a parent is not left to guess — *"a parent reading 'moved from
+  Group 4 to Group 3' with no reason attached draws the worst conclusion
+  available"* — and then stores it where no parent will ever read it. **D-108's
+  required reason is currently a cost with no beneficiary.**
+
+**The fix.** One screen: send a templated message to the guardians of a group,
+or of a session's roster. The `email-templates` and `notifications` modules are
+inherited and working; `PersonRelationship(GUARDIAN_OF)` already gives the
+recipient list. This is not the portal and does not pre-empt **OD-5**.
+
+**What it does not do.** Every one of these messages is sent today by WhatsApp
+from someone's personal phone. SplashTrack does not have to win that. It has to
+not make it worse.
+
+---
+
+### C-8 — A print fallback that is routine, plus a cached session shell · **~0.4 w** · R-6
+
+`04-ux.md` §4.0(1) is one of the best-argued pages in the set and its conclusion
+is correct: *"An application that will not load shows nothing at all, and the
+instructor standing at the poolside has no move."* **P-02** is declared
+*"defensible **only** because [the print fallback] exists"* (**D-129**).
+
+**And it mitigates the risk with an action nobody takes.** The wifi is fine at
+18:50 and gone at 19:05. Nobody printed anything, because printing is a button
+you press when you already expect trouble and the whole point of the app is that
+you stopped carrying paper. Worse, the app is server-rendered Next.js: with the
+network down it does not degrade to a stale list, **it does not load**.
+
+**Two cheap fixes, neither of them an offline queue.** (a) Make the printed list
+a **weekly routine artefact** — a "print this week's class lists" action, stated
+in the runbook as expected practice for the first term. (b) Cache the session
+shell and roster in the browser after it loads, so a session opened at 18:50
+survives the network dropping at 19:05 — `04-ux.md` §4.1 rule 6 already promises
+to keep failed writes on screen; this is the same promise extended by one page
+load.
+
+*(R-35's print fallbacks themselves are already inside the baseline's 3-week
+waitlist/group-move/print/NRZ bucket. This is the ~0.4 w delta that makes them
+reachable.)*
+
+---
+
+### C-9 — Audit chain checkpointing · **~0.5 w** · B-17 (rev7-build)
+
+Ranked **#2 in the whole product** by cost of doing it late (`06-delivery.md`
+§5), assigned to **no phase**, and specified in **no chapter** — `checkpoint`
+appears twice in the entire design set, once in that table and once as an
+example branch name.
+
+**Why it is a deadline item and not a Tuesday item.** Audit retention is
+`onExpiry = DELETE` with a 12-month floor and a 24-month shipped default. On the
+**first retention run** the job deletes the oldest rows, the surviving head's
+`previousHash` points at a row that no longer exists, and `audit:verify` reports
+a broken chain **permanently, for a legitimate deletion** — a red light
+operators learn to ignore, which is strictly worse than no light. The template's
+verifier also walks from genesis and materialises the whole table in memory, on
+what `07-…` §1.2 calls the fastest-growing table.
+
+**What to build.** An `AuditCheckpoint` (sequence, hash-at-that-point,
+timestamp, signed under `HKDF(SECRET_KEY, info="audit-checkpoint")`); the
+retention job writes one before deleting anything; `verifyAuditChain` verifies
+checkpoint-to-checkpoint and chunks its walk. And settle
+`AUDIT_GENESIS_HASH` — it is currently the literal string
+`"genesis:webapp-template:audit:v1"`, and it must be decided in the first commit
+that writes an audit event.
+
+**Deadline:** before the first retention run, i.e. before month 12 of the live
+instance. Practically: before Phase 1 closes, because it changes the retention
+job and the verifier together.
+
+---
+
+### C-10 — Capacity check on group move and waitlist placement · **~0.1 w** · R-10
+
+`Group.capacity` is a nullable field and **nothing anywhere reads it**, on the
+action **R-34** and **D-108** just made first-class. `04-ux.md` §4.8's group-move
+row is *"choose the target group, give a reason, confirm"* — no occupancy, no
+"this group is full", no waiting-for-a-place state.
+
+**The weekly management question in a swim school is not "is Sanne ready" — it
+is "is Sanne ready **and is there a spot in B2**".** Both predecessor reports
+named this and it is still unaddressed. Without it the move screen will put a
+thirteenth child in a group of twelve and the person who finds out is the
+instructor on Tuesday.
+
+**The fix.** One query and a soft block: show occupancy against `capacity`, warn
+over capacity, allow the override (a group of thirteen for one week is normal).
+Same check on the **R-33** waitlist placement action, which asks the identical
+question.
+
+---
+
+### C-11 — Absence self-report, or an honest sentence · **~0.4 w, or 0** · R-14
+
+`AttendanceEvent.state` includes `EXCUSED` and there is **no inbound channel
+that could excuse anybody**: no portal (v2), no form, no email intake, no
+absence link. `04-ux.md` §4.1 gives *"long-press = EXCUSED/LATE + note"* and
+nothing to base it on.
+
+**Every week.** A parent texts the instructor's personal phone at 17:30. At
+19:00 the instructor long-presses EXCUSED from memory, for the children whose
+message they happened to see. The distinction between ABSENT and EXCUSED — the
+whole reason both exist, and the basis of any future absence policy — is
+recorded on the basis of which parent had which instructor's number.
+
+**Two acceptable outcomes, and one unacceptable one.** Build a signed,
+per-`(session, student)` link, messaged to the guardian, that writes `EXCUSED`
+with `source = GUARDIAN` and needs no login (~0.4 w, and it composes with C-7's
+delivery path). **Or** state plainly in `04-ux.md` §4.1 that **EXCUSED is
+instructor-asserted hearsay in v1** (0 w), so nobody builds an absence report on
+it later believing otherwise. What is not acceptable is shipping the enum and
+saying nothing.
+
+---
+
+### C-12 — Waitlist entries must hold a `Person` · **2 lines, 0 w** · R-9
+
+**The cheapest correction in this review and the one with the most embarrassing
+failure mode.** **D-066** enumerates every relationship that holds a `Person` —
+membership, enrolment, role assignment, guardian relationship, unexpired
+consent, legal retention ground. **A `WaitlistEntry` is not on the list.**
+
+A parent enquires in March. An `Inquiry` is written (**D-051** — public forms
+never write `Person`), promoted to a `WaitlistEntry`, which requires a `Person`.
+That person has no membership, no enrolment, no role, no consent and no legal
+ground: under D-066 their last relationship of any kind ended the moment it
+began. They enter `REVIEW` and are deleted — while the entry the design calls
+*"the front door"* points at nothing. **Dutch swim-school waiting lists run
+months to years; this is the median entry, not a tail case.** Second, smaller
+version: `Inquiry` retention is 6 months → `DELETE`, while `WaitlistEntry` holds
+a reference to it, so the front door's provenance vanishes at six months.
+
+**The fix.** Add *"an open `WaitlistEntry`"* to D-066's list, and extend
+`Inquiry` retention to the life of any entry derived from it.
+
+---
+
+### C-13 — Specify `coversResource()` · **~0.2 w** · B-10 (rev7-build)
+
+Not a feature — the **write half of the authorization model**, named exactly
+once in the entire design set, in `06-delivery.md` §5 Phase 2, with no
+signature, no return type and no chapter section. The read half gets a fully
+specified eight-variant branded union (**D-147**). Every write in the
+application calls this one.
+
+Unanswered on day one: does it take a `Reach` or a session? What is a
+`resourceRef`? Who resolves a `studentProfileId` to the group a `GROUP` grant
+covers? For a `SESSION` reach, is the window checked against the resource's time
+or the clock? **D-144** says expiry is evaluated inside `requirePermission` and
+`resolveReach` and names no third function — so is `coversResource` inside
+`requirePermission` or beside it?
+
+**Blocks Phase 2.** Specify it in `02-…` §2.3 alongside D-147, with the same
+rigour: signature, `resourceRef` shape, one row per `Reach` variant, and what
+`UNION` and `NONE` do.
+
+---
+
+### C-14 — A defined independence window for the four-eyes gate · **1 sentence, 0 w** · R-7
+
+**D-085** requires the assessor be *"not among the `InstructorAssignment`
+holders for that student's group **over the assessment window**"*, and the
+assessment window is **defined nowhere**. `InstructorAssignment` binds to
+`groupId` **or** `sessionId`, so a one-evening substitution creates an
+assignment of the same kind as a standing one.
+
+Both readings are available to an implementer. *Narrow* ("assigned on the day"):
+almost nothing is excluded and the control is ceremonial. *Broad* ("ever
+assigned"): in a club of four instructors who cover for each other, **nobody is
+independent for anything** and D-085's override becomes the normal path.
+
+D-085's own defence is that the override **rate** is the signal a chair can act
+on — *"if it is being used every week that is itself the finding."* That
+reporting is worthless if the rule's calibration is an accident of how one
+developer read one clause.
+
+**The fix.** Independence is broken by a **standing** `InstructorAssignment` to
+the child's group (one bound to `groupId`) overlapping the aftest date, and
+**not** by a session-level substitution. The relationship the control is about
+is *"their own teacher"*, not *"someone who once stood in"*.
+
+---
+
+### C-15 — Lanes: take the zero-week option · **0 w** · R-16
+
+Two groups in one pool at the same hour is normal, and nothing models it.
+`Lane` appears exactly once in the design set — in **OD-10**'s glossary list, as
+a term to translate. It is not an entity. `Location.capacity` is a single number
+meaning "people", which answers a different question.
+
+R-16 offers a `LocationResource` with a conflict check in the generator (~3 d)
+**or** deleting the word *"resources"* from **R-10**. **Take the deletion.** It
+is a planning-quality problem, not an operational stop — the lesson happens
+whether or not the app knows the lanes — and C-1 is already spending a week
+opening up `planning`. A requirement with no model behind it is worse than an
+absent requirement; `Lane` returns in v2 with the rest of scheduling.
+
+---
+
+### List C total
+
+| # | Item | Weeks | Finding |
+|---|---|---|---|
+| C-1 | Session generation: recurrence + closure calendar | 1.0 | R-2 |
+| C-2 | The CSV importer (now the only ingress) | 1.0 | R-29 / D-157 / OD-18 |
+| C-3 | Catalogue-authoring surface | 1.5 | F-44 dissolved |
+| C-4 | Roster-based reach | 0.1 | R-4 |
+| C-5 | Lesson cancellation | 0.1 | R-3 |
+| C-6 | Substitute action + grant window | 0.4 | R-5 |
+| C-7 | Guardian communication screen | 0.6 | R-13 |
+| C-8 | Routine print + cached session shell | 0.4 | R-6 |
+| C-9 | Audit chain checkpointing | 0.5 | B-17 |
+| C-10 | Capacity check | 0.1 | R-10 |
+| C-11 | Absence self-report (or the sentence) | 0.4 | R-14 |
+| C-12 | Waitlist entries hold a `Person` | 0.0 | R-9 |
+| C-13 | Specify `coversResource()` | 0.2 | B-10 |
+| C-14 | Independence window | 0.0 | R-7 |
+| C-15 | Lanes — delete "resources" from R-10 | 0.0 | R-16 |
+| | **Total added** | **6.3** | |
+
+**C-4, C-5, C-10, C-12 and C-14 together are under two days and close five real
+failures.** They should not wait for a scope conversation, a chapter rewrite or
+this document's approval.
