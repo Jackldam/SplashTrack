@@ -93,3 +93,187 @@ D-158. Change §1.3's "(OD-6)" to "(D-158)". Do not restate the numbers in
 chapter 02.
 
 ---
+### C-3 — `AFTEST` is a Dutch-derived schema enum value, which D-159 forbids "without exception"
+
+**Severity: high.**
+
+Side A — `09-decision-register.md`, D-159 (added today, 29a0021):
+
+> Schema identifiers, column names, API field names and code are English
+> **without exception**. `docs/glossary.md` fixes one English identifier per
+> domain concept, with the Dutch term beside it, before the first domain module
+> is written.
+
+and its own trade-off column names the term explicitly:
+
+> `afzwemmen`, **`aftesten`**, `lesuur` and `baan` lose their exact Dutch sense
+> in the schema; the glossary carries the definition instead.
+
+Side B — `15-assessment-and-fees.md` §2 (the entity sketch, line 49):
+
+> `Assessment           type ∈ {AFTEST, EXAM}, schemeId,`
+
+restated at §3 (line 238) as a normative gate condition:
+
+> - `type = AFTEST`;
+
+and load-bearing in `09-decision-register.md` D-085:
+
+> An `ExamCandidate` may not reach `CONFIRMED` without a non-superseded
+> **`AFTEST`** `Assessment` with `outcome = PASS` …
+
+**Why it matters.** This is not prose — D-159 explicitly exempts prose and
+explicitly does not exempt enum values ("schema identifiers … without
+exception"). `AFTEST` is an enum member of `Assessment.type`, i.e. a value
+persisted in a column. An implementer building chapter 15 hits a direct
+conflict on their first schema file: follow D-159 and the identifier in D-085,
+§2 and §3 no longer exists; follow chapter 15 and D-159 is violated on the day
+it was written. Because the term is *the* four-eyes control's discriminator
+(D-085), a silent rename by whoever writes the module first will decouple the
+register from the chapter.
+
+Note that D-159 is not obviously wrong here — it says the glossary should carry
+`aftesten`, and OD-10 §2 maps `aftesten` → "the independent pre-exam
+assessment". What is missing is the English identifier D-159 requires. The
+design set never states one.
+
+**Recommended resolution.** Either (a) fix the English identifier now, in the
+glossary D-159 mandates, and update `15-…` §2/§3 and D-085 in the same change,
+or (b) add an explicit, register-recorded exception to D-159 for `AFTEST` and
+drop the words "without exception". Do not leave both statements standing.
+
+---
+
+### C-4 — D-161's obligation exists only in the register; the two sections it names say nothing about it, and `00-overview.md` still frames the guardian portal as merely deferred
+
+**Severity: medium.**
+
+Side A — `09-decision-register.md`, D-161 (added today), "Where" column:
+
+> `02-security-privacy.md` §2.2/§2.3, `01-domain-model.md` §5
+
+with the decision text:
+
+> The guardian portal is committed to v2. v1 removes `RELATED` from the scope
+> enum as decided, and **additionally may not foreclose the axis: no v1 decision
+> may assume staff are the only readers of a student's record**
+
+Side B — commit 29a0021 touched `00-overview.md`, `08-open-decisions.md`,
+`09-decision-register.md`, `10-findings.md` and `15-assessment-and-fees.md`.
+It did **not** touch `02-security-privacy.md` or `01-domain-model.md`. §2.3
+("Reach — the read side") contains D-031 and D-147 and no mention of guardians,
+non-staff readers or a v2 portal; `01-domain-model.md` §5 ("Data ownership")
+likewise. The nearest text, `02-security-privacy.md` §2.1, still reads:
+
+> **`RELATED` is not in this enum.** OD-5 (`08-open-decisions.md`) decided on
+> **2026-09-01** to remove it entirely rather than reserve it unimplemented …
+> The enum member returns with the portal that needs it.
+
+and `00-overview.md` §3.2, row P-04:
+
+> | P-04 | Guardian **portal** | The relationship and consent authority are
+> built in v1 (R-04). **The login surface is deferred**, and `RELATED` is
+> removed from the scope enum entirely **until the portal ships** … (OD-5) |
+
+**Why it matters.** OD-5's closure states the reason this distinction was
+recorded at all: *"a commitment kept only in this chapter is a commitment nobody
+implementing chapter 02 will read."* That is exactly the state the design set is
+now in — the commitment is in `08-…` and the register, and the two chapters an
+implementer of authorization and of the domain model actually reads carry no
+trace of it. `00-overview.md`'s P-04 row is the v1-scope table, and it says
+"deferred" and "until the portal ships", which is the deferred-indefinitely
+framing D-161 was written to replace. Separately, chapter 02 §2.1 dates the
+decision to 2026-09-01 while OD-5 was open until 2026-09-02 — a small stale
+date, but it is the sentence a reader uses to check currency.
+
+This is a *stale/incomplete-fix* finding rather than a contradiction: nothing
+here states the opposite of D-161, but the fix was recorded and not landed.
+
+**Recommended resolution.** Either correct D-161's "Where" pointer to the
+sections that actually carry it (`08-…` OD-5 and the register), or land one
+sentence in `02-security-privacy.md` §2.3 and `01-domain-model.md` §5. Update
+P-04's row to say "committed to v2 (OD-5, D-161)" rather than "deferred".
+
+---
+
+### C-5 — `08-open-decisions.md` OD-18 cites `D-4`, which resolves to D-004 (a decision about `Person` identity) and not to OD-4
+
+**Severity: low.**
+
+Side A — `08-open-decisions.md` OD-18, third table row (added today):
+
+> | **Both authoritative for different things** | … | The worst option to
+> discover late: reconciliation is exactly the work **D-4/F-45** kept out of v1 |
+
+Side B — `09-decision-register.md` D-004:
+
+> One `Person` per human per installation; `Person`, `Membership` and
+> `StudentProfile` are three distinct concepts …
+
+The decision that actually kept reconciliation out of v1 is **OD-4**
+(`08-open-decisions.md` §OD-4, "**Still open.** Whether **reconciliation**
+arrives — CAMT.053 / MT940 import with payment-reference matching. It is out of
+the v1 estimate"), which is how the same fact is cited in `00-overview.md`
+row P-03: "Reconciliation (CAMT.053 / MT940 import with reference matching) …
+not a v1 item (OD-4)".
+
+**Why it matters.** Low impact — a reader chasing `D-4` lands on the identity
+spine and finds nothing about reconciliation, then guesses. It is worth fixing
+because it was introduced today, in the entry the chapter itself calls "the most
+expensive item currently open".
+
+**Recommended resolution.** `D-4/F-45` → `OD-4/F-45`.
+
+---
+
+### C-6 — OD-16 claims "the chapters say which is which" about the pen-and-paper premise; they do not, and two chapters still state it unqualified
+
+**Severity: medium.**
+
+Side A — `08-open-decisions.md` OD-16 (closed today):
+
+> - **The pen-and-paper premise was only ever true for attendance and
+>   assessment**, not for the member base. Chapter 04's "the incumbent is paper"
+>   framing (D-129, print fallbacks) remains correct for the poolside surfaces
+>   and is now known to be wrong for membership data. **Both statements coexist;
+>   the chapters say which is which.**
+
+Side B — the chapters do not. `04-ux.md` §4.0 opens:
+
+> ### 4.0 The incumbent is pen and paper
+> Everything in this chapter was written against an implicit competitor: another
+> system. **There is none.** The thing SplashTrack has to beat is a clipboard …
+
+and `00-overview.md` §1 (the thesis qualification, unedited by 29a0021):
+
+> **One qualification, added after the domain review.** The thesis is the design
+> constraint, not the definition of success. **The incumbent is pen and paper**,
+> and paper never has a zero-percent day …
+
+Chapter 04 is not a poolside-only chapter: its §5 fee table specifies the
+**Balance** surface —
+
+> | **Balance** (R-32) | Per payer and per student: open charges, recorded
+> payments, running balance … | **Administration surface only.** …
+
+— which is precisely the surface where an incumbent system does exist (OD-16),
+and whose ownership is the subject of OD-18.
+
+**Why it matters.** "There is none" is the premise that justifies a set of
+scope reductions (print fallback as parity, post-hoc entry as a winning v1,
+"first-lesson failure is permanent"). Those conclusions are sound for the
+poolside surfaces and unexamined for the membership/fees surfaces, where the
+comparison is now against a commercial product a volunteer already uses. An
+implementer or scoper reading chapter 04 top-to-bottom will apply a
+clipboard-grade bar to a screen that has to beat real software. It also leaves
+OD-16 asserting a state of the document that is not true, which is the kind of
+claim later rounds trust rather than re-check.
+
+**Recommended resolution.** Add one sentence to `04-ux.md` §4.0 scoping "there
+is none" to the poolside surfaces and pointing at OD-16/OD-18 for the
+membership and fees surfaces; likewise qualify `00-overview.md` §1's "the
+incumbent is pen and paper". Alternatively, weaken OD-16's claim to a hand-off
+("the chapters must be corrected to say which is which") so it reads as
+outstanding work rather than completed work.
+
+---
