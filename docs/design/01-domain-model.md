@@ -558,7 +558,7 @@ The column existed in the prose describing this table ("on what lawful basis it
 is held") and not in the table itself, so the one question an organisation must
 answer to defend a default was the one the defaults did not state. A proposed
 basis can be argued with; a blank cannot. Where the entry reads *unresolved*, it
-is unresolved and must be settled before that default ships (F-50).
+is unresolved and must be settled before that default ships (F-128).
 
 | Data class | Writing module | Reach | Lawful basis (proposed) | Trigger | Default retention | On expiry |
 |---|---|---|---|---|---|---|

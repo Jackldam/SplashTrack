@@ -55,7 +55,7 @@ An earlier draft said "**the token is `SECRET_KEY`**", while the diagram beside
 it said the token *wrapped* `SECRET_KEY`, and `13-…` §5 said secrets used a key
 *derived from* it. Three schemes in two chapters. The lifecycle of `SECRET_KEY`
 is now stated once, in `13-configuration-and-setup.md` §3.1.1 (D-112); this
-chapter does not restate it. Finding **F-50**.
+chapter does not restate it. Finding **F-95**.
 
 Making the token *be* the key was wrong on its own terms, independent of the
 contradiction. One key, forever, would protect the backup archive, every medical
@@ -66,7 +66,7 @@ during setup in 2026 and leaves in 2027 can decrypt any archive they obtain in
 database and cannot reach `.stbak` files already written, so after a rotation the
 operator must keep the *old* token for old archives and the *new* one for new
 ones — two permanently critical secrets, and no protection whatsoever for the
-archives the departing administrator can already read. Finding **F-55**.
+archives the departing administrator can already read. Finding **F-100**.
 
 **Decision D-114 — Two-level key envelope. A random 256-bit master key is
 generated at setup and stored wrapped by a KDF over the printed recovery token.
@@ -114,7 +114,7 @@ combination: if the token had to encode a full 256-bit key it would run past
 fifty characters and nobody would transcribe it correctly, so the pressure would
 be to shorten it — and shortening key material is silently catastrophic in a way
 shortening a passphrase over Argon2id is not. Making it a passphrase (D-114) is
-what makes a transcribable length defensible. Finding **F-55**.
+what makes a transcribable length defensible. Finding **F-100**.
 
 Handling rules, all of which were missing:
 
@@ -145,7 +145,7 @@ application writes and reads itself, not a raw `pg_dump` replayed by the
 database.**
 
 Restoring a `pg_dump` produced elsewhere is arbitrary SQL execution — see §4.2
-and F-52. The honest comparison is short: a logical export deletes that entire
+and F-97. The honest comparison is short: a logical export deletes that entire
 class of failure, costs nothing the design relies on (D-046's
 `_prisma_migrations` trick carries perfectly well as a **manifest field**
 recording the applied-migration list), and removes the need to ship and version
@@ -172,7 +172,7 @@ under-specified in a way that reads as safe and is not. GCM is not a streaming
 construction: a naive implementation either buffers the whole archive — which a
 large instance cannot — or encrypts chunks independently, in which case an
 attacker can truncate, reorder or splice chunks between archives and every
-per-chunk tag still verifies. Finding **F-56**.
+per-chunk tag still verifies. Finding **F-101**.
 
 - Use a named framed construction — libsodium `secretstream` (XChaCha20-Poly1305)
   or `age` — with sequence-bound chunks and a final-chunk tag, so truncation and
@@ -188,7 +188,7 @@ per-chunk tag still verifies. Finding **F-56**.
 path explicitly and CI asserts that no shipped `.stbak` fixture contains it
 (`13-…` §3.1.1, D-113). Without that exclusion the archive would contain its own
 decryption key and every "the file alone is inert" claim in this chapter would be
-false with nothing failing. Finding **F-51**.
+false with nothing failing. Finding **F-96**.
 
 **Assets are files on a path, not an object store.** Uploaded assets live under
 `DATA_DIR` (`13-…` §3.1) and are captured *inside* the encrypted archive. There
@@ -227,7 +227,7 @@ download button: they point the destination at their own bucket, and every night
 the instance ships a complete copy of every person, every medical note and every
 exam result, encrypted with a key the same UI will re-display to them. The most
 controlled path guarded, the uncontrolled path next to it a text field. Finding
-**F-58**.
+**F-103**.
 
 So when a remote destination does arrive, it carries the download's controls in
 full:
@@ -314,7 +314,7 @@ executed as the database superuser. The result is code execution in the database
 container and persistence via a trigger that survives every future migration.
 The previous verification step made this worse by sounding sufficient: it checked
 that the archive was *intact*, not that it was *benign*, and both the checksum
-and the manifest came from the same attacker-supplied file. Finding **F-52**.
+and the manifest came from the same attacker-supplied file. Finding **F-97**.
 
 **Decision D-116 — The application's database role is not a superuser. It owns
 its own schema and nothing else, `NOSUPERUSER NOCREATEROLE`, and the reference
@@ -404,7 +404,7 @@ nothing.** It named no source for the fixtures, no generator, no fixture
 encryption key, no storage, and no definition of "domain invariants" — and
 structurally, at v1.0 there are zero prior releases, so the matrix is green while
 asserting nothing. The trap is that **fixture generation must ship in v1.0 or
-v1.1 can never test restore from v1.0**. Finding **F-62**.
+v1.1 can never test restore from v1.0**. Finding **F-107**.
 
 **Decision D-105 — The release workflow generates the restore fixture; the
 matrix consumes it from GitHub Release assets, not from the repository.**
@@ -561,7 +561,7 @@ no expiry trigger**, on the same volume, under the same key. Set against
 of thirty days rolling plus one monthly for twelve months — the arithmetic is
 uncomfortable: a parent requests erasure, the school reports the medical note
 deleted, and it is present in up to thirteen archives plus an unbounded set of
-pre-migration snapshots. Finding **F-59**.
+pre-migration snapshots. Finding **F-104**.
 
 **Decision D-104 — Pre-migration backups are deleted after the next successful
 start and at most three are kept. Backup retention may not exceed the shortest

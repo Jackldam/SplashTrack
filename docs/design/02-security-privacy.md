@@ -1151,7 +1151,7 @@ backup retention window plus, for pre-migration backups, three further
 upgrades. The organisation's own privacy notice must state both figures and
 the resulting **backup horizon** (the latest date at which a deleted note can
 still exist, encrypted, in a backup archive) rather than implying that "hard
-deleted" means gone everywhere the moment the row is removed. Finding **F-59**.
+deleted" means gone everywhere the moment the row is removed. Finding **F-104**.
 
 ### 5.4 Consent
 

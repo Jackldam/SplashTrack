@@ -98,7 +98,7 @@ draft gave four mutually exclusive accounts — an operator-supplied environment
 variable (here), a value "generated on first run and written to the data volume"
 (`03` §1.2), a value *displayed* by the wizard (§6.3 step 4), and the recovery
 token itself (`14` §2, whose own diagram said it *wrapped* the key rather than
-being it). Four descriptions, four failure modes. Finding **F-50**.
+being it). Four descriptions, four failure modes. Finding **F-95**.
 
 Worse, the design asserted a template capability that does not exist. Verified
 against `WebAppTemplate`: **there is no `SECRET_KEY`.** At-rest encryption
@@ -168,7 +168,7 @@ tree, **the archive would contain its own decryption key** — and every claim
 that the encrypted file is inert without the token collapses silently, with
 nothing failing. That is why the "generated on first run and written to the data
 volume" sentence is deleted from `03` §1.2 rather than softened. Finding
-**F-51**.
+**F-96**.
 **Trade-off.** The exclusion is a deny-list entry, which is the weaker shape; it
 is backed by a test that greps every shipped `.stbak` fixture for the key bytes
 and for the file name, so the check does not depend on remembering.
@@ -224,7 +224,7 @@ and there are no imports of it anywhere. The design has described the registry
 as "one Zod schema per setting" as though the dependency were inherited. It is
 not. Adding it is a one-line change, but it is a build task rather than an
 existing capability, and the same correction applies to `05-technical.md`'s
-module template, which lists `validation/` as Zod schemas. Finding **F-63**.
+module template, which lists `validation/` as Zod schemas. Finding **F-108**.
 
 ### 3.3 Layer 3 — Organisation content
 
@@ -280,7 +280,7 @@ processes, and there is no rebuild mechanism at all. The `genericOAuth` plugin
 the design bets on takes a **static config array at construction** and routes
 callbacks on `/api/auth/callback/:providerId`, so provider ids must exist at
 init for routing to work. Adding a provider at runtime is not something the
-plugin does today. Finding **F-60**.
+plugin does today. Finding **F-105**.
 
 The mechanism that would actually work, and which must be built:
 
@@ -345,7 +345,7 @@ ciphertext to its location. Both omissions are load-bearing:
 
 With a key id, rotation becomes **resumable and observable**: "how many rows
 remain under `keyId=1`" is a query. With AAD, a relocated ciphertext fails to
-authenticate. Finding **F-56**.
+authenticate. Finding **F-101**.
 
 **Trade-off.** Envelopes get longer and every read site must pass its own
 `(table, column, pk)`. That is a small, mechanical cost, and it is paid at the
@@ -401,7 +401,7 @@ re-encryption command could not reach — so rotating the key would have silentl
 un-enrolled **every administrator's second factor at once**, while MFA is
 mandatory for administrators. The HKDF split is what makes rotation safe, and
 the restore matrix carries an invariant asserting that an enrolled TOTP still
-verifies after a restore (`14-…` §4.3.1). Finding **F-61**.
+verifies after a restore (`14-…` §4.3.1). Finding **F-106**.
 
 This is the same key-management question as OD-7 (special-category column
 encryption); both are answered by one root key, one envelope and one documented
@@ -521,7 +521,7 @@ database credential, a botched restore, a support script, a bug in the erasure
 transaction — therefore puts a **populated production database holding thousands
 of children's records into unauthenticated setup mode**. D-039's claim that the
 wizard self-destructs once the first administrator exists was false as
-specified: it self-destructed once a *row* existed. Finding **F-53**.
+specified: it self-destructed once a *row* existed. Finding **F-98**.
 
 **Decision D-099 — Setup mode requires **all** of: no bootstrap record, zero
 `UserAccount` rows, zero `Person` rows and zero `RoleAssignment` rows. Data
@@ -586,7 +586,7 @@ operator whose setup fails opens an issue, pastes `docker compose logs app`, and
 publishes a credential that makes a stranger the administrator of an instance the
 school is about to populate. The same exposure occurs through Portainer, Synology
 and Unraid log panes, and through centralised log shipping to a third party.
-Finding **F-54**.
+Finding **F-99**.
 
 **Decision D-101 — The setup token is written to `$DATA_DIR/setup-token`, mode
 0600, and only its *path* is printed. It is single-use, expires in ≤60 minutes,

@@ -71,11 +71,11 @@ process running as root. `postgresql-client` is not installed, although
 in the image. Two further bullets in that list were not merely unmet but *wrong*:
 "all configuration via environment variables" inverts the whole of chapter 13,
 and "secrets are generated on first run and written to the data volume" is
-incompatible with restore (the archive would then contain its own key — F-51).
+incompatible with restore (the archive would then contain its own key — F-96).
 
 The list below is therefore stated as **targets with their current status**, not
 as a description. An implementer must be able to tell which of these they have
-to build. Finding **F-57**.
+to build. Finding **F-102**.
 
 | Property | Status | Where it is specified |
 |---|---|---|
@@ -96,7 +96,7 @@ contain.
 
 The lifecycle of `SECRET_KEY` is stated **once**, authoritatively, in
 `13-configuration-and-setup.md` §3.1.1. This chapter does not restate it, and
-neither does `14-backup-restore-upgrade.md`; both point at it. Finding **F-50**.
+neither does `14-backup-restore-upgrade.md`; both point at it. Finding **F-95**.
 
 ### 1.3 Structure inside an instance
 

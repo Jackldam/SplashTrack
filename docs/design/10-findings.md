@@ -778,3 +778,353 @@ digital list to import at all.
 version" is the policy that keeps every self-hoster's old backup restorable,
 and it was a sentence in a document with no test behind it.
 **Response.** D-124: `tests/unit/migration-history-append-only.test.ts`.
+
+### F-109 — No permission existed for assigning roles, and no anti-amplification rule
+**Severity: critical.** (Reviewer A-1.) Grepping the active set, `roles.assign`
+appeared only in `07-operations.md` §1.3's high-risk permission list and existed
+in no catalogue. Role assignment is the highest-privilege operation in the
+product, and `AccessGroup` (§2.7) bundles *permissions plus scopes* into one
+assignable object. A `UNIT`-scoped Location Manager opens People & roles —
+listed in `04-ux.md` §1 as an admin screen with no permission named — and
+assigns themselves or an accomplice an `ORGANIZATION`-scoped role, or an access
+group containing `students.medical.read`. They hold every medical note in the
+school. Step-up re-authentication is required for role changes and is no
+obstacle whatsoever: it is their own password and their own second factor. The
+audit event records a legitimate-looking role change.
+**Response.** D-139 (three invariants: no amplification, scope confinement,
+window confinement — in the grant service, not the UI, tested per module) and
+the catalogue additions in `02-…` §2.5: `roles.read/assign/manage`,
+`accessgroups.read/assign/manage`. `roles.manage` is separated from
+`roles.assign` because editing which permissions a role carries is strictly
+stronger than assigning it.
+
+### F-110 — An admin-configurable OIDC provider is an account-takeover primitive
+**Severity: critical.** (Reviewer A-2.) The registry stores per provider an
+issuer URL, a client id, an encrypted secret, a **claim→field mapping**, a JIT
+toggle and a JIT role — guarded by "a permission-guarded admin screen" whose
+only candidate permission was `organization.settings.manage`. Nothing stated how
+an external identity binds to an existing `UserAccount`. A Planner or office
+manager holding that one permission adds a free Keycloak tenant they control,
+maps `email` onto the administrator's address, passes the mandatory test
+connection against their own IdP, and signs in as instance administrator. MFA on
+the local account is irrelevant — the local method is never used. Second attack:
+edit only the token endpoint of an *existing* provider, leaving the secret in
+place, and the application posts that client secret to the attacker on the next
+login. A control that hides a secret from reads while allowing a redirect of
+where it is sent is not a control.
+**Response.** D-140, recorded as **preconditions** rather than v1 build items —
+the registry is out of v1 (D-120), which is why the hardening is cheap now and
+expensive later. Every clause is structural rather than procedural: link on
+`(issuer, sub)` only, delete the JIT-role field rather than defaulting it to
+none, clear the secret on any endpoint change, opt-in per account for
+`ORGANIZATION`-scoped principals.
+
+### F-111 — The lockout safeguard justifying runtime IdPs cannot be enforced
+**Severity: high.** (Reviewer B-5.) "Local administrator login can never be
+disabled while it is the only working method" was presented as one of two
+*mandatory mitigations* for D-035. It is bypassed by configuring any second
+provider — including the attacker's, per F-110 — after which local login is not
+"the only" one and every check passes. And "working" is not decidable: a
+provider that passed a test at 14:00 stops working at 14:05 through certificate
+expiry, a tenant policy change, an admin removed from a group, or a discovery
+endpoint the application can reach and users cannot. The test-connection gate
+has the same shape — it proves the app reached the IdP once, not that a human
+can log in through it.
+**Response.** D-141. The claim is deleted, not softened. The real control is
+already in the design and was not being credited: the break-glass CLI (§7 of
+`13-…`), which depends on host access rather than a network-reachable secret.
+The enforceable invariant that replaces it — at least one local
+`ORGANIZATION`-scoped account with a verified MFA factor, checked at the
+database — is re-evaluated on role revocation and account disable, not only when
+SSO is switched on.
+
+### F-112 — `resolveReach` had no shape for four of six scope types
+**Severity: high.** (Reviewer B-6.) The signature returned
+`{units, groups, all: false}`. An internal examiner (`COURSE`) and an aftest
+assessor or external examiner (`SESSION`) both resolve to empty reach: every
+list denies them and the candidate list they are physically present to assess is
+blank. D-031 calls list filtering "the highest-risk code path in the
+application", and the fix under time pressure is `{all: true}`. Separately,
+D-031's claim that a required argument "turns a silent over-fetch into a type
+error" was overstated: the compiler enforced *presence*, and
+`{units: [], groups: [], all: true}` was a literal writable at any call site or
+test helper.
+**Response.** D-147 — an opaque branded discriminated union covering every scope
+type, `NONE` explicit, `UNION` explicit, no `all` field, constructible only by
+`resolveReach`. `06-delivery.md` §2.1 already requires asserting that a `Reach`
+cannot be constructed outside the resolver; this is the shape that makes the
+assertion possible. **One part of the reviewer's framing is rejected:**
+`all: false` is default-*closed*, not "a default-open shape" — a forgotten field
+denies. The two real defects (incomplete coverage, forgeability) are sufficient.
+
+### F-113 — `RoleAssignment` could not express the expiry two decisions depend on
+**Severity: high.** (Reviewer B-7.) The tuple was
+`(personId, roleId, scopeType, scopeId)` with no validity fields, while D-052
+requires "a mandatory expiry after which it lapses automatically", §2.4 lists
+External examiner as "always with an expiry" and Internal examiner as
+"time-bounded", and D-068 says the `SESSION` grant "carries its own
+`validFrom`/`validTo`". As specified, the external examiner who assessed one
+Saturday in March 2026 retains `exams.assess` and `exams.results.record` on that
+session **forever**, and because D-062 makes results append-only, an amendment
+they make years later becomes the effective result. Nobody at the school has any
+reason to look at that assignment again.
+**Response.** D-144. Note the enforcement detail: expiry is a predicate inside
+`requirePermission` and `resolveReach`, **not** a cleanup job — a job that has
+not run yet is an open grant, and a predicate cannot be behind schedule.
+
+### F-114 — `GROUP` coverage was per-entity, permanent, and ambiguous in the sentence that defines it
+**Severity: high.** (Reviewer B-8 and C-15, which are one defect.) Coverage read
+"the students in it *for the period of their membership*" — which can mean the
+instructor's access lasts during the membership, or that they may see records
+dated within it. In a union-of-grants model over an append-only membership table
+that D-059 keeps for life, the natural implementation is the second: **every
+instructor who has ever taught a child retains read access to that child's
+complete record permanently.** And because scope covers an *entity*, one
+`students.read` opens `Progress · Attendance · Enrolments · Exams · Notes ·
+Privacy` — every group she has been in, attendance at other locations, failed
+exam attempts, guardian relationships. None of it is needed to teach a Tuesday
+lesson. The cross-unit case compounds it: a child registered at Zuidbad
+attending a summer course at Noordbad is fully reachable by both Location
+Managers, because effective reach is a union and the broader answer always wins.
+**Response.** D-145: live evaluation of both membership and instructor
+assignment at query time; per-relation coverage with scope-escape tests
+asserting on the **fields returned**, not only on row reachability; and the
+home-unit rule for profiles versus the group-unit rule for that group's records.
+
+### F-115 — Pastoral notes and public inquiry free text sat outside the protected class
+**Severity: high.** (Reviewer B-9 and B-10, which share one root: protection
+tracked the permission pair rather than the data.) D-010 promises medical and
+pastoral notes "their own permission **pair**", singular; the catalogue defines
+**two**, and §5.3 named only medical remarks as special category — so pastoral
+notes were gated by `students.notes.*`, an ordinary-looking teaching permission,
+plausibly unencrypted, unaudited and present in every export and every backup.
+*"Moeder zit in de opvang"*, *"via jeugdzorg aangemeld"*, *"mag niet opgehaald
+worden door vader"* is more sensitive than an allergy and may be special
+category by inference. Separately and worse, `Inquiry` takes free text from an
+**unauthenticated public form**, and in this domain the first message a parent
+sends is very often *"mijn zoon heeft epilepsie…"*. Inquiry reach was
+instance-wide, D-013 covered `students` columns only, D-010's audit rules
+covered `students.medical.*` reads only, and the table lives in the `pages`
+module — so the Content Editor, whose catalogue entry says in bold "**No person
+data**", would have been given health data about named children by module layout
+alone.
+**Response.** D-148 defines one protected free-text class over four fields
+(medical, pastoral, assessment remarks, inquiry text), all encrypted under the
+D-096 envelope, audited on read, export-excluded by default. `inquiries.read`
+and `inquiries.manage` are added to the catalogue and explicitly excluded from
+the Content Editor bundle. **The reviewer's recommended fold of pastoral into
+`students.medical.*` is rejected with reasoning** (see §3). The most valuable
+part is the cheapest: a purpose-and-retention line at the capture point, because
+the real risk in a free-text field is what staff type into it.
+
+### F-116 — Audit tamper-evidence rested on intent and one database role
+**Severity: high.** (Reviewer B-13, partly overtaken.) "Append-only. Never
+updated, never deleted by application code" is a statement about intent. Two of
+the reviewer's three sub-claims were already answered by a later pass — the
+template's `AuditEvent` **is** a hash chain (`05-technical.md` §5, D-126) — but
+two gaps remained and both belong to the actor the trail exists to catch. One
+database role serves the whole application, so a compromised administrator
+exports the member base and deletes the four rows recording it, undetectably in
+practice because nobody runs a verification pass. Alternatively they lower audit
+retention to one day — audit retention is an organisation-configurable policy
+under D-065 — and the maintenance job destroys the evidence legitimately.
+**Response.** D-149: verification surfaced where a human sees it
+(`audit:verify` plus a diagnostics line); an `INSERT`-only database role on
+`AuditEvent`, which only means anything because D-116 already makes the
+application role a non-superuser; and a retention floor enforced by the settings
+classification (D-150). The related retention *mismatch* — audit at 24 months
+against exam results at 10 years, so the record of who recorded a diploma
+outcome dies eight years before the outcome — is a hand-off to `01-…` §5 and
+`07-…` §1.2 (§4 below).
+
+### F-117 — MFA verification was unthrottled, and the MFA mandate may have been a checkbox
+**Severity: high.** (Reviewer B-16.) Rate limiting covered login, password reset,
+export and public forms. It did **not** cover MFA/TOTP verification — a 6-digit
+code without throttling is brute-forceable, and MFA is the stated compensating
+control for the highest-privilege accounts in the product (R-13, FM-7) — nor
+setup-token submission, recovery-token entry at restore, or the signed backup
+link. Compounding it, `13-…` §3.2 puts "password policy, session timeouts, rate
+limits" in a live-editable Security settings category without saying which
+entries are load-bearing. If "MFA mandatory for administrators" is one of them,
+the mandate is a checkbox that `organization.settings.manage` or
+`splashtrack settings:reset` can clear; if it is not, that was stated nowhere.
+**Response.** The §4 controls table now names all four endpoints and requires
+**lockout with an audited failure event**, not merely rate limiting — an
+attacker who is only slowed down still gets there overnight. D-150 classifies
+every setting `free`/`bounded`/`invariant`, puts the MFA mandate in `invariant`
+with no override flag, and gives `bounded` entries hard floors that
+`settings:reset` also respects.
+
+### F-118 — Four admin-controlled server-side fetch surfaces, no SSRF consideration anywhere
+**Severity: high.** (Reviewer B-17.) OIDC discovery URL, SMTP test-send to an
+arbitrary host:port, backup destination endpoint, version check. The words SSRF
+and egress appear nowhere in fifteen chapters. A user with
+`organization.settings.manage` points discovery at
+`http://169.254.169.254/latest/meta-data/iam/…` and reads the error, or at
+`http://10.0.0.5:9200/` — and the SMTP test turns the settings page into an
+internal port scanner from inside the operator's network. The instance is
+typically the only thing the school has exposed.
+**Response.** D-142. The clause that matters most is the last one: never return
+the response body, status or a distinguishing error to the client. An error
+message that differs between "connection refused" and "timed out" is a scanner
+regardless of what else is blocked.
+
+### F-119 — Nothing handled a child reaching the age of digital consent
+**Severity: medium.** (Reviewer C-2.) Guardian authority is recorded with
+validity dates and nothing re-evaluates it when the subject comes of age. A swim
+school's eight-year-olds become sixteen-year-olds inside the retention window;
+parental authority to consent lapses by operation of law, not by a `validTo`
+someone remembered to set, so the `ON_BEHALF_OF` record stays apparently valid
+indefinitely.
+**Response.** D-151 — derived from `Person.dateOfBirth`, which the model already
+holds, against a configurable age-of-consent setting, evaluated at read time
+like every other validity in the chapter. This is the cheapest control in §5 and
+the most predictable consent failure in the domain.
+
+### F-120 — Consent and lawful-basis registration were one table, so withdrawal and objection were conflated
+**Severity: medium.** (Reviewer C-3.) `Consent.legalBasis` ranges over four
+values with a `withdrawnAt` field, so the model permits
+`legalBasis = CONTRACT` with a populated `withdrawnAt` — the exact combination
+§5.4 spends its length arguing must not exist. The retention logic and UI would
+either treat withdrawal of a contractual basis as consent withdrawal or ignore
+it, and neither is detectable. Also missing: withdrawal had no stated
+*consequence* anywhere. F-04 says photos are deleted "on erasure", while
+withdrawal of photo consent is the far more common event.
+**Response.** D-152: a schema constraint rather than a UI rule; objection as its
+own event; and a declared withdrawal cascade per purpose. **The reviewer's
+proposed third table is rejected** — see §3.
+
+### F-121 — The Article 15 export could silently omit health data and disclosed third parties
+**Severity: medium — extends F-88, which staged this for chapter 02.**
+(Reviewer C-4.) Medical data is included only when the *requester* holds
+`students.medical.read`, but the entitled party in an Article 15 request is the
+**data subject**: a member administrator with `privacy.export` produces an
+export that looks complete, is delivered as the organisation's Article 15
+response, and is silently missing the health data. The mechanism converts a
+permission boundary into a compliance failure with no signal. It also discloses
+guardian details, instructor names on sign-offs, staff-authored notes and audit
+actor ids — other people's personal data — with no preview and no redaction,
+while the erasure flow next door mandates a preview. And Article 15's
+requirements to state recipients, retention periods and the source of the data
+were unaddressed.
+**Response.** D-153. All three of the missing Article 15 elements are derivable
+from data the design already holds, so the annex is **generated** rather than
+typed and cannot drift from the `RetentionPolicy` table it describes.
+
+### F-122 — Erasure versus the audit trail was unresolved on a compliance-critical path
+**Severity: high.** (Reviewer B-12.) D-014 requires a registry containing every
+table referencing `Person`, with a test asserting completeness. `AuditEvent`
+records an actor person id and a target id — it references `Person` — and is
+simultaneously declared append-only, never updated, never deleted. These cannot
+both hold: either erasure nullifies the ids, destroying the accountability
+record D-026 and the product thesis depend on while mutating an append-only
+table, or `AuditEvent` is silently exempted from the registry whose completeness
+test is the entire mechanism preventing forgotten tables. **The test as
+described would fail on a correct implementation**, which is how this would have
+been discovered.
+**Response.** D-154 — two entry kinds in the registry, `erase` and
+`exempt(ground, until)`, with the ground named in the registry file and
+enumerated in the erasure report to the data subject. This generalises a shape
+the design had already accepted as a one-off for `Charge`/`Payment` (D-092).
+
+### F-123 — `ANONYMISE` was prescribed where genuine anonymisation is not achievable
+**Severity: medium — and already half-corrected.** (Reviewer B-19.) §5.6 argues
+correctly and at length that pseudonymisation is not anonymisation; the
+retention table two chapters earlier then set attendance to `ANONYMISE` "to
+aggregate" at 24 months, while student profiles, group memberships and session
+records are retained for 24 months or longer. Strip `studentProfileId`, keep
+`sessionId` and timestamps: a group holds twelve children, `GroupMembership` is
+time-bounded and retained, session dates are known. Re-identification is a join
+and a counting argument, and the school would then tell a parent their child's
+attendance was anonymised.
+**Response.** The attendance row was already corrected to `DELETE` by the domain
+pass, on the same reasoning, as D-111/F-48 — the two passes reached it
+independently, which is a useful signal about the argument. What was still
+missing was the **rule**, so the next data class is not decided by intuition:
+D-155 gives `ANONYMISE` one mechanical definition and restricts classes that
+cannot meet it to `DELETE` or `REVIEW`.
+
+### F-124 — `SELF` was an implicit universal grant, which D-030 forbids
+**Severity: medium.** (Reviewer C-7.) The scope table granted `SELF` to "every
+authenticated person, **implicitly**", and never said which permissions the
+implicit grant carries. If `SELF` is evaluated as a scope match without an
+explicit `RoleAssignment`, then `requirePermission('students.medical.read',
+{student: self})` may pass for any authenticated person holding no grant at
+all — deny-by-default (§1.1 rule 2) defeated by an implicit rule in the same
+document.
+**Response.** D-146: a seeded role assignment with a closed enumerated
+permission set, subject to §2.6 like every other grant and visible in the admin
+UI. The reviewer's related point about `RELATED` is **already resolved** — OD-5
+removed it from the enum entirely on 2026-09-01 (D-122), which is the reviewer's
+own recommendation, reached before the review landed.
+
+### F-125 — The diagnostics page had no permission and ranks instances by exploitability
+**Severity: medium.** (Reviewer C-6.) `13-…` §8 shows version, migration state,
+DB connectivity, storage writability, backup age, effective config with
+provenance — and *"whether a newer release with a security advisory exists"*. No
+permission is named and no catalogue entry existed. An attacker scanning for
+SplashTrack instances would get a machine-readable answer to "is this one
+exploitable?" plus its backup posture. F-17 already names unpatched instances as
+the biggest residual risk; this page ranks them.
+**Response.** D-156. **A note on the reviewer's framing:** the chapter never
+says the page is unauthenticated — the reviewer assumed the natural
+implementation of "a diagnostics page for support". The assumption is fair and
+the defect is real, but it is a *missing statement*, not a stated mistake, and
+the fix is the same either way. The "safe to paste into a public issue" property
+is good and is kept; pasteability and authentication are independent.
+
+### F-126 — "No DPA is needed between us" is a legal conclusion in a document that promises not to give one
+**Severity: low.** (Reviewer C-16.) D-064 is the best-reasoned GDPR passage in
+the set and gets the controller/processor position right, including that a
+hosting provider or a consultant operating the instance *may* be a processor.
+Its own trade-off paragraph says the design "states the roles and points to the
+questions; it does not answer them for anyone" — and then `10-findings.md` F-05
+states flatly "**No DPA is needed** between us", and D-064's bullet said a DPA
+does not arise. Both are conclusions about the reader's obligations.
+**Response.** `02-…` §5.1 restates it as fact — *the project receives no
+personal data from your installation and performs no processing on your behalf;
+whether any agreement is required between you and any party is your assessment
+to make with your own advisor.* The F-05 sentence itself is a hand-off (§4).
+
+### F-127 — `SHARED_DEVICE` remained normative in chapter 02 after v1 cut it
+**Severity: medium.** (Reviewer B-15, and a live inconsistency.) D-009 was
+**opt-in by the party it restricts**: "a session *may be marked*
+`SHARED_DEVICE`" never said by whom, and the behaviour an instructor meets first
+— a shortened idle timeout on a wet tablet with a queue of children — is the one
+they turn off. If it is a device cookie, whoever holds the tablet clears it; if
+it is a network heuristic, that was never stated. It was cited as *the*
+mitigation for two separate High risks and for FM-13, so the strongest control
+in the poolside threat model was a self-declaration. `00-overview.md` §3.5.1
+already moved it out of v1 on exactly this reasoning; chapter 02 still specified
+it as an active decision, and §1.3 and §4 stated two different rules for
+photograph suppression. Separately, D-009's "suppress PII beyond first name +
+photo" is backwards: for a child a photograph is far more identifying than a
+surname.
+**Response.** D-143 supersedes D-009 and records what v1 actually ships — three
+of the four behaviours obtained from the Instructor role holding no export, bulk
+or admin permission, plus a role-based idle timeout, with nothing to un-mark.
+The photograph rule is now stated **once**, in §4: first name and surname
+initial on shared surfaces, photograph revealed per student on explicit tap,
+that reveal audited. One tap is affordable poolside; a face book of every child
+in the building for anyone holding the tablet is not.
+
+---
+
+### F-128 — The retention table stated no lawful basis
+**Severity: medium.** The prose introducing the table promised to answer "on what
+lawful basis it is held" for each data class. The table had no such column, so
+the one question an organisation must answer in order to defend or change a
+default was the question the defaults did not state.
+**Response.** D-097 adds a `lawfulBasis` column with proposed bases, and prints
+*unresolved* where the basis genuinely is — most visibly on exam results and
+awards, where §5.2 already says the ground must be identified per organisation
+rather than assumed.
+
+### F-129 — F-08's resolution contradicts D-059 in the sentence that resolves it
+**Severity: medium.** (Raised as **M-11**.) F-08's response reads "model the gap
+with `leftAt`" — exactly the status column D-059 forbids, and for exactly the
+reason D-059 gives: a flag silently destroys the answer to "when were they a
+member?". F-08 is stale text written before D-059 existed.
+**Response.** D-059 wins. The domain chapter now implies nothing otherwise — no
+`leftAt` appears anywhere in `01-domain-model.md`. **The F-08 text itself is in
+`10-findings.md` and was not edited by this agent** — see §3 below.
