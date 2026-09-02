@@ -1,22 +1,13 @@
-services:
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    env_file:
-      - apps/web/.env.example
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      APP_BASE_URL: http://localhost:3000
-      DATABASE_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
-      DIRECT_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
-    ports:
-      - '3000:3000'
-    depends_on:
-      postgres:
-        condition: service_healthy
+# The `web` service is removed until the v1 application exists.
+# It pointed at the deleted prototype (apps/web, removed under D-174/OD-1) and
+# would have been rebuilt wrong: the v1 app lives at the repository root, its
+# environment surface is governed by D-037, and DATABASE_URL must not be a
+# hardcoded default. It is re-added in phase 0.2 alongside the real Dockerfile.
+#
+# `docker compose up postgres` is what this file is for today: a local database
+# to develop against.
 
+services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped

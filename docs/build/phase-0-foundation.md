@@ -17,14 +17,24 @@ No domain module exists yet, deliberately.
 
 ## 0.1 Repository hygiene
 
-- [ ] Remove `apps/web` (the prototype). OD-1 closed 2026-09-02: no deployed
-      instance, no real data, so D-001's trade-off is free. Its value was
-      domain knowledge, and that has been extracted into `docs/design/`.
+- [x] **Layout decided: one application at the repository root**, following
+      `WebAppTemplate`. No workspace, no `apps/` (D-174).
+- [x] **`apps/web` removed** — 126 tracked files. OD-1 closed 2026-09-02: no
+      deployed instance, no real data, so D-001's trade-off is free. Its value
+      was domain knowledge and that now lives in `docs/design/`. Recoverable
+      from history at any time.
+- [x] The single untracked file inside it — `apps/web/.env`, local dev
+      credentials — was **moved aside rather than deleted**, to
+      `/root/projects/.splashtrack-attic/apps-web.env.2026-09-03`. Rotate and
+      discard when convenient; it is off the build tree either way.
+- [x] `package.json` de-workspaced. `docker-compose.yml` keeps only `postgres`
+      until a real application and Dockerfile exist — the old `web` service
+      pointed at the deleted prototype and would have been rebuilt wrong.
+- [ ] **`.github/workflows/deploy-prd.yml` still references `apps/web`.**
+      Left untouched deliberately: `.github/workflows/` is outside my write
+      scope (D-025, the production boundary). Jack fixes or deletes it.
 - [ ] Confirm `.env` is untracked and `.gitignore` covers `.env`, `.env.*`
       (done 2026-08-31, verify it survived).
-- [ ] Decide the repository layout: single app at root (as `WebAppTemplate`) or
-      a workspace. **Ask before choosing** — this is cheap now and annoying
-      later.
 
 ## 0.2 Extract the foundation from WebAppTemplate
 

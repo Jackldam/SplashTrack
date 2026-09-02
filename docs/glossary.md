@@ -24,7 +24,9 @@ migration without asking.**
 | ouder / voogd | `PersonRelationship` (guardian) | fixed | Legal authority is *evidence*, not an assumption. Authority lapses at the age of digital consent (D-151). |
 | groep | `Group` | fixed | A teaching group. Progress is recorded per individual, never per group. |
 | lesuur / les | `ScheduledSession` | fixed | One lesson occurrence at a time and place. Owned by the `sessions` module (D-057). |
-| baan | `Lane` | proposed | A lane in the pool. Only needed if lane scheduling enters scope. |
+| locatie | `OrganizationUnit` | fixed | The club has **one** location today (2026-09-03). `UNIT` is a flat scope with no descendant walk (D-121) — that answer confirms the choice rather than straining it. |
+| bad | `Pool` | fixed | A pool within a location. Two of them: one with six 25 m lanes, one with three. A facility — **never** an `OrganizationUnit`, never a scope type (D-175). |
+| baan | `Lane` | fixed | A lane in a pool. Also a facility, not a scope: a lane is where a lesson happens, not who may read a child's record (D-175). |
 | instructeur / leraar | `Instructor` (role) | fixed | A role, never a membership requirement (D-060). |
 | invaller | — | proposed | Substitute instructor. Reach follows session participation, not group membership. |
 | aanwezigheid | `AttendanceEvent` | fixed | Append-only. A correction writes a superseding event; the original row is never touched (D-061). |
@@ -68,7 +70,6 @@ Tracking only — no invoicing, no iDEAL/Mollie, no direct debit, no VAT (§6.5)
 These are my translations and I have not verified them against how the club
 actually speaks. Ask before they reach a migration:
 
-- `Lane` for *baan* — is lane assignment something the club records at all?
 - `MakeUpLesson` for *inhaalles* — is a make-up lesson a normal lesson a guest
   attends, or its own thing with its own registration?
 - `WaitingList` — one list, or per group / per level / per location?
