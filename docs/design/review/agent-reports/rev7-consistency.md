@@ -796,3 +796,52 @@ authoritative class list is `01-domain-model.md` §5" (D-134's pointer form), or
 complete it. Rename `certificate` → `award` either way.
 
 ---
+### C-18 — The importer's failure behaviour is specified three times today, in three partial and partly conflicting forms
+
+**Severity: medium.**
+
+Side A — `00-overview.md` §2.2 (rewritten today), constraint 1:
+
+> 1. **Authority is never inferred.** Whatever the source calls a role,
+>    capability or permission level maps to a SplashTrack role assignment
+>    explicitly, and the import **refuses on any unmapped value** rather than
+>    silently dropping — or silently granting — authority.
+
+Side B — `09-decision-register.md` D-157 (added today):
+
+> … **unmapped columns are reported, never silently dropped**, and the import is
+> a **dry-run-then-commit with a per-row rejection report**
+
+Side C — `00-overview.md` §3.1, the R-29 row (rewritten today):
+
+> | R-29 | One-time import of the existing pupil/member list … mapping specified
+> against a real sample file only, **unmapped columns reported not dropped**,
+> zero `Consent` rows written (D-157, §2.2) |
+
+**Why it matters.** Three statements of one behaviour, none of which is a
+superset of the others:
+
+| Rule | §2.2 | D-157 | R-29 |
+|---|---|---|---|
+| Unmapped **authority** value | **refuse the import** | not mentioned | not mentioned |
+| Unmapped **column** | not mentioned | report, do not drop | report, do not drop |
+| Dry-run then commit | not mentioned | **required** | not mentioned |
+| Per-row rejection report | not mentioned | **required** | not mentioned |
+| Zero `Consent` rows | required (constraint 2) | not mentioned | **required** |
+
+For the one case the copies both address — a column the source uses to express
+a role or permission level, which is simultaneously an "unmapped column" and an
+"unmapped authority value" — they prescribe different behaviour: §2.2 refuses,
+D-157 reports and (by implication) proceeds. That is the safety-relevant case,
+and it is the one they disagree on.
+
+D-134 requires one home. D-157's own "Where" column names `00-overview.md` R-29
+and `08-…` OD-16, i.e. it points at two of the three copies rather than
+declaring one authoritative.
+
+**Recommended resolution.** State the importer's contract once — most naturally
+in D-157's row, since it is the decision — covering all five rules above, and
+reduce §2.2 and R-29 to pointers. Resolve the refuse-vs-report question
+explicitly for authority-bearing columns.
+
+---
