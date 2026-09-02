@@ -830,4 +830,196 @@ F-44.
 
 ---
 
-_(continued — findings B-17 onward below)_
+### B-17 — the second-most-retrofit-hostile mechanism in the product ("audit chain checkpointing") is in no phase and specified nowhere, and audit retention as specified breaks the chain on its first run
+
+**Severity: blocker**
+
+**The design's claim.** `06-delivery.md` §5, risk ranking row 2 — the number-two
+item in the whole product, ranked by cost of doing it late:
+
+> | 2 | **Audit chain-aware rotation and checkpointing** | The chain is
+> append-only at the database level. Deciding rotation after two years of events
+> means retroactively rewriting a tamper-evidence claim |
+
+**The evidence — it exists nowhere else.** `checkpoint` appears twice in the
+entire design set: that row, and an example branch name in the same file
+(`06-delivery.md:193`, `docs/151-adr-audit-chain-checkpointing`). There is no
+decision, no chapter section, no F-number. And the **Phases** list immediately
+below assigns it to no phase: Phase 1 is *"Crypto envelope and golden vectors →
+boot state machine including the `FAILED` state → settings → production
+Dockerfile → backup, restore and the recovery token → the eight CI checks"*.
+Items 1, 5 and 7 of the ranking are in Phase 1; item 3 and 6 in Phase 2; item 4
+in Phase 3; item 8 in the DoD. **Item 2 is in none of them.**
+
+**Why this is a blocker and not a documentation gap — the pieces that *are*
+specified are in direct conflict.**
+
+1. `01-domain-model.md:578` sets audit retention with `onExpiry` = **`DELETE`**,
+   floor 12 months (D-149/D-150), shipped default 24 months.
+2. D-149 part 1 requires `splashtrack audit:verify` plus *"a chain-status line on
+   the diagnostics page"*, because *"a tamper-evident record nobody ever checks
+   is tamper-evident in the same way an unwatched camera is."*
+3. The verification the template actually implements walks from genesis:
+
+   `WebAppTemplate/src/modules/audit/infrastructure/audit-repository.ts:378-386`
+
+   ```
+    * Reads every event in chain order (by `sequence`) with the fields needed to
+    * recompute the hash chain. Used by `verifyAuditChain`; also the basis for the
+    * future `audit.read`-gated viewer. Ordered ascending so the walk starts at the
+    * genesis link.
+    */
+   export async function readAuditChain(): Promise<StoredAuditEvent[]> {
+     const rows = await prisma.auditEvent.findMany({
+       orderBy: { sequence: "asc" },
+   ```
+
+   and `audit-event.ts:93`:
+   `export const AUDIT_GENESIS_HASH = "genesis:webapp-template:audit:v1";`
+
+So: on the **first** retention run — month 12 to 24 of the first instance — the
+maintenance job deletes the oldest rows, the surviving head row's
+`previousHash` points at a row that no longer exists, and `audit:verify` reports
+a broken chain on the diagnostics page **forever after**, for a legitimate
+deletion. The control D-149 exists to provide becomes a permanent red light that
+operators learn to ignore, which is strictly worse than not having it.
+
+Checkpointing is the answer — a signed anchor at the truncation boundary that
+verification treats as a new genesis. It is ranked #2 precisely because
+retrofitting it means *"retroactively rewriting a tamper-evidence claim"*. It is
+not designed.
+
+**Two further concrete costs an engineer hits in the same file.**
+
+- `readAuditChain()` materialises the **whole table** in memory. `07-operations.md:188`
+  calls `AuditEvent` *"Fastest-growing table"*. Verification is unrunnable on a
+  two-year instance without a chunked walk — which is the same work as
+  checkpointing.
+- `AUDIT_GENESIS_HASH` is the literal string `"genesis:webapp-template:audit:v1"`.
+  Changing it invalidates every chain written before the change; keeping it ships
+  a product whose tamper-evidence root says `webapp-template`. Either way it is a
+  decision that must be made in the first commit that writes an audit event, and
+  no chapter mentions the constant exists.
+
+**Recommendation (do not apply).** Before Phase 1 closes: define a
+`AuditCheckpoint` record (sequence, hash-at-that-point, timestamp, signed under
+a `HKDF(SECRET_KEY, info="audit-checkpoint")` key), require the retention job to
+write one before it deletes anything, make `verifyAuditChain` verify
+checkpoint-to-checkpoint and chunk its walk, and settle the genesis constant.
+Give it a decision id and a phase.
+
+---
+
+### B-18 — the ~18–20 engineer-week estimate is not defensible against the chapter contents
+
+**Severity: high**
+
+**The design's claim.** `00-overview.md` §3.5.3:
+
+> | | Engineer-weeks |
+> | v1 **as previously specified** | ~60–75 |
+> | v1 **as re-cut above** | **~18–20** |
+
+**The arithmetic against what the chapters actually specify.**
+
+The template ships 35 Prisma models (`grep -c "^model " WebAppTemplate/prisma/schema.prisma`).
+`01-domain-model.md`'s entity tables define **27** new ones, and
+`15-assessment-and-fees.md` adds roughly a dozen more that chapter 01 does not
+list (`AssessmentScheme`, `CriterionSet`, `GradeScale`, `GradeValue`,
+`AwardType`, `Assessment`, `FeeType`, `Charge`, `Payment`, `SkillCatalogue`,
+`SkillRequirement`, `ProcessingObjection`). Call it **~40 new models**, minus
+D-056's removals, across **11 new modules**.
+
+`06-delivery.md` §4.4 defines done as:
+
+> data model → service → UI → tests → docs are all present; **scope-escape tests
+> exist** for the module … **Backend without UI is not a slice.**
+
+At 18–20 weeks, and reserving anything at all for Phases 0–2 and 4, Phase 3 gets
+perhaps 11–13 weeks for 11 modules and ~40 models with services, screens,
+scope-escape suites (four cases × read/write/list per module, per §2.1), erasure
+registry entries, and docs. That is under three days per model **including its
+UI**. For `assessment` alone — versioned criterion schemes, a five-point graded
+result per criterion, waivers, `PersonQualification`, the four-eyes gate, and an
+aftest screen that `15-…` §4 explicitly says must *not* inherit the
+thirty-second fast-path doctrine — three days per model is not a stretch, it is
+a different project.
+
+**And Phases 0–2 are not small.** They contain, per §5: the crypto envelope plus
+a golden-vector suite; a six-state boot machine (D-098) that is *"itself
+data-critical code and is covered by a test matrix with one case per state"*
+(`14-…` §4.3); the settings registry (whose scope is itself contested — B-4);
+a production Dockerfile; the Recovery Kit with a framed AEAD construction
+(D-102: libsodium `secretstream` or `age`, sequence-bound chunks, separately
+authenticated manifest); backup **and** a logical export/import engine for every
+column type if D-095 stands (B-13); eight CI checks of which **seven do not
+exist today** (§2.1); the D-056 removals *"incrementally, tests green at each
+step"* against a 35-model schema; the eight-variant opaque `Reach` type with
+per-repository exhaustive translation; and the setup wizard.
+
+That is a 6–10 week block on its own, before the first domain screen.
+
+**What is *not* in the estimate at all.** Every row of `00-overview.md` §4.1
+marked **"Required addition"** — the attendance load test, the query-count
+assertion, the Playwright trace budget, the container test, axe in E2E, the
+browser matrix. Six named work items, each listed with the honest status
+*"is a v1 work item that does not yet exist"*.
+
+**What it costs.** Not the number — the *decisions made because of* the number.
+A 20-week plan justifies the D-047 cut that B-13 shows removed D-095's safety
+net, and justifies "days" for Phase 0 that B-7 shows must produce a complete
+glossary. An estimate that is wrong by a factor of two makes the wrong scope
+cuts look free.
+
+**Recommendation (do not apply).** Re-derive bottom-up per module and per
+Phase-0–2 item, publish the per-item numbers rather than a single range, and if
+the total lands above ~30 weeks, re-run §3.5.1 with the real figure — the
+re-cut's own logic (spend the budget where an instructor touches it) is sound
+and would survive an honest number.
+
+---
+
+### B-19 — Phase 1 ships the scope-escape CI gate; Phase 2 builds the scope model it tests
+
+**Severity: medium**
+
+**The design's claim.** `06-delivery.md` §5, Phase 1:
+
+> → **the eight CI checks**, including image **promotion** rather than a build on
+> the target host.
+
+and §2.1 lists the eight, of which:
+
+> | **Scope-escape tests** | Yes | **New, and the most important gate in this
+> table.** |
+
+But Phase 2 is where the thing under test is built:
+
+> **Phase 2** … → the scope model, `coversResource()`, reach as a required
+> repository argument, and the scope-escape **test harness** so every later
+> module inherits it
+
+**Why it matters more than it looks.** §2.1 is emphatic that a mis-named gate
+produces a vacuous one:
+
+> a team building the gate from this chapter writes cross-organisation isolation
+> tests, which in a single-organisation instance are **vacuous and pass
+> forever**
+
+A gate wired in Phase 1 against a scope model that does not exist yet is
+vacuous by construction, and a green check is exactly the signal that stops
+anyone revisiting it. The four required cases (`GROUP`, `UNIT`, `SESSION`,
+reach-not-constructible) each name a `Reach` variant that Phase 2 introduces.
+
+**What it costs.** Low if noticed, high if not: the most important gate in the
+table ships green and empty, and the harness that would fill it arrives a phase
+later with nothing failing to prompt it.
+
+**Recommendation (do not apply).** Phase 1 ships seven checks; the scope-escape
+gate is the **first** deliverable of Phase 2, wired at the same commit as
+`resolveReach`, with at least one deliberately-failing case committed and then
+fixed so the gate is proven non-vacuous.
+
+---
+
+_(continued — verified claims below)_
