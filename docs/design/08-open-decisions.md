@@ -218,9 +218,21 @@ three lessons of real use, which is now available.
 
 ---
 
-### OD-7 — Encryption key management for special-category columns.
+### OD-7 — **(Closed 2026-09-02)** Encryption key management for special-category columns.
 
-**Why it matters.** D-013 encrypts medical/pastoral notes at column level. That
+**Resolution.** Answered by three later decisions, and closed against them:
+**D-112** (`SECRET_KEY` supplied via `SECRET_KEY_FILE` is the single root;
+every application key including the Better Auth signing secret is HKDF-derived
+with a purpose label), **D-114** (two-level envelope — a master key wrapped by
+Argon2id over the printed recovery token, per-archive data keys wrapped by the
+master key; rotation re-wraps the master key) and **D-096** (`v1:<keyId>:<nonce>:<ct>`
+with AAD binding table, column, primary key and key id). **Cloud KMS is
+rejected**: it is not needed given the above and it contradicts the self-hosted
+premise (D-064) — a self-hoster on a NAS has no KMS. Escrow is the operator's
+recovery token (F-24 unchanged: losing it loses the data). This no longer blocks
+the students module.
+
+**Why it mattered (retained for the record).** D-013 encrypts medical/pastoral notes at column level. That
 creates a key that must be stored outside the database, rotated, escrowed, and
 available during restore. A lost key means permanently unreadable health data;
 a key stored next to the data provides no protection.

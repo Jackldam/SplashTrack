@@ -102,7 +102,8 @@ neither does `14-backup-restore-upgrade.md`; both point at it. Finding **F-95**.
 
 Unchanged from the single-tenant revision. `Organization` is an enforced
 singleton (D-027); `OrganizationUnit` provides the internal hierarchy that the
-scoped authorization model (`02-security-privacy.md` §2) walks.
+scoped authorization model (`02-security-privacy.md` §2) scopes against. `UNIT`
+is flat in v1 and no scope type walks a tree (D-121).
 
 ---
 
@@ -134,6 +135,17 @@ it can be implemented as a plain fetch of a static advisories file — no
 identifiers, no counters, no server-side logging we control.
 **Trade-off.** We learn nothing about adoption, usage or which features matter.
 Accepted; that information is not ours.
+
+**What the request nevertheless discloses.** "Sends nothing" is not exact and
+the design's credibility rests on claims like this being exact. Every HTTPS
+request necessarily discloses your server's IP address and a User-Agent to the
+host serving the file, and therefore that this organisation runs SplashTrack, at
+this address. The application fetches the **complete** advisories file rather
+than querying per version, so the request reveals nothing about which version is
+running, and "no server-side logging we control" concedes rather than answers
+the point. It is disabled with `update.check.enabled = false`. The default stays
+**on**: F-17 names unpatched instances as the single biggest residual risk.
+Finding **F-131**.
 
 ---
 
@@ -225,4 +237,9 @@ administrative act.
 ### 5.4 Caching
 
 Public pages are cached (ISR or equivalent). The tenant-in-cache-key hazard
-(previously FM-6) is gone. Portal pages are never cached across users.
+(previously FM-6) is reduced by single-tenancy, not eliminated: any public page
+rendering session-dependent chrome — a "logged in as…" nav — would cache one
+visitor's view for every other visitor. Therefore **public pages are rendered
+with no session read at all**, which is what makes D-017's structural claim true
+at the rendering layer and not only at the data layer. Portal pages are never
+cached across users. Finding **F-132**.

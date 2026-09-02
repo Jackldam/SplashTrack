@@ -46,8 +46,13 @@ non-assigned groups; deleted on erasure.
 
 ### F-05 — **(Closed)** No Data Processing Agreement is mentioned
 Self-hosting removes the processor relationship: the organisation is both
-controller and operator, and we never touch their data. No DPA is needed
-between us. The organisation still needs its own privacy notice and, where it
+controller and operator, and we never touch their data. The formulation now used
+in `02-security-privacy.md` §5.1 replaces the earlier flat claim that no DPA is
+needed: *"The project receives no personal data from your installation and
+performs no processing on your behalf. Whether any agreement is required between
+you and any party is your assessment to make with your own advisor."* Stating
+the conclusion was itself the legal advice F-27 forbids (F-126). The
+organisation still needs its own privacy notice and, where it
 uses sub-processors (hosting, email), its own agreements — which the
 documentation should point out without pretending to be legal advice.
 
@@ -1128,3 +1133,66 @@ member?". F-08 is stale text written before D-059 existed.
 **Response.** D-059 wins. The domain chapter now implies nothing otherwise — no
 `leftAt` appears anywhere in `01-domain-model.md`. **The F-08 text itself is in
 `10-findings.md` and was not edited by this agent** — see §3 below.
+
+### F-130 — Break-glass CLI events had no actor and notified nobody
+**Severity: high.** `07-operations.md` §1.2 requires every audit event to record
+an actor person id and an actor session or credential. A CLI invocation has
+neither, and the chapter listed break-glass invocation as auditable "even when
+no application session exists to attribute them to" — naming the gap without
+closing it. Someone with brief host access (a contractor, an ex-sysadmin whose
+key was never removed, anyone in the `docker` group) runs `admin:grant-admin`
+and holds a standing Instance Administrator account, traced only by one row, in
+a UI nobody opens, attributed to nobody.
+**Response.** CLI events carry a `system:cli` actor with host user, container
+id, timestamp and subcommand; every invocation notifies all `ORGANIZATION`-scoped
+administrators and raises a banner a *different* administrator must dismiss;
+`admin:grant-admin` issues a 24-hour grant rather than a permanent one
+(`07-…` §1.2, `13-…` §7).
+
+### F-131 — "The version check sends nothing" was not exact
+**Severity: low — on the list because the design's credibility rests on claims
+like this being exact.** D-034 said the only outbound call "sends nothing but
+the version it is checking… no identifiers, no counters". Every HTTPS request
+discloses a source IP and a User-Agent to infrastructure someone logs, and for a
+school instance it also reveals that this organisation runs SplashTrack, at this
+address, at this version.
+**Response.** State the disclosure plainly, fetch the **complete** advisories
+file rather than querying per version so the request reveals nothing about the
+running version, keep the default on (F-17 justifies it), and name the
+`update.check.enabled = false` opt-out in the same paragraph
+(`03-deployment-model.md` §2.1).
+
+### F-132 — ISR caching was declared safe because tenancy was removed
+**Severity: medium.** `03-…` §5.4 declared the cache-key hazard "gone" with
+tenancy. It is reduced, not gone: any public page rendering session-dependent
+chrome — a "logged in as…" nav — caches one visitor's view for every other
+visitor, single-tenant or not.
+**Response.** Public pages are rendered with **no session read at all**, which
+is also what makes D-017's structural claim true at the rendering layer rather
+than only at the data layer (`03-deployment-model.md` §5.4).
+
+### F-133 — Audit retention outlived nothing it evidences
+**Severity: high.** Audit events were retained 24 months; exam results and
+awards up to 10 years. The record of *who* recorded a diploma outcome would be
+destroyed eight years before the outcome, in a design that justifies append-only
+results with "a parent disputes a diploma decision".
+**Response.** The audit row in `01-domain-model.md` §5 now states that audit
+retention must be at least as long as the longest-retained class whose changes
+it evidences, with a 12-month floor (D-149/D-150) and the shipped default
+flagged for reconciliation rather than silently left at 24 months. If
+reconciliation is rejected on volume grounds, the consequence is stated in the
+privacy screen as a limit on what the organisation can reconstruct.
+
+### F-134 — No DPIA material existed for processing that plainly triggers Article 35
+**Severity: high.** Large-scale processing of special-category data concerning
+children, with new technology, meets the Article 35 criteria several times over.
+The word DPIA appeared nowhere in fifteen chapters. F-27 is right that the
+project cannot give legal advice — but a **template** is not advice: it is a
+list of the processing operations the software actually performs, which only the
+project can enumerate accurately, and which every controller would otherwise
+reconstruct by reading the source.
+**Response.** `docs/privacy/dpia-template.md` and `docs/privacy/privacy-notice-skeleton.md`:
+data classes and where they live, purposes and lawful bases, retention defaults
+and the backup horizon (D-104), recipients, security measures, and the residual
+risks the design already names (F-07, F-17, F-23). Necessity, proportionality
+and risk acceptance are left blank for the controller.

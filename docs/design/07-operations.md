@@ -53,6 +53,18 @@ Each event records: timestamp, actor person id, actor session/credential,
 organisation, action, target type + id, outcome, and a minimal detail payload —
 **never a full before/after dump of personal data**.
 
+**CLI-originated events carry a `system:cli` actor**, not a null one: host user,
+container id, invocation timestamp and the exact subcommand. A null actor is
+indistinguishable from a bug in the audit writer, and the events that most need
+attribution are the ones with no session.
+
+Every break-glass invocation additionally **notifies every `ORGANIZATION`-scoped
+administrator by the delivery channel of §1.4**, and raises a persistent
+dashboard banner that must be dismissed by a *different* administrator than the
+one who ran it. The command is a legitimate recovery path and an equally
+legitimate attack; the difference is only ever visible to a second person.
+Finding **F-130**.
+
 **Decision D-026 — Organisations can read their own audit trail.**
 **Reason.** They are the GDPR controller; accountability is their obligation,
 and they cannot demonstrate it if only the processor can see the evidence.

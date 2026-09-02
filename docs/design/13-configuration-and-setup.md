@@ -211,7 +211,20 @@ scope          instance-wide
 appliesLive    true | false  (see §4)
 permission     which permission may change it
 sensitive      whether the value is encrypted and masked
+class          free | bounded | invariant   (D-150)
 ```
+
+**The `class` field is where the registry's "single source of truth for
+validation" claim earns its keep** (D-150). `free` settings take any value the
+Zod schema accepts. `bounded` settings carry hard floors and ceilings the schema
+enforces and which `settings:reset` also respects — it clamps to the bound
+rather than restoring an unbounded default (session idle ≤ 8 h, audit retention
+≥ 12 months, rate limits ≥ a stated minimum, backup retention ≤ the shortest
+special-category retention). `invariant` settings are not editable at all and
+have no override flag: the MFA mandate, reach filtering, audit append-only and
+the `SELF` permission set. The UI renders an invariant as a **stated fact**, not
+a disabled control — a disabled control invites a support question whose answer
+is "no".
 
 The registry is the single source of truth: it generates the admin UI, the
 validation, the API surface, the documentation table, and the diagnostics page.
@@ -629,7 +642,15 @@ docker compose exec app splashtrack key:rotate                  (§5.3)
 docker compose exec app splashtrack bootstrap:clear-tampered    (D-099)
 ```
 
-Every one of these writes an audit event. This replaces Vaultwarden's
+`admin:grant-admin` issues a **time-limited grant (24 hours)**, not a permanent
+one: the use case is recovery, not provisioning. The recovered administrator
+makes their own standing grant through the normal path, where D-139's
+anti-amplification invariants apply.
+
+Every one of these writes an audit event, with a `system:cli` actor carrying
+host user, container id, timestamp and the exact subcommand, and every
+invocation notifies all `ORGANIZATION`-scoped administrators (`07-…` §1.2).
+This replaces Vaultwarden's
 "disable the admin token" escape hatch with something that cannot be reached
 from the internet at all.
 
@@ -654,6 +675,14 @@ showing effective configuration, where each value came from (default, env,
 database), database connectivity, migration state, email test result, storage
 writability, version, and whether a newer release with a security advisory
 exists (D-034).
+
+**The page requires `diagnostics.read` at `ORGANIZATION` scope and is never
+served unauthenticated** (D-156). Its "safe to paste" property is about
+*content* — no secrets, no personal data — and is independent of who may open
+it. The two were previously conflated, and the page reports version, migration
+state, backup posture and whether a newer release with a security advisory
+exists: a machine-readable answer to "is this instance exploitable?" for anyone
+scanning for instances.
 
 It is the first thing to ask for in a support issue, and it must be safe to
 paste into a public GitHub issue — so it renders **no secrets and no personal
