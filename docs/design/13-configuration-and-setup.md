@@ -228,13 +228,33 @@ class          free | bounded | invariant   (D-150)
 validation" claim earns its keep** (D-150). `free` settings take any value the
 Zod schema accepts. `bounded` settings carry hard floors and ceilings the schema
 enforces and which `settings:reset` also respects — it clamps to the bound
-rather than restoring an unbounded default (session idle ≤ 8 h, audit retention
-≥ 12 months, rate limits ≥ a stated minimum, backup retention ≤ the shortest
-special-category retention). `invariant` settings are not editable at all and
-have no override flag: the MFA mandate, reach filtering, audit append-only and
-the `SELF` permission set. The UI renders an invariant as a **stated fact**, not
-a disabled control — a disabled control invites a support question whose answer
-is "no".
+rather than restoring an unbounded default. `invariant` settings are not
+editable at all and have no override flag. The UI renders an invariant as a
+**stated fact**, not a disabled control — a disabled control invites a support
+question whose answer is "no".
+
+**Which settings are in which class, and the bounds themselves, are stated once
+in `02-security-privacy.md` §4.1 and §4.1.1 (D-150, D-171, D-173) and are not
+restated here** (D-134). This paragraph previously carried a fourth normative
+copy of the bounds list, and it silently omitted the absolute session lifetime —
+the one value the other three copies disagreed about. Two corrections that
+happened there are worth knowing while reading this chapter: `invariant` no
+longer lists reach filtering, audit append-only or the `SELF` permission set,
+because the registry cannot refuse a write to any of them; and backup retention
+is `free` with a mandatory diagnostics warning rather than `bounded`, because
+D-104 lets a documented reason exceed it, which is a warning and not a
+ceiling.
+
+**One registry constraint is not expressible as a floor, a ceiling or a Zod
+schema, and it belongs here because this is where a settings write is
+validated.** Any write in the `Authentication` or `Security` category is refused
+if it would leave the installation without **at least one local
+`ORGANIZATION`-scoped account holding a verified MFA factor** — checked against
+the database at write time, not against the values being written, and
+re-evaluated on every role revocation and account disable as well. This is
+D-141's invariant; the reasoning for it, and why the "local login cannot be
+disabled while it is the only method" formulation it replaced is unenforceable,
+live in `02-security-privacy.md` §1.2.1 and are not restated here.
 
 The registry is the single source of truth: it generates the admin UI, the
 validation, the API surface, the documentation table, and the diagnostics page.
@@ -749,10 +769,25 @@ from the internet at all.
 
 **Safety rails in the settings layer itself:**
 
-- Local administrator login can never be disabled while it is the only working
-  authentication method (D-035).
-- Email and identity-provider settings must pass a **test** before they can be
-  enabled.
+- **The lockout invariant is stated once, in `02-security-privacy.md` §1.2.1
+  (D-141), and this chapter does not restate it.** The two bullets that stood
+  here — *"local administrator login can never be disabled while it is the only
+  working authentication method"* and *"email and identity-provider settings
+  must pass a test before they can be enabled"* — were the claims D-141 deleted
+  as unenforceable, left standing verbatim in the chapter that specifies the
+  settings layer. Configure a second provider and local login is no longer "the
+  only" method; "working" is not decidable, because a provider that passed a
+  test at 14:00 fails at 14:05 on a certificate or a tenant policy the
+  application cannot observe. A test-connection gate **catches typos; it is not
+  a safety net**, and calling it a safety rail here is how an implementer builds
+  the bypassable check and ships. Finding **F-140**.
+- What the settings layer must actually enforce, per D-141, is a
+  **database-level invariant**: *at least one local `ORGANIZATION`-scoped
+  account with a verified MFA factor exists at all times*. It is re-evaluated on
+  every authentication-settings change, every role revocation and every account
+  disable, and a settings write that would break it is refused. §3.2 carries it
+  as a `Security`-category constraint on the registry, because a settings write
+  is validated there.
 - Every setting has a visible "restore default".
 - Settings changes are audited: who, when, old → new (secrets recorded as
   `changed`, never with values).

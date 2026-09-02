@@ -287,14 +287,21 @@ is nothing to import). The import path in v1 has a different source: the club's
 Its column shapes are unknown until a sample export is supplied, so no mapping
 is specified here — **D-157** forbids specifying one in advance.
 
-**Two constraints that survive the change of source**, because they are
+**Three constraints that survive the change of source**, because they are
 properties of the target rather than of the source:
 
 1. **Authority is never inferred.** Whatever the source calls a role,
    capability or permission level maps to a SplashTrack role assignment
    explicitly, and the import **refuses on any unmapped value** rather than
    silently dropping — or silently granting — authority.
-2. **Consent cannot be imported.** A membership system's photo permission,
+2. **`dateOfBirth` is never synthesised.** A missing or unparseable date is a
+   row rejection in the import report, never a placeholder — D-151 derives
+   guardian-authority expiry from that column, and a placeholder either floods
+   the re-consent queue on day one or empties it forever, undetectably. Where a
+   record must be imported without one, the unknown date makes authority
+   **lapsed**, so it surfaces in the queue rather than passing silently
+   (`02-security-privacy.md` §5.4.1, D-172).
+3. **Consent cannot be imported.** A membership system's photo permission,
    medical note or marketing flag arrives with no recorded lawful basis, into a
    system whose privacy model (D-063, D-065, F-27) rests on having one. The
    importer writes **zero** `Consent` rows, leaves every consent-gated feature

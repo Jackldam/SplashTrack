@@ -100,10 +100,25 @@ enough to be readable by non-engineers.
 The design previously shipped an audit trail and a metrics list and stopped.
 That is not enough for this data class. The controller must be able to assess
 and, where required, notify within 72 hours (Article 33) and notify the data
-subjects themselves for high-risk breaches (Article 34) — and this is **health
-data about children**, so the Article 34 high-risk threshold is met by default
-rather than argued about. The intended reader is a swim school with no security
-staff.
+subjects themselves for high-risk breaches (Article 34). The intended reader is
+a swim school with no security staff.
+
+**Stated as a design premise, not as a legal conclusion** (F-144). This
+installation holds health data about children, so we have designed for the case
+where Article 34 notification **is** required — the capability exists if your
+assessment concludes it does. Whether it is required for a given breach is that
+assessment, made on the facts, and Article 34(3) may bear on it: 34(3)(a)
+exempts data rendered unintelligible by encryption, and this product encrypts
+both the protected free-text class and its archives, so the exemption is not
+hypothetical here. An earlier version of this paragraph said the threshold was
+*"met by default rather than argued about"*, which answers in the project's
+voice exactly the question D-064/F-126 says the project does not answer for its
+reader — and in the more consequential direction, since it instructs a volunteer
+to notify every parent without the assessment the Article requires. The
+engineering consequence is unchanged, which is the point: the capability never
+needed the legal conclusion to justify it. The checklist below keeps the framing
+it already had — *the deadlines that apply to you*, not advice on whether they
+apply.
 
 A breach requires answering three questions. v1 ships the tool for each
 (**R-37**):

@@ -367,7 +367,10 @@ inside the guard.** `validFrom`, an optional `validUntil`, and
   documentation-level. D-068 already says the grant "carries its own
   `validFrom`/`validTo`"; §2.4 already says External examiner is "always with an
   expiry" and Internal examiner "time-bounded". None of that was expressible in
-  the tuple as written.
+  the tuple as written. **Mandatory is not the same as bounded**, and as first
+  written nothing constrained the *value*: the ceilings for `SESSION` and
+  `COURSE`, and the rule for a null granter window, are stated once in §2.6.1
+  (D-170).
 - Expiry is enforced in `requirePermission` and `resolveReach`, **not** by a
   cleanup job. A job that has not run yet is an open grant; a predicate cannot
   be behind schedule.
@@ -808,14 +811,18 @@ Three invariants, checked on every path that creates or modifies a
 1. **No amplification.** The set of permissions being granted must be a subset
    of the permissions the granter holds. A Planner cannot grant
    `students.medical.read` because they do not hold it.
-2. **Scope confinement.** The scope of the grant must be at or below the scope
-   at which the granter holds that same permission. A `UNIT`-scoped Location
-   Manager cannot grant anything `ORGANIZATION`-scoped, and cannot grant at a
-   unit that is not theirs — which under D-121's flat `UNIT` means their own
-   unit and nothing else.
+2. **Scope confinement — by resource containment, never by type ranking**
+   (D-170). The set of resources the proposed grant would cover must be a
+   **subset** of the set the granter's own grant of that same permission covers,
+   computed through §2.2's coverage rules and evaluated live (D-145). A
+   `UNIT`-scoped Location Manager cannot grant anything `ORGANIZATION`-scoped,
+   and cannot grant at a unit that is not theirs — which under D-121's flat
+   `UNIT` means their own unit and nothing else.
 3. **Window confinement.** `validFrom`/`validUntil` must fall inside the
-   granter's own window for that permission. A `SESSION`-scoped assessor cannot
-   issue a grant that outlives their own.
+   granter's own window for that permission — and where the granter's own window
+   is null, inside their **maximum grantable window** rather than inside
+   infinity (D-170). A `SESSION`-scoped assessor cannot issue a grant that
+   outlives their own.
 
 The same three apply to `Role` editing (`roles.manage`) — adding a permission to
 a role is a grant to everyone holding it — and to `AccessGroup`s (§2.7), which
@@ -836,10 +843,94 @@ obvious edge: the first administrator is created by the setup wizard
 service and both of which are host-access-proven. There is no in-application
 path that produces a permission from nothing.
 
-**Both invariants are scope-escape test cases**, per module, under D-032: a
-granter attempting to grant a permission they lack, and a granter attempting to
-grant at a wider scope, are both denied — asserted at the service, because the
-UI hiding the option is not authorization (§1.1 rule 1).
+**All three invariants are scope-escape test cases**, per module, under D-032: a
+granter attempting to grant a permission they lack, a granter attempting to
+grant over resources their own grant does not cover, and a granter attempting to
+issue a window wider than their own — all denied, asserted at the service,
+because the UI hiding the option is not authorization (§1.1 rule 1).
+
+#### 2.6.1 What "at or below" means, and what bounds the window
+
+Invariants 2 and 3 were stated in terms an implementer cannot execute, and both
+gaps fail *open* in the direction that matters.
+
+**Invariant 2 rested on an ordering no chapter defines.** "At or below" appeared
+in this decision and nowhere else; there is no partial order over
+`{ORGANIZATION, UNIT, GROUP, COURSE, SESSION, SELF}` anywhere in the design set,
+and only the two unambiguous examples were given. The obvious implementation is
+a breadth ranking — `ORGANIZATION > UNIT > COURSE > GROUP > SESSION > SELF`,
+because a course names fewer resources than a unit — and §2.1's own table places
+`COURSE` **across** units: *"One course across groups"*, with §2.2 coverage of
+*"that course, its levels, its enrolments, and **all** its exam sessions"*. So a
+`UNIT`-scoped Location Manager at Zuidbad, holding `exams.manage` and
+`roles.assign` there, grants themselves `exams.results.record` at
+`COURSE = Diploma B`; `COURSE` ranks "below" `UNIT`, every check passes, and
+reach now covers Diploma B's exam sessions **at Noordbad**, where D-062 makes
+their amendment the effective result. The mirror failure is equally available:
+an implementer who ranks `UNIT > GROUP` and has no slot for `SESSION` denies
+every legitimate delegation to an aftest assessor, and the fix at 17:00 on an
+exam Saturday is a special case in the grant service. `SELF` is a third
+instance — it is in the enum, D-146 seeds it *"subject to §2.6"*, and it is not
+comparable to `GROUP` or `COURSE` under any breadth ordering at all.
+
+**Invariant 3 was vacuous for exactly the granters who matter.** D-144 permits a
+null `validUntil` for instructor and administrator grants — that is, for every
+`ORGANIZATION`-scoped administrator and every standing Planner, the principals
+who actually issue examiner grants. A null window contains every window, so the
+check passes for `2099-12-31`, which is what a mandatory date field with no
+ceiling collects on a form filled in under time pressure. D-144 changed the
+shape of the tuple and left B-7's outcome intact: the examiner who assessed one
+Saturday in March holds `exams.assess` and `exams.results.record` on that
+session for seventy-three years. Finding **F-139**.
+
+**Decision D-170 — Scope confinement is **resource containment**, computed
+through the §2.2 coverage rules; there is no ordering over scope types. And
+every bounded-window scope carries a schema-enforced ceiling, with a null
+granter window read as the granter's maximum grantable window rather than as
+unbounded.**
+
+**Containment, concretely.** `coversResource()` and `resolveReach()` already
+compute, for a `(permission, scopeType, scopeId)` grant, the set of resources it
+reaches. The grant service asks one question: is `cover(proposed) ⊆
+cover(granter's own grant of that permission)`, evaluated live? Consequences fall
+out rather than needing rules:
+
+- A `UNIT` granter may grant at `COURSE` **only when every group in that course
+  sits in their unit** — checkable, and it is exactly the cross-unit case a type
+  ranking waves through.
+- A `GROUP`-scoped instructor may grant at `SESSION` for a session on their own
+  group's roster, which is D-068's aftest case and which a ranking either
+  permits by accident or forbids by accident.
+- `SELF` needs no ordering: its cover is the holder's own records, which is a
+  subset of any grant that includes them.
+- `ORGANIZATION` remains grantable only by an `ORGANIZATION` holder, because
+  nothing else covers everything.
+
+The cross-unit `COURSE` case is added to D-032's per-module scope-escape set
+explicitly, **named as the case a type-ranking implementation passes**, so the
+test fails on the wrong implementation rather than on nothing.
+
+**The window ceiling.**
+
+| Scope | `validUntil` |
+|---|---|
+| `SESSION` | **Derived, not accepted.** Defaults to the session's date; extendable only to session date **+ 7 days**, enforced in the schema beside the not-null constraint (D-144). This is D-068's *"a short window around it for preparation and follow-up"* made numeric |
+| `COURSE` | Mandatory and bounded: §2.4 already calls it time-bounded. Ceiling is the course's own end date + 7 days |
+| `GROUP`, `UNIT`, `ORGANIZATION`, `SELF` | May be null, as D-144 states. These are standing relationships, and a mandatory date on them produces a fake one |
+
+A **null granter window** is read, for invariant 3, as the maximum window that
+granter could themselves be issued for the scope being granted — so an
+`ORGANIZATION` administrator with no expiry still cannot issue a `SESSION` grant
+beyond session date + 7 days. Without this clause the ceiling would apply to the
+schema and not to the check, and the one principal who issues these grants would
+be the one it does not bind.
+
+**Trade-off.** Containment costs a reach computation on the grant path where a
+ranking costs an integer comparison — on a path that runs when an administrator
+edits a role, not in a loop. And a genuinely long-running examiner arrangement
+now needs re-granting rather than one date entry. That is D-052's stated intent
+("individual, time-bounded, minimally scoped, never shared") finally enforced by
+something other than the person typing the date.
 
 ### 2.7 Access groups
 
@@ -1122,8 +1213,8 @@ convention.**
 | Class | Meaning | Examples |
 |---|---|---|
 | `free` | Edit at will. The overwhelming majority | branding, email templates, feature toggles, lesson defaults |
-| `bounded` | Editable within a hard floor/ceiling enforced by the setting's own schema, which `settings:reset` also respects | session idle ≤ 8 h and absolute ≤ 12 h; rate limits ≥ a stated minimum; audit retention ≥ 12 months (§3.2); any retention ≤ the platform maximum; backup retention ≤ the shortest special-category retention, or a diagnostics warning (D-104) |
-| `invariant` | Not editable in the UI at all, not clearable by `settings:reset`, no override flag | MFA required for the high-risk permission set (§1.2); reach filtering; audit append-only; the `SELF` permission set; the egress deny-list's *existence* (its allow-private-networks flag is `free` and audited) |
+| `bounded` | Editable within a hard floor/ceiling enforced by the setting's own schema, which `settings:reset` also respects. **A ceiling that can be exceeded with a documented reason is not a bound; that setting is `free` with a warning** (§4.1.1) | session idle and absolute lifetime — bounds stated once in §4.1.1 (D-173); rate limits ≥ a stated minimum; audit retention ≥ the computed floor (§3.2.1, D-168); any retention ≤ the platform maximum |
+| `invariant` | Not editable in the UI at all, not clearable by `settings:reset`, no override flag | MFA required for the high-risk permission set (§1.2); the egress deny-list's *existence* (its allow-private-networks flag is `free` and audited). **Nothing else** — see §4.1.1 for what was removed from this list and where those properties are actually enforced |
 
 Changing a `bounded` setting to its floor, and any attempt to change an
 `invariant`, is a high-severity audit event. `13-configuration-and-setup.md`
@@ -1137,6 +1228,62 @@ the entire difference between a policy and a control.
 **Trade-off.** An operator with a legitimate reason to exceed a bound must
 change code rather than a setting. For a self-hosted product that is a real
 cost, and it is the correct one for a list this short.
+
+#### 4.1.1 What the registry can actually protect
+
+D-150's classification is the right mechanism, and its `invariant` column named
+four things of which **one** was a setting.
+
+- *"Reach filtering"* and *"audit append-only"* are properties of code and of a
+  database grant. There is no registry key to mark, no value to refuse, and
+  `settings:reset` cannot clear what it cannot reach. Marking them produced two
+  rows that do nothing and — worse — implied that the settings layer is where
+  those properties are enforced, when D-147 (the opaque `Reach`) and
+  D-149/D-168 (the `INSERT`-only role, the checkpointed chain) are. **They are
+  removed from the class and stated where they are enforced.** An `invariant`
+  list containing things the registry cannot see devalues the entry it can.
+- The **`SELF` permission set** is the one that matters, because it *is* a
+  mutable object and the registry is the wrong guard for it. D-146 makes `SELF`
+  a seeded `Role` row, and a `Role`'s permission set is edited through
+  `roles.manage` in the roles module (§2.5), not through the settings registry.
+  An `ORGANIZATION`-scoped administrator holding `roles.manage` opens People &
+  roles, selects the seeded `SELF` role and adds a permission — passing §2.6's
+  invariants, because they hold everything — and nothing in the roles module
+  knows the settings registry called that role `invariant`. D-146's own guard
+  (*"adding a permission to the `SELF` set is a security-relevant change
+  requiring review"*) is a statement about a code review; the object here is a
+  database row edited through a UI at runtime. Finding **F-141**.
+
+**And one `bounded` entry was not bounded.** D-104 lets backup retention exceed
+the shortest special-category retention *"where an operator has a documented
+reason"*, surfacing a diagnostics warning instead, while D-150's table and
+`13-…` §3.2 both listed the same ceiling as hard. A ceiling with a
+documented-reason escape is a warning, and a class that sometimes means "cannot"
+and sometimes means "should not" is not a classification.
+
+**Decision D-171 — `invariant` covers only objects the settings registry can
+refuse a write to. The `SELF` role is protected at its own boundary instead: the
+seeded row carries `system: true` and the roles module refuses edits to system
+roles, backed by a test. Backup retention is `free` with a mandatory diagnostics
+warning, not `bounded`.**
+
+- `system: true` on a `Role` means the roles module rejects any change to its
+  permission set, at the service and not in the UI — exactly the refusal D-150
+  wants from `settings:reset`, at the boundary that owns the object. `SELF` is
+  the only such row in v1; seeding a second is a reviewed security change, which
+  is the guard D-146 intended and could not reach from where it was written.
+- Backup retention keeps every control D-104 gives it: the warning naming both
+  figures, the published **backup horizon**, and the erasure UI stating that
+  horizon at the moment of erasure. What it loses is a claim to be a hard
+  ceiling, which it never was. `bounded` now means exactly one thing — a value
+  that cannot be exceeded.
+
+**Reason.** An invariant asserted in one mechanism and enforceable only in
+another is the precise defect this section exists to remove, reproduced by the
+fix for it.
+**Trade-off.** `invariant` shrinks to two entries, which reads thinner and is
+true; and `system: true` is one more flag that a future "just let me edit it"
+will push against — the test is what holds it.
 
 **Photographs deserve explicit mention, and the rule for them is stated here
 and nowhere else.** Swim schools photograph children for identification on class
@@ -1367,6 +1514,59 @@ in this domain.
 **Trade-off.** The organisation acquires a queue of re-consent tasks it did not
 have on paper. It had the obligation on paper; it simply could not see it.
 
+#### 5.4.1 What the derivation reads, and who acts on what it produces
+
+D-151 is correct as a rule and it has two open ends, in opposite directions:
+what happens when its input is missing, and who exercises the right its output
+creates.
+
+**The input.** `dateOfBirth` is non-optional in `01-…` §3.1, and D-157 fills it
+for the entire existing pupil population from an export whose shape is unknown
+by construction. If some rows carry no usable date — plausible for guardians,
+former members, and anything entered before the incumbent made the field
+mandatory — the importer either rejects those rows or writes a placeholder. A
+placeholder in the past marks every affected consent as requiring re-consent on
+day one, burying the queue the control exists to populate; a recent one marks
+none of them, ever. Neither is detectable: a computed condition has no failure
+state to log, it just returns a boolean, and §1.1's deny-by-default rule does
+not reach it because there is no permission check here to deny.
+
+**The output.** §5.5's rights table says objection and consent withdrawal are
+*"self-service where an account exists"*, exercisable by *"data subject or
+guardian"*. In v1 a guardian who is not a member **gets no account** (§2.4) and
+the guardian portal is v2 (D-161); the child has no account either unless the
+school made one, and D-146's `SELF` set grants *read* of own consent records,
+not withdrawal. So the table states a right whose only named exercisers have no
+v1 surface — while D-151 newly guarantees a steady supply of consents needing
+exactly that action. This is the v1/v2 seam D-161 warns about, arriving in the
+direction it did not anticipate. Finding **F-142**.
+
+**Decision D-172 — `dateOfBirth` is never synthesised: a missing or
+unparseable value is a row rejection in the importer's report, and where the
+column must accept null for an imported record, unknown date ⇒ **authority
+treated as lapsed** ⇒ the consent appears in the re-consent queue. And in v1
+consent withdrawal and objection are **staff-operated** actions in the privacy
+admin area; self-service arrives with the portal.**
+
+- Failing to *lapsed* is the safe direction and, more importantly, the
+  **visible** one: an unknown date produces a queue item a human resolves,
+  rather than a silent boolean nobody can audit. A placeholder date is forbidden
+  outright — it is indistinguishable from a real one the moment it is written.
+- The staff-operated path is not a downgrade; it is what v1 actually has. The
+  privacy admin area already runs the re-consent queue, the erasure preview and
+  the Article 15 export, and a withdrawal recorded there carries the same
+  `withdrawnAt`/`withdrawnByPersonId` and triggers the same cascades (D-152) as
+  a self-service one would. What changes is that §5.5 stops promising a surface
+  the release does not ship.
+- D-161's constraint is respected rather than dented: recording the actor as
+  *the person who withdrew* and the operator as *who entered it* is exactly the
+  shape the portal needs, so the portal adds a caller and not a data model.
+
+**Trade-off.** A parent must phone or email the school to withdraw photo
+consent, and someone at the school must action it within a working week. That is
+the same process they have on paper today, and it is honest; the alternative was
+a table row describing a button nobody will build until v2.
+
 ### 5.5 Data subject rights
 
 | Right | Mechanism | Who can run it |
@@ -1376,7 +1576,7 @@ have on paper. It had the obligation on paper; it simply could not see it.
 | Erasure | `person-erasure` transaction: anonymise `Person`, sever pointers, hard-delete special-category data, retain pseudonymised legal records with their ground stated (D-065) | Org admin with `privacy.erase`, step-up, and a confirmation naming the retained records |
 | Portability | Same export as access, machine-readable | As access |
 | Restriction | `Person` flagged; writes blocked, reads audited | Org admin |
-| Objection | Marketing/consent withdrawal is self-service where an account exists | Data subject or guardian |
+| Objection | **v1: staff-operated in the privacy admin area** (D-172). Self-service arrives with the guardian portal in v2 (D-161) — in v1 a non-member guardian has no account (§2.4) and `SELF` grants read of own consents, not withdrawal | Data subject or guardian, via the school |
 
 The template already implements the erasure transaction and knows where the
 sharp edges are (its `OrganizationBranding.updatedByPersonId` comment

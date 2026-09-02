@@ -176,3 +176,50 @@ encrypted value fails to authenticate.
 recovery token" bullet visibly larger than the `pg_dump` reading of it. That is
 a sizing consequence for the scope pass; I stated it in the decision and touched
 no estimate.
+
+---
+
+## Defect 5 — S-19 and the five "partially closes" verdicts · **closed** · D-170, D-171, D-172, F-139–F-142, F-144
+
+Taken one verdict at a time, since each names a different open limb.
+
+**D-139 → closed by D-170** (`02-…` §2.6.1). Both open limbs, S-4 and S-5, in
+one decision because they are the same failure: an invariant stated in terms an
+implementer cannot execute, failing open. Confinement becomes **resource
+containment** through §2.2's coverage rules — no ordering over scope types
+exists, so none is invented — and the bounded-window scopes get schema ceilings
+(`SESSION`: session date, extendable to +7 days; `COURSE`: course end +7 days),
+with a null granter window read as that granter's maximum grantable window
+rather than as infinity. Without that last clause the ceiling binds the schema
+and not the check, and the principals who issue these grants are exactly the
+ones D-144 permits a null window.
+
+**D-141 → closed by F-140**, no new decision: this is a D-134 problem, not a
+design problem. The rule already has a correct home in `02-…` §1.2.1, so
+`13-…` §7's two contradicting "safety rails" bullets become a pointer, and
+§3.2 gains the enforceable form as a registry constraint — because §3.2 is
+where a settings write is validated and §7 is not.
+
+**D-149 → closed under defect 3** (D-168), including S-18's retention floor.
+
+**D-150 → closed by D-171** (`02-…` §4.1.1). S-11's three non-settings leave the
+`invariant` class and are stated where they are enforced; `SELF` is protected at
+the boundary that owns it (`system: true`, roles module refuses, test-backed)
+rather than by a registry that cannot see it. I also closed the D-104/D-150
+conflict the verdict names in passing: backup retention is `free` with a
+mandatory warning, because a ceiling with a documented-reason escape is a
+warning, and `bounded` must mean one thing. S-10 is defect 6.
+
+**D-151 → closed by D-172** (`02-…` §5.4.1). Both limbs. The importer rule is
+also stated at the importer's own home in `00-…` §2.2 as a third constraint
+beside "authority is never inferred" and "consent cannot be imported". On the
+second limb I took the reviewer's direction but not their framing: rather than
+softening §5.5's row, v1's withdrawal path is stated as what it actually is —
+staff-operated in the privacy admin area, with the same `withdrawnAt`,
+`withdrawnByPersonId` and D-152 cascades — so the portal adds a caller in v2
+rather than a data model.
+
+**S-19 → closed by F-144**, no new decision: the fix is a framing correction in
+`07-…` §1.4 and a note on D-128's register row. The capability was never
+justified by the legal conclusion, so removing the conclusion costs nothing
+built.

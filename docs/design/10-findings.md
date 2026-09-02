@@ -1328,3 +1328,104 @@ the terms under which it could return. The removed guard is replaced by a
 round-trip test inside the existing integration-test job, asserting row counts,
 exact primary-key preservation (the D-167 AAD binds the primary key), encrypted
 columns decrypting, and the audit chain verifying.
+
+### F-139 — D-139's scope confinement rested on an ordering nothing defines, and its window confinement was vacuous for the granters who issue the grants
+**Severity: high.** "At or below their own scope" appeared once in the whole
+design set and no chapter defines a partial order over
+`{ORGANIZATION, UNIT, GROUP, COURSE, SESSION, SELF}`. The natural implementation
+is a breadth ranking, and `02-…` §2.1 places `COURSE` **across** units — so a
+`UNIT`-scoped Location Manager holding `exams.manage` and `roles.assign` grants
+themselves `exams.results.record` at `COURSE = Diploma B`, every check passes,
+and their reach now covers that course's exam sessions at a location they have
+no grant over, where D-062 makes their amendment the effective result. The
+mirror failure denies every legitimate `SESSION` delegation to an aftest
+assessor, with the 17:00 Saturday fix being a special case in the grant service.
+`SELF` is comparable to nothing under any ranking. Separately, invariant 3 is
+vacuous for the null-window granters D-144 explicitly permits — every
+`ORGANIZATION` administrator and every standing Planner — so a mandatory
+`validUntil` with no ceiling collects `2099-12-31` and B-7's examiner keeps
+`exams.assess` on that session for seventy-three years.
+**Response.** D-170. Confinement is resource containment computed through the
+§2.2 coverage rules and evaluated live; there is no type ordering to get wrong,
+`COURSE` becomes grantable by a `UNIT` granter exactly when every group in the
+course sits in that unit, and `SELF` needs no ordering at all. `SESSION`
+`validUntil` is derived rather than accepted (session date, extendable to +7
+days), `COURSE` is bounded by the course end date +7 days, and a null granter
+window is read as that granter's maximum grantable window. The cross-unit
+`COURSE` case is added to D-032's scope-escape set by name.
+
+### F-140 — The claim D-141 deleted survived verbatim in the chapter that specifies the settings layer
+**Severity: high.** `02-…` §1.2.1 spends a section establishing that "local
+admin login cannot be disabled while it is the only working method" is
+unenforceable — configure a second provider and it is no longer "the only" one,
+and "working" is not decidable — and that a test-connection gate *"catches
+typos; it is not a safety net"*. `13-…` §7, under the heading **"Safety rails in
+the settings layer itself"**, carried both claims unchanged through all three fix
+commits. That is the section an implementer of the settings layer reads. Nothing
+in chapter 13 mentioned D-141, the database-level invariant, or its
+re-evaluation triggers, so the compensating control would have gone unbuilt by
+the chapter that owns the mechanism — leaving F-110/F-111's attack open with a
+"safety rail" passing at every step.
+**Response.** Both bullets are replaced by a pointer to `02-…` §1.2.1 (D-134),
+and the enforceable form — at least one local `ORGANIZATION`-scoped account with
+a verified MFA factor, checked at the database and re-evaluated on every
+authentication-settings change, role revocation and account disable — is added
+to `13-…` §3.2 as a `Security`-category registry constraint, because that is
+where a settings write is validated.
+
+### F-141 — Three of D-150's four `invariant` entries named objects the settings registry cannot reach
+**Severity: medium.** "Reach filtering" and "audit append-only" are properties of
+code and of a database grant: no key to mark, no value to refuse, nothing for
+`settings:reset` to clear — two rows that do nothing, and an implication that the
+settings layer is where those properties live rather than D-147 and D-149/D-168.
+The `SELF` permission set is the damaging one, because it *is* mutable: D-146
+makes it a seeded `Role`, a `Role`'s permissions are edited through
+`roles.manage` in the roles module, and an `ORGANIZATION`-scoped administrator
+adding a permission to it passes §2.6 (they hold everything) while nothing in
+the roles module knows the registry called that role invariant. Separately,
+D-104 permits exceeding the backup-retention ceiling with a documented reason,
+which makes the `bounded` class mean two different things.
+**Response.** D-171. `invariant` covers only what the registry can refuse a
+write to; `SELF` is protected at its own boundary with `system: true` and a
+roles-module refusal backed by a test; backup retention becomes `free` with the
+mandatory diagnostics warning and published backup horizon D-104 already
+specifies.
+
+### F-142 — D-151's input can be fabricated by the importer, and its output has no v1 exerciser
+**Severity: medium.** Authority expiry derives from `Person.dateOfBirth`, a
+non-optional column that D-157 fills for the whole existing pupil population
+from an export whose shape is unknown by construction. A placeholder date in the
+past marks every affected consent as requiring re-consent on day one; a recent
+one marks none, ever; and neither is detectable, because a computed condition
+has no failure state and there is no permission check for §1.1's deny-by-default
+to deny. At the other end, `02-…` §5.5 states consent withdrawal as
+"self-service where an account exists", exercisable by "data subject or
+guardian" — and in v1 a non-member guardian has no account (§2.4), the portal is
+v2 (D-161), and `SELF` grants *read* of own consent records. A stated right with
+no v1 exerciser, while D-151 newly guarantees a steady supply of consents that
+need exercising.
+**Response.** D-172: `dateOfBirth` is never synthesised, a missing value is a
+row rejection, and an unknown date makes authority lapsed so it surfaces in the
+queue; and v1's withdrawal/objection path is staff-operated in the privacy admin
+area, with self-service arriving with the portal. The recorded shape (actor =
+who withdrew, operator = who entered it) is the one the portal needs, so v2 adds
+a caller rather than a data model.
+
+### F-144 — The design answered, in its own voice, the Article 34 question it says it does not answer
+**Severity: low.** `02-…` §5.1 (D-064/F-126) corrected exactly this class of
+error — a legal conclusion about the reader's obligations, in a document whose
+own trade-off paragraph says it *"states the roles and points to the questions;
+it does not answer them for anyone"*. D-128, added in the same wave, then said
+the Article 34 high-risk threshold is *"met by default rather than argued
+about"*. Whether Article 34 applies is a determination the controller makes on
+the facts, and Article 34(3)(a) — encryption rendering the data unintelligible —
+can displace it entirely, which is not hypothetical in a product that encrypts
+the protected class and its archives. This is the more consequential direction
+of the two errors: F-05's under-stated an obligation a reader might miss; this
+one instructs a volunteer to notify every parent without the assessment the
+Article requires.
+**Response.** Restated in `07-operations.md` §1.4 as a design premise — this
+installation holds health data about children, so we designed for the case where
+notification is required; whether it is required for a given breach is the
+controller's assessment and 34(3) may bear on it. The engineering consequence is
+unchanged, which is the point.
