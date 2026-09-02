@@ -845,3 +845,45 @@ reduce §2.2 and R-29 to pointers. Resolve the refuse-vs-report question
 explicitly for authority-bearing columns.
 
 ---
+### C-19 — Backup retention is a hard ceiling in the settings registry and an overridable-with-warning ceiling in chapter 14
+
+**Severity: medium.**
+
+Side A — `13-configuration-and-setup.md` §3.2, the registry that is "the single
+source of truth for validation":
+
+> `bounded` settings carry **hard floors and ceilings the schema enforces** and
+> which `settings:reset` also respects — **it clamps to the bound** rather than
+> restoring an unbounded default (session idle ≤ 8 h, audit retention ≥ 12
+> months, rate limits ≥ a stated minimum, **backup retention ≤ the shortest
+> special-category retention**).
+
+Side B — `14-backup-restore-upgrade.md` §5.2, D-104:
+
+> - **Ceiling.** The registry **refuses** a backup retention longer than the
+>   shortest special-category retention, **or — where an operator has a
+>   documented reason to exceed it — surfaces the mismatch as a diagnostics
+>   warning** naming both figures. Silently allowing the mismatch is what turns
+>   an Article 15 response into a false statement.
+
+`02-security-privacy.md` §4.1 carries a third, compressed form that preserves
+the escape hatch — "backup retention ≤ the shortest special-category retention,
+**or a diagnostics warning** (D-104)" — while `09-decision-register.md` D-150's
+own row drops it: "backup retention ≤ the shortest special-category retention".
+
+**Why it matters.** The registry either accepts a value above the ceiling or it
+does not, and `settings:reset`'s clamping behaviour follows from the answer. If
+§3.2 is implemented as written, D-104's documented-exception path does not
+exist, and an operator with a legitimate long backup horizon has no setting —
+D-150's own stated consequence ("changes code, not a setting") applied to a case
+D-104 says should be a warning. If D-104 is implemented as written, the registry
+is not the hard bound §3.2 and D-150 describe, and `settings:reset` will clamp
+away the documented exception at the next reset without telling anyone.
+
+**Recommended resolution.** Decide whether `bounded` admits a
+warn-and-allow variant. If it does, that is a change to D-150's classification
+(a fourth behaviour, or a per-setting `onExceed: refuse | warn`), and it belongs
+in D-150 and §3.2 rather than in one bullet of chapter 14. If it does not,
+delete the "or" clause from D-104 and from `02-…` §4.1.
+
+---
