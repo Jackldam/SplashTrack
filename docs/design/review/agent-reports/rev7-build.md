@@ -422,4 +422,412 @@ rather than OD-10.
 
 ---
 
-_(continued — findings B-8 onward below)_
+### B-8 — D-138 states the build order as a single sequence that puts repository hygiene *after* the crypto envelope, inverting the chapter it cites
+
+**Severity: high**
+
+**The design's claim.** `09-decision-register.md` D-138 — the entry the brief
+calls "the decision that fixes the order":
+
+> The v1 build order is fixed by cost of doing it late: crypto envelope → audit
+> chain rotation → scope model → append-only event models → settings → consent →
+> restore fixtures → erasure registry; **then** repo hygiene → foundation →
+> removals and reshaping → domain modules in DAG order → surfaces
+
+Read as written, that is one twelve-step sequence, and repository hygiene is
+step nine.
+
+**The evidence — `06-delivery.md` §5, the section D-138 cites, says the
+opposite.** It is *two* lists, not one, and it says so:
+
+> Sequencing matters more than usual here because three of the highest-value
+> mechanisms are the ones that are most expensive to retrofit. **Ranked by cost
+> of doing it late:**
+
+followed by the eight-row table, and then a separate heading:
+
+> **Phases.**
+> - **Phase 0 — repository hygiene (days).** … Add Zod. Write the glossary …
+> - **Phase 1 — foundation, no domain code.** Crypto envelope and golden
+>   vectors → …
+
+The first list is a **risk ranking**; the second is the **schedule**. D-138
+concatenates them with the word "then", which produces a sequence that cannot be
+executed: the crypto envelope's validation and the settings registry both
+require Zod (`05-technical.md` §2, `13-…` §3.2), which Phase 0 adds; and the
+tracked `apps/web/.env` must be resolved before anything is public. Following
+D-138 literally means writing the envelope before adding its validation
+dependency, and rotating secrets after they have been in a public repository.
+
+The concatenation also mixes categories. "Append-only event models" and
+"consent" are not schedulable work items at all — they are *patterns* that come
+into existence inside Phase 3 domain modules (`AttendanceEvent` is defined in
+`01-domain-model.md` §3.4, in the `attendance` module). A reader who takes
+D-138 as a schedule tries to build item 4 before item 5 (settings), while the
+phases correctly put settings in Phase 1 and attendance in Phase 3.
+
+**What it costs.** The decision register is the artefact a new engineer greps.
+An engineer who plans a sprint from D-138 and not from `06-delivery.md` §5
+starts in the wrong place, and the error is invisible until Zod is missing.
+
+**Recommendation (do not apply).** Split D-138 into two entries — a *risk
+ranking* (no order claim) and a *phase schedule* — or make the single entry read
+"…is the risk ranking that motivates the phase schedule in `06-delivery.md` §5,
+which is authoritative."
+
+---
+
+### B-9 — two chapters give two different Phase-3 module orders, and D-138 calls the order fixed
+
+**Severity: low**
+
+**The design's claim.** `06-delivery.md` §5, Phase 3:
+
+> `people → students → groups → courses → skills → sessions → attendance →
+> assessment → exams → **planning → fees**`
+
+**The evidence.** `01-domain-model.md` §1.1, *"New SplashTrack domain modules
+(built in v1, **in this order**)"*, ends:
+
+```text
+exams               Exam sessions, candidates, assessors, results, awards
+fees                Fee types, charges, payments, balances  ← tracking only
+planning            Schedule construction, locations, resources, assignment
+```
+
+`fees` and `planning` are swapped. Both orders satisfy the DAG in
+`01-domain-model.md` §1.2 (neither module depends on the other), so nothing
+breaks — but two chapters each declare *the* order, and D-138 says it is fixed.
+
+**What it costs.** Nothing technically. It costs the reader's confidence in
+every other ordering claim in the set, which is the expensive part.
+
+---
+
+### B-10 — `coversResource()` is a named Phase-2 deliverable that no chapter defines
+
+**Severity: high**
+
+**The design's claim.** `06-delivery.md` §5, Phase 2:
+
+> → the scope model, **`coversResource()`**, reach as a required repository
+> argument, and the scope-escape **test harness** so every later module inherits
+> it
+
+**The evidence.** `coversResource` appears exactly once in the entire design
+set — that line. I grepped all fifteen chapters:
+
+```
+docs/design/06-delivery.md:308:  `coversResource()`, reach as a required repository argument, and the
+```
+
+No signature, no return type, no chapter section. It is evidently the
+single-resource counterpart to `resolveReach` — `05-technical.md` §5 rule 1 says
+*"Single-resource reads and all writes go through `requirePermission(perm,
+resourceRef)`; list queries take a `Reach` object"* — but the *list* half gets
+a fully specified eight-variant discriminated union in `02-security-privacy.md`
+§2.3 (D-147, quoted in full with its brand and its `NONE`/`UNION` variants),
+and the *single-resource* half gets a function name in a delivery plan.
+
+This is the asymmetry the brief calls "specified at two incompatible levels of
+detail", on the two halves of the same mechanism — and this half is the one
+every write in the application calls.
+
+The unanswered questions an engineer hits immediately: does `coversResource`
+take a `Reach` or a session? What is a `resourceRef` — a `{type, id}` pair, and
+who resolves a `studentProfileId` to the group a `GROUP`-scoped grant covers?
+For a `SESSIONS` reach, is the `window: DateRange` checked against the
+resource's time or the clock? D-144 says expiry *"is evaluated inside
+`requirePermission` and `resolveReach`"* and names no third function — so is
+`coversResource` inside `requirePermission`, or beside it?
+
+**What it costs.** The scope model is item 3 in the risk ranking precisely
+because *"it changes the signature of the guard every module calls."* Getting
+the list half right and improvising the single-resource half means the
+improvisation is what every module calls.
+
+**Recommendation (do not apply).** Specify `coversResource` in
+`02-security-privacy.md` §2.3 alongside D-147, with the same rigour: signature,
+the `resourceRef` shape, one row per `Reach` variant saying how a resource is
+tested against it, and what `UNION` and `NONE` do.
+
+---
+
+### B-11 — "consent extension" is ranked sixth in the build order and defined nowhere
+
+**Severity: medium**
+
+**The design's claim.** `06-delivery.md` §5, risk ranking row 6:
+
+> | 6 | **Consent extension** | Same retrofit-hostility as (4): a consent
+> captured under the current shape has no recoverable actor, and consent on
+> behalf of a minor is the majority case |
+
+and Phase 2: *"→ **consent extension** → setup wizard on top of all of it."*
+
+**The evidence.** The phrase "consent extension" occurs exactly twice in the
+design set — both in `06-delivery.md`. No decision defines it; no chapter
+section is called it; it has no F-number.
+
+The *material* is there, scattered: D-063 (subject, actor, purpose, lawful
+basis, authority evidence, timestamp, withdrawal), D-151 (guardian authority
+expires at the age of digital consent, derived from `Person.dateOfBirth`,
+evaluated at read time, feeding a re-consent queue), D-152 (`withdrawnAt`
+valid only where `legalBasis = CONSENT`, enforced as a schema constraint;
+`ProcessingObjection` as a separate event; a declared withdrawal cascade per
+purpose). What no chapter states is that *those three together are the
+"extension"*, that they are one work item, or that the item sits in Phase 2.
+
+**A real ordering consequence, not just a naming one.** D-151 requires
+`Person.dateOfBirth`, which the template does **not** have —
+`grep -n dateOfBirth WebAppTemplate/prisma/schema.prisma` returns nothing; the
+field is introduced by `01-domain-model.md:313`, i.e. by the `people` module in
+**Phase 3**. And D-152's `ProcessingObjection` is not in `01-domain-model.md`'s
+entity tables at all. So Phase 2's "consent extension" cannot be completed in
+Phase 2 as the schema currently stands.
+
+**What it costs.** An engineer plans a Phase-2 item they cannot scope, discovers
+mid-sprint that half of it needs a Phase-3 column, and either blocks or reaches
+forward into `people` — which is how the DAG erodes on week three.
+
+**Recommendation (do not apply).** Give it a decision id and one section in
+`02-security-privacy.md` §5.4 listing exactly what changes, then either move
+`Person.dateOfBirth` and `ProcessingObjection` into the Phase-1 foundation
+schema or move the consent extension to immediately after `people`.
+
+---
+
+### B-12 — the D-096 envelope binds AAD to table and column *names*, and no chapter says what a rename migration does to existing ciphertext
+
+**Severity: blocker**
+
+**The design's claim.** `13-configuration-and-setup.md` §5.1, D-096:
+
+> Every encrypted value is stored as `v1:<keyId>:<nonce>:<ct>`, authenticated
+> with AAD binding **`(table, column, primary key, keyId)`**.
+
+> **Trade-off.** Envelopes get longer and every read site must pass its own
+> `(table, column, pk)`. That is a small, mechanical cost…
+
+**Why it is not mechanical.** Two of the four AAD components are *identifiers
+the design has already committed to changing*:
+
+- **D-159**, added today: *"Schema identifiers, column names, API field names
+  and code are English without exception"* — and OD-10's closure adds
+  *"chapters that use them as identifiers are **corrected when the module is
+  written**."* So renames are scheduled, not hypothetical.
+- **D-100**: *"The first-run record is `InstallationBootstrap`, not
+  `PlatformBootstrap`"* — a table rename during extraction.
+- **D-056**: *"`PlatformSettings` (merged into the organisation singleton)"* —
+  a table rename plus a column move, on a table that holds settings-registry
+  secrets, which D-096's own rotation table lists as encrypted.
+
+A rename changes the AAD. Every existing ciphertext in that column then fails
+to authenticate — indistinguishably, by design, from the tampering the AAD
+exists to detect. Nothing in chapters 13, 14 or 02 mentions this.
+
+**And the two mechanisms that look like they would catch it do not.**
+
+1. `splashtrack key:rotate` re-wraps *"in one resumable pass per column, **keyed
+   by `keyId`**"* (`13-…` §5.3). A rename does not change `keyId`, so rotation
+   neither detects nor repairs it.
+2. R-20 (`00-overview.md:399`) is *"automatic forward-only migration on start,
+   automatic pre-migration backup"*. So the rename migration runs unattended, at
+   container start, **after** the pre-migration backup is taken — the backup
+   contains ciphertext bound to the old names, and the running instance can read
+   neither. `14-…` §4.3.1's *"Every encrypted column decrypts to known
+   plaintext"* assertion belongs to the D-047 matrix, which
+   `00-overview.md` §3.5.1 moves **out of v1**.
+
+**What it costs.** This is item 1 in the risk ranking — *"Nothing that stores a
+secret may be written first"* — and it is the one place where getting the
+envelope subtly wrong is unrecoverable rather than expensive: an AAD failure on
+a medical note is silent data loss with a corruption-shaped error message.
+
+**Recommendation (do not apply).** Bind AAD to a **stable logical identifier**
+rather than the physical name — a per-column registry entry (`"student.medical
+_remarks"`) that a rename updates in the mapping, not in the AAD — or state
+explicitly that any migration renaming an encrypted column or its table must
+decrypt-and-re-encrypt in the same migration, and add that to
+`05-technical.md` §5 rule 5's PR requirement. Either way it must be decided
+before the first encrypted byte is written.
+
+---
+
+### B-13 — D-095 commits v1 to writing its own logical export/import engine, justified by a CI matrix that v1 does not ship, while chapter 14 still fully specifies the alternative
+
+**Severity: blocker**
+
+**The design's claim.** `14-backup-restore-upgrade.md` §3.1, D-095:
+
+> The database export is a structured logical export the application writes and
+> reads itself, not a raw `pg_dump` replayed by the database.
+
+with the risk explicitly acknowledged and explicitly mitigated:
+
+> It is more code than shelling out to `pg_dump`, and it **must be kept in step
+> with the schema — which is exactly what the restore matrix (§4.3.1) tests on
+> every pull request anyway.**
+
+> **Trade-off.** We own the export/import code, including every column type and
+> every future schema change.
+
+**The evidence.** The restore matrix is D-047, and `00-overview.md` §3.5.1 moves
+it out of v1:
+
+> | **D-047** restore-from-every-release CI matrix | **Zero prior releases
+> exist**, so the matrix is green while protecting nothing…
+
+`06-delivery.md` §2.1 repeats it: *"**Out of v1:** the restore-from-every-supported-release matrix (D-047)."*
+
+So v1 ships a hand-written export/import engine covering every column type in a
+~70-model schema, and the single control D-095 names to keep it in step with
+that schema **is not in v1**. The decision's own risk paragraph is load-bearing
+and the load has been removed from under it. Nothing else in `06-delivery.md`
+§2.1's eight blocking checks exercises a round-trip.
+
+**And the chapter has not picked one mechanism.** D-095's trade-off keeps an
+escape hatch — *"If v1 nonetheless ships `pg_dump`, §4.2's restrictions are
+**mandatory, not advisory**, and `postgresql-client` must actually be in the
+image — it is not today"* — and §4.2 then specifies the `pg_dump` path in full
+(`14-…:327-343`): custom format only, `pg_restore --no-owner --no-acl
+--no-comments`, a table-of-contents allow-list of object types, hard abort
+outside it. Both mechanisms are specified to implementation depth. The two
+differ by weeks of work and by which threat model applies.
+
+**What it costs.** Phase 1 contains *"backup, restore and the recovery token"*
+as one bullet. Under the `pg_dump` reading that is days; under D-095 it is a
+serialization engine for every Prisma column type plus a matching importer that
+preserves primary keys exactly (it must — D-096 binds AAD to the primary key,
+see B-12) plus a per-release compatibility obligation. Nothing in the estimate
+distinguishes them.
+
+**Recommendation (do not apply).** Decide it, delete the loser from chapter 14,
+and if D-095 stands, add a **round-trip test** (export a seeded database, import
+into an empty one, assert row counts, primary keys and decrypted plaintexts) to
+`06-delivery.md` §2.1's blocking checks. That is the cheap subset of D-047 that
+protects the thing D-095 is worried about and does not need any prior release
+to exist.
+
+---
+
+### B-14 — chapter 14 presents D-047 as a first-class v1 requirement with no marker that it was cut
+
+**Severity: medium**
+
+**The design's claim, side A.** `06-delivery.md` §2.1: *"**Out of v1:** the
+restore-from-every-supported-release matrix (D-047)."*
+
+**The design's claim, side B.** `14-…` §4.3.1, titled *"What this obliges us to
+do — the actual cost"*:
+
+> **Decision D-047 — CI tests restore from **every supported release** into
+> `HEAD` … A matrix job: for each such version, restore a stored seeded backup
+> of it into the current build, apply migrations, and assert the schema and a
+> set of domain invariants.
+> **Reason.** "Skipped versions are supported" is worthless as a sentence in a
+> document. It is only true if a machine checks it on every pull request.
+
+followed by the eight-row assertion table and a full specification of the
+fixture-generation job. Nothing in chapter 14 says any of it is out of v1.
+Chapter 14 was last written at `f8b2f8c`; the v1 re-cut is in `00-overview.md`
+§3.5.1.
+
+**What it costs.** A week of work an engineer builds because the chapter that
+specifies it in detail says it is obligatory, and the chapter that cancelled it
+is one they may not reach. Compounded by B-13, which depends on knowing D-047 is
+gone.
+
+**Recommendation (do not apply).** One line under §4.3.1: "Out of v1 per
+`00-overview.md` §3.5.1; fixture generation ships, the matrix does not."
+
+---
+
+### B-15 — D-157 does *not* block the import work, but the field it writes is defined nowhere
+
+**Severity: low** (and the answer to the brief's question is: yes, schedulable)
+
+**The design's claim.** D-157:
+
+> The importer cannot be built until a sample export is supplied. That is the
+> intended ordering, not a delay: the work is small once the file is in hand and
+> unbounded when it is not
+
+**Verdict: the rest of the import work is schedulable, and D-157 is right.**
+What is deferred is exactly one thing — the column mapping. Everything the
+importer *is* is already specified target-side in `00-overview.md` §2.2 and
+D-157, and none of it depends on the source file:
+
+- dry-run-then-commit with a per-row rejection report;
+- unmapped columns **reported, never silently dropped**;
+- authority never inferred — *"the import refuses on any unmapped value rather
+  than silently dropping — or silently granting — authority"*;
+- zero `Consent` rows written, consent-gated features left off, a report of what
+  could not be carried;
+- lossy-by-construction records seeded with one synthetic
+  `StudentLifecycleEvent(JOINED)` and one `MembershipPeriod`.
+
+That is an importer framework with a pluggable mapping. It can be built, tested
+against a synthetic fixture, and have the real mapping dropped in later.
+
+**The one defect.** `00-overview.md:308` requires those seeded rows be *"marked
+`origin: IMPORTED_LEGACY` so nobody later reads an import artefact as evidence
+in a dispute"*. Neither `origin` nor `IMPORTED_LEGACY` appears anywhere else in
+the design set — I grepped all fifteen chapters. `01-domain-model.md:315,317`
+define `MembershipPeriod` and `StudentLifecycleEvent` without it. It is an
+evidentiary field, named once, on two append-only models, in the chapter that
+does not own them.
+
+**What it costs.** Minutes now; a migration adding a column to two append-only
+tables after they hold rows, later — and the rows that most need the marker are
+the ones written before it existed.
+
+**Recommendation (do not apply).** Add `origin` to both entity rows in
+`01-domain-model.md` §3.1 with its enum, in the `students` module's schema, so
+it exists before the importer needs it.
+
+---
+
+### B-16 — OD-18 is open and blocks half of chapter 15; chapter 15's own dependency list is stale about which decisions are still open
+
+**Severity: medium**
+
+**The design's claim.** `15-assessment-and-fees.md` §9, item 5:
+
+> **(Open — OD-17, `08-open-decisions.md`)** The grade scale is assumed to be
+> the five ordinal values given.
+
+**The evidence.** OD-17 was closed in the same commit that last edited chapter
+15 (`29a0021`, *"close OD-1/5/6/10/16/17"*), and recorded as **D-160** —
+*"One seeded `GradeScale` — onvoldoende / matig / voldoende / goed / zeer goed …
+no scale editor ships in v1"*. Chapter 15 §9 still lists it open.
+
+Meanwhile the item that *is* open and *does* block work is not in §9 at all:
+**OD-18**, raised by the same commit —
+
+> This does not block the design of students, groups, sessions, attendance,
+> assessment or exams … It blocks only the membership and contributie half of
+> chapter 15.
+> **Cost of delay.** High and rising: it is cheap now and becomes a rewrite of
+> chapter 15 plus its schema once written.
+
+OD-18 is well written and correctly bounded — this finding is not against it.
+It is against §9, the list an engineer opening chapter 15 reads to find out what
+is safe to start.
+
+**Also still open and correctly flagged:** §9 item 2, F-44 — no scheme catalogue
+may be seeded until the NRZ criteria and thresholds are confirmed. That one
+genuinely blocks the `assessment` module's seed data, and it is a question for
+Jack rather than a design gap.
+
+**What it costs.** `fees` is the last Phase-3 module in one ordering and the
+second-to-last in the other (B-9), so the schedule accidentally protects this —
+but the estimate counts it.
+
+**Recommendation (do not apply).** Rewrite §9 as of `29a0021`: item 5 closed by
+D-160; add OD-18 as the open item that gates §6.2 contributie tracking; keep
+F-44.
+
+---
+
+_(continued — findings B-17 onward below)_
