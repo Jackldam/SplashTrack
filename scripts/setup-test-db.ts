@@ -92,7 +92,7 @@ function applyMigrations(testUrl: string): void {
 }
 
 /**
- * Empties the audit trail so the platform-wide audit-export tests always start
+ * Empties the audit trail so the audit-export tests always start
  * below the export cap. See step 4 in the file header for why a FULL truncate is
  * the chain-safe choice. Idempotent — a no-op on an already-empty table.
  */

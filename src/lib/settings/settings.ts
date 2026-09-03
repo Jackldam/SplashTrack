@@ -1,18 +1,21 @@
 /**
  * Instance settings — the READ paths.
  *
- * Reads and writes the configuration document stored in
- * `PlatformSettings.platformConfig` (a `@@id`-keyed singleton row).
+ * Reads and writes the configuration document stored in `Organization.config`,
+ * on the organisation singleton. Phase 0.3 merged the inherited
+ * `PlatformSettings` table into `Organization` (D-056): one organisation per
+ * installation leaves no second side to a platform-versus-organisation settings
+ * duality, so there is one row, one document and one name.
  *
- * ONLY the read paths are extracted in phase 0.2, and that is a deliberate cut
- * rather than an omission. The template's guarded read
- * (`getPlatformConfigForEdit`) and its two writes (`updatePlatformConfig`,
- * `updateSessionPolicy`) each call `requirePlatformPermission` — the platform
- * super-administrator exception path, which D-056 deletes, sitting on top of the
- * permission guard, which is phase 0.4 (D-147). Bringing them across now would
- * mean bringing a half-matching guard with them. The settings ADMIN SURFACE
- * arrives with that guard; until then this file answers "what is configured",
- * and nothing can change it from inside the application.
+ * ONLY the read paths are extracted, and that is a deliberate cut rather than an
+ * omission. The template's guarded read and its two writes each called
+ * `requirePlatformPermission` — the platform super-administrator exception path,
+ * which D-056 deletes, sitting on top of the permission guard, which is phase
+ * 0.4 (D-147). Bringing them across would have meant bringing a half-matching
+ * guard with them, and the exception path has no meaning here: there is no
+ * platform and no principal above the organisation. The settings ADMIN SURFACE
+ * arrives with `requirePermission`; until then this file answers "what is
+ * configured", and nothing can change it from inside the application.
  *
  * The reads below are what the rest of the foundation depends on:
  *   - `getRequestConfigData` runs on EVERY request (the i18n request path and
@@ -32,40 +35,47 @@ import {
   SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES,
   SESSION_IDLE_TIMEOUT_MINUTES,
   SESSION_TIMEOUT_MINUTES,
-  coercePlatformConfig,
-  defaultPlatformConfig,
-  validatePlatformConfigInput,
-  type PlatformConfig,
+  coerceOrganizationConfig,
+  defaultOrganizationConfig,
+  validateOrganizationConfigInput,
+  type OrganizationConfig,
 } from "./config";
 
 const settingsLogger = logger.child({ component: "settings" });
 
 /**
- * The fixed primary key of the settings singleton. One organisation per
+ * The fixed primary key of the organisation singleton. One organisation per
  * installation (D-162), so there is exactly one row and its id is a constant
  * rather than a lookup.
  *
- * Phase 0.3 enforces the singleton at the DATABASE rather than by convention.
- * This constant is the convention it replaces, not a substitute for it.
+ * NOT the enforcement. A CHECK constraint on `Organization.id` pins the column
+ * to this same value in the database, so a second organisation cannot be
+ * inserted even by code that never imports this constant — see the model's doc
+ * comment and `tests/integration/organization-singleton.test.ts`. This is the
+ * convenience; the constraint is the control.
  */
-export const PLATFORM_SETTINGS_ID = "platform";
+export const ORGANIZATION_ID = "organization";
 
 /** The public, render-only settings shape: the coerced config document. */
-export interface PublicPlatformSettings {
-  config: PlatformConfig;
+export interface PublicOrganizationSettings {
+  config: OrganizationConfig;
 }
 
 /**
  * Ensures the singleton row exists and returns the settings-relevant columns.
  * A lazy fixed-id upsert, so concurrent first reads cannot create two rows.
+ *
+ * PHASE 1: the setup wizard (D-039) must UPDATE this row and must not read its
+ * existence as "the installation is configured" — this read creates it. The
+ * boot state machine reads `InstallationBootstrap` (D-100) for that.
  */
-async function getOrCreatePlatformSettings() {
-  return prisma.platformSettings.upsert({
-    where: { id: PLATFORM_SETTINGS_ID },
+async function getOrCreateOrganization() {
+  return prisma.organization.upsert({
+    where: { id: ORGANIZATION_ID },
     update: {},
-    create: { id: PLATFORM_SETTINGS_ID },
+    create: { id: ORGANIZATION_ID },
     select: {
-      platformConfig: true,
+      config: true,
       updatedAt: true,
       updatedByPersonId: true,
     },
@@ -80,10 +90,10 @@ async function getOrCreatePlatformSettings() {
  * query instead of each triggering their own upsert. Deduping is safe: nothing
  * else writes this row mid-request.
  */
-export const getPublicPlatformConfig = cache(
-  async (): Promise<PublicPlatformSettings> => {
-    const settings = await getOrCreatePlatformSettings();
-    return { config: coercePlatformConfig(settings.platformConfig) };
+export const getPublicOrganizationConfig = cache(
+  async (): Promise<PublicOrganizationSettings> => {
+    const organization = await getOrCreateOrganization();
+    return { config: coerceOrganizationConfig(organization.config) };
   },
 );
 
@@ -117,17 +127,17 @@ export const getPublicPlatformConfig = cache(
 export const getRequestConfigData = cache(
   async (): Promise<{
     brandName: string | null;
-    localization: PlatformConfig["localization"];
-    security: PlatformConfig["security"];
+    localization: OrganizationConfig["localization"];
+    security: OrganizationConfig["security"];
   }> => {
     try {
-      const row = await prisma.platformSettings.findUnique({
-        where: { id: PLATFORM_SETTINGS_ID },
-        select: { displayName: true, platformConfig: true },
+      const row = await prisma.organization.findUnique({
+        where: { id: ORGANIZATION_ID },
+        select: { name: true, config: true },
       });
-      const config = coercePlatformConfig(row?.platformConfig);
+      const config = coerceOrganizationConfig(row?.config);
       return {
-        brandName: row?.displayName ?? null,
+        brandName: row?.name ?? null,
         localization: config.localization,
         security: config.security,
       };
@@ -137,7 +147,7 @@ export const getRequestConfigData = cache(
         "request-config read failed; falling back to defaults, and to the " +
           "STRICTEST session bounds",
       );
-      const defaults = defaultPlatformConfig();
+      const defaults = defaultOrganizationConfig();
       return {
         brandName: null,
         localization: defaults.localization,
@@ -158,7 +168,7 @@ export const getRequestConfigData = cache(
  * {@link getRequestConfigData} so it shares the same cached query.
  */
 export async function getConfiguredLocalization(): Promise<
-  PlatformConfig["localization"]
+  OrganizationConfig["localization"]
 > {
   return (await getRequestConfigData()).localization;
 }
@@ -170,7 +180,7 @@ export async function getConfiguredLocalization(): Promise<
  * fail-safe-to-strict query and never hard-fails the auth path.
  */
 export async function getConfiguredSecurityPolicy(): Promise<
-  PlatformConfig["security"]
+  OrganizationConfig["security"]
 > {
   return (await getRequestConfigData()).security;
 }
@@ -188,23 +198,23 @@ export async function getConfiguredSecurityPolicy(): Promise<
  * Callers must be inside an already-authorized code path. There is none in
  * phase 0.2.
  */
-export async function writePlatformConfig(
+export async function writeOrganizationConfig(
   input: unknown,
   updatedByPersonId: string | null,
-): Promise<PublicPlatformSettings> {
-  const currentRow = await getOrCreatePlatformSettings();
-  const current = coercePlatformConfig(currentRow.platformConfig);
-  const validated = validatePlatformConfigInput(input, current);
+): Promise<PublicOrganizationSettings> {
+  const currentRow = await getOrCreateOrganization();
+  const current = coerceOrganizationConfig(currentRow.config);
+  const validated = validateOrganizationConfigInput(input, current);
 
-  const updated = await prisma.platformSettings.update({
-    where: { id: PLATFORM_SETTINGS_ID },
+  const updated = await prisma.organization.update({
+    where: { id: ORGANIZATION_ID },
     data: {
-      // PlatformConfig is a plain, JSON-serialisable document.
-      platformConfig: validated as unknown as Prisma.InputJsonValue,
+      // OrganizationConfig is a plain, JSON-serialisable document.
+      config: validated as unknown as Prisma.InputJsonValue,
       updatedByPersonId,
     },
-    select: { platformConfig: true },
+    select: { config: true },
   });
 
-  return { config: coercePlatformConfig(updated.platformConfig) };
+  return { config: coerceOrganizationConfig(updated.config) };
 }

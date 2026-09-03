@@ -82,13 +82,27 @@ Three defects found by running it rather than reading it, all fixed:
 D-056: removed, not left unused. Incremental and test-covered, so reusable
 functionality is not broken by accident.
 
-- [ ] Inventory every tenant-aware model, middleware, authorization path and
-      schema element
-- [ ] Remove `platform.super_admin` and every platform-role concept
-- [ ] `OrganizationMembership` → `Membership`; `organizations` keeps the
-      singleton organisation/configuration, and stops being a tenant table
-- [ ] Enforce the organisation singleton at the database, not by convention
-- [ ] Each removal is its own commit with tests green before and after
+**Done 2026-09-03. Full record in `phase-0.3-tenant-removal-report.md`** — what
+was removed, what was kept and why, the greps proving the absence, every new
+`PHASE 0.4:` marker, and the real done-check output.
+
+- [x] Inventory every tenant-aware model, middleware, authorization path and
+      schema element. **There was no middleware and no authorization path to
+      remove**: phase 0.2 never extracted `lib/security/` or
+      `organization-scope.ts`, so the tenant machinery that reached this
+      repository was schema-only plus the settings duality
+- [x] Remove `platform.super_admin` and every platform-role concept.
+      `PlatformRoleAssignment` deleted; no `requirePlatformPermission` existed
+      here to delete
+- [x] `OrganizationMembership` → `Membership`; `Organization` keeps the
+      singleton organisation and its configuration (`PlatformSettings` merged
+      into it), and stops being a tenant table — `slug` and `status` gone with
+      the boundary
+- [x] Enforce the organisation singleton at the database, not by convention —
+      a `CHECK ("id" = 'organization')` constraint, proven in both refusal
+      directions by `tests/integration/organization-singleton.test.ts`
+- [x] Each removal is its own commit with tests green before and after (five
+      commits; 28 tests green throughout, 32 after the singleton suite)
 
 ## 0.4 Ground rules in place before any domain work
 

@@ -1,7 +1,7 @@
 /**
  * Shared internationalization configuration (ADR-006).
  *
- * The platform's primary language is Dutch (`nl`); English (`en`) is offered
+ * The application's primary language is Dutch (`nl`); English (`en`) is offered
  * as a switchable option. Locale is stored in a `locale` cookie and never
  * encoded in the URL (no `[locale]` route segment), so this module is the
  * single source of truth for the supported locales. A fresh visitor with no

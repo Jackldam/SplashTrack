@@ -45,18 +45,19 @@ const globalForPrisma = globalThis as unknown as {
 /**
  * The base Prisma client.
  *
- * Phase 0.3 removes the inherited multi-tenant scoping helper
- * (`forOrganization`) rather than leaving it unused (D-056) — one organisation
- * per installation means there is no tenant filter to inject. What replaces it
- * is NOT "query freely": `05-technical.md` §5 requires every list query to take
- * a `Reach` from `resolveReach()` as a required repository argument (D-031),
- * and `05-technical.md` §3.1 requires each module's `infrastructure/` to expose
+ * There is no tenant-scoping extension on it and there never will be: phase 0.3
+ * removed the multi-tenant machinery rather than leaving it unused (D-056), and
+ * one organisation per installation means there is no tenant filter to inject.
+ *
+ * What replaces it is NOT "query freely". `05-technical.md` §5 requires every
+ * list query to take a `Reach` from `resolveReach()` as a required repository
+ * argument (D-031), and §3.1 requires each module's `infrastructure/` to expose
  * a client narrowed to the models that module OWNS, so `planning` physically
  * cannot reach `scheduledSession` (D-057).
  *
- * Neither exists yet — both are phase 0.4 / 0.3 work. Until they do, importing
- * this client from a domain module is a boundary violation waiting to happen,
- * and the lint rule that makes it a build failure has not been written.
+ * PHASE 0.4: neither exists yet. Until they do, importing this client from a
+ * domain module is a boundary violation waiting to happen, and the lint rule
+ * that makes it a build failure has not been written.
  */
 export const prisma: PrismaClient =
   globalForPrisma.prisma ?? createPrismaClient();

@@ -7,14 +7,15 @@ import { extractModelBlocks } from "./prisma-schema-parser";
  * find the true end of a Prisma `model { ... }` block.
  *
  * The bug this guards against: a naive `/model\s+(\w+)\s*\{([^}]*)\}/` regex
- * stops at the FIRST literal `}`. Several real model doc comments in
- * prisma/schema.prisma contain a balanced `{...}` of their own (e.g. the
- * hex-colour regex example "`^#[0-9a-fA-F]{6}$`" in `PlatformSettings`), which
+ * stops at the FIRST literal `}`. Real model doc comments in
+ * prisma/schema.prisma contain a balanced `{...}` of their own (a JSON-shape
+ * example in `AuditEvent`; the template's `PlatformSettings` had a hex-colour
+ * regex "`^#[0-9a-fA-F]{6}$`" before phase 0.3 merged that model away), which
  * truncates the captured body right there — silently dropping every field
  * declared after it, and every downstream classification check that reads
  * that body. The template's org-scope sync test carried exactly this bug for a
- * time and got lucky: none of the truncated models' MISSING fields happened
- * to be `organizationId`. Without this test, a future "simplification" of
+ * time and got lucky: none of the truncated models' MISSING fields happened to
+ * be the one it was scanning for. Without this test, a future "simplification" of
  * `extractModelBlocks` back to a naive regex would reintroduce that bug
  * silently — the sync tests would keep passing on today's schema and only
  * fail once some future model's real gap fell after a balanced-brace comment.
@@ -24,15 +25,17 @@ describe("extractModelBlocks", () => {
 model Foo {
   id String @id
 
-  /// Example format: \`^#[0-9a-fA-F]{6}$\` (a balanced brace pair IN A COMMENT,
-  /// same shape as PlatformSettings' hex-colour doc comment).
+  /// Example format: \`^#[0-9a-fA-F]{6}$\` (a balanced brace pair IN A COMMENT.
+  /// The FIXTURE is deliberately independent of the real schema, so it keeps
+  /// guarding the parser after the model that first exhibited this shape is
+  /// gone).
   hexColor String
 
   /// A field declared AFTER the in-comment balanced braces above. A naive
   /// first-closing-brace regex truncates the body before reaching this line.
   afterCommentField String
 
-  organizationId String
+  lastFieldInTheBlock String
 }
 
 model Bar {
@@ -45,7 +48,7 @@ model Bar {
     const fooBody = blocks.get("Foo");
     expect(fooBody).toBeDefined();
     expect(fooBody).toContain("afterCommentField");
-    expect(fooBody).toContain("organizationId");
+    expect(fooBody).toContain("lastFieldInTheBlock");
   });
 
   it("still finds the NEXT model after one whose body contains a balanced-brace comment", () => {
@@ -74,11 +77,11 @@ model Bar {
     // The naive parser truncates at the `{6}` in the comment and never sees
     // the rest of the model.
     expect(naiveFooBody).not.toContain("afterCommentField");
-    expect(naiveFooBody).not.toContain("organizationId");
+    expect(naiveFooBody).not.toContain("lastFieldInTheBlock");
 
     // The fixed parser, by contrast, sees both.
     const fixedFooBody = extractModelBlocks(FIXTURE).get("Foo");
     expect(fixedFooBody).toContain("afterCommentField");
-    expect(fixedFooBody).toContain("organizationId");
+    expect(fixedFooBody).toContain("lastFieldInTheBlock");
   });
 });

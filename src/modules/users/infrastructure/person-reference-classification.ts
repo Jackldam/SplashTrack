@@ -92,10 +92,12 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
   },
 
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
-  "PlatformSettings.updatedByPersonId": {
+  "Organization.updatedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:
-      "A last-editor accountability pointer on the settings singleton. The FK " +
+      "A last-editor accountability pointer on the organisation singleton, " +
+      "which carries the configuration document since D-056 merged " +
+      "PlatformSettings into it. The FK " +
       "is onDelete: SetNull as defence in depth; the erasure severs it " +
       "explicitly regardless. Both, deliberately: the explicit sever is the " +
       "control, and SetNull is what stops a FUTURE delete path that forgets " +

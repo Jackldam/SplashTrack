@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { getPublicPlatformConfig } from "@/lib/settings";
+import { getPublicOrganizationConfig } from "@/lib/settings";
 
 // Bootstrap first, so application styles can override it.
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -20,7 +20,7 @@ import "./globals.css";
 export async function generateMetadata(): Promise<Metadata> {
   const [t, { config }] = await Promise.all([
     getTranslations(),
-    getPublicPlatformConfig(),
+    getPublicOrganizationConfig(),
   ]);
   const brand = t("common.brand");
   const description = config.seo.metaDescription ?? t("landing.tagline");

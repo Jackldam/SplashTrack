@@ -47,7 +47,7 @@ export default defineConfig({
           // production. See tests/setup/test-env.ts.
           setupFiles: ["./tests/setup/test-env.ts"],
           // Integration tests share ONE real database and some of them will
-          // mutate singleton tables (PlatformSettings) or truncate the audit
+          // mutate singleton tables (Organization) or truncate the audit
           // trail. Running test FILES in parallel against that shared state is
           // racy, so file execution is serialized and the suite is
           // deterministic. Revisit only with per-file database isolation.

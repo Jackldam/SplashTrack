@@ -4,7 +4,7 @@
  *
  * Resolves the active locale per request:
  *   1. an explicit `locale` cookie (a returning user's saved choice) wins;
- *   2. otherwise the platform's admin-configured default locale (Settings →
+ *   2. otherwise the organisation's admin-configured default locale (Settings →
  *      Localization, Phase 1b) applies;
  *   3. otherwise the built-in default (Dutch). The `Accept-Language` header is
  *      never consulted, so a fresh visitor sees the configured default until

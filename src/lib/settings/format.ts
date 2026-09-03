@@ -1,5 +1,5 @@
 /**
- * Date/time formatting driven by the platform's localization settings
+ * Date/time formatting driven by the organisation's localization settings
  * (Architecture.md Section 4.4). The admin picks a locale, an IANA time zone and
  * one of a CLOSED set of presentation styles; this module maps that style to a
  * FIXED `Intl.DateTimeFormat` option set — the admin never supplies raw tokens,
@@ -9,7 +9,7 @@
  */
 
 import { defaultLocale, type Locale } from "@/i18n/config";
-import type { DateFormat, PlatformConfig } from "./config";
+import type { DateFormat, OrganizationConfig } from "./config";
 
 /** The fixed Intl options for each closed presentation style. */
 export function dateFormatOptions(
@@ -30,13 +30,13 @@ export function dateFormatOptions(
 }
 
 /**
- * Formats a timestamp using the platform's configured locale, time zone and date
+ * Formats a timestamp using the organisation's configured locale, time zone and date
  * style. Falls back to the built-in default locale and the runtime's own zone
  * when a setting is unset. Never throws on a bad date — returns an empty string.
  */
 export function formatDateTime(
   value: Date | string | number,
-  localization: PlatformConfig["localization"],
+  localization: OrganizationConfig["localization"],
   localeOverride?: Locale,
 ): string {
   const date = value instanceof Date ? value : new Date(value);

@@ -12,7 +12,7 @@
  */
 
 export {
-  PLATFORM_CONFIG_VERSION,
+  ORGANIZATION_CONFIG_VERSION,
   CONFIG_TEXT_MAX,
   SUPPORT_EMAIL_PATTERN,
   DATE_FORMATS,
@@ -23,10 +23,10 @@ export {
   SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES,
   locales,
   isValidTimeZone,
-  defaultPlatformConfig,
-  coercePlatformConfig,
-  validatePlatformConfigInput,
-  type PlatformConfig,
+  defaultOrganizationConfig,
+  coerceOrganizationConfig,
+  validateOrganizationConfigInput,
+  type OrganizationConfig,
   type DateFormat,
   type TimeFormat,
   type FirstDayOfWeek,
@@ -36,11 +36,11 @@ export {
 export { dateFormatOptions, formatDateTime } from "./format";
 
 export {
-  PLATFORM_SETTINGS_ID,
-  getPublicPlatformConfig,
+  ORGANIZATION_ID,
+  getPublicOrganizationConfig,
   getRequestConfigData,
   getConfiguredLocalization,
   getConfiguredSecurityPolicy,
-  writePlatformConfig,
-  type PublicPlatformSettings,
+  writeOrganizationConfig,
+  type PublicOrganizationSettings,
 } from "./settings";

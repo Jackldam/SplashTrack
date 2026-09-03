@@ -1,8 +1,8 @@
 // SplashTrack — Prisma schema
 //
 // Scope: phase 0.2 (foundation), extracted from WebAppTemplate (7db6488). This
-// models the identity graph, the inherited authorization tables, the platform
-// settings singleton and the audit trail. It deliberately contains NO domain
+// models the identity graph, the authorization tables, the organisation
+// singleton with its configuration, and the audit trail. It deliberately contains NO domain
 // model yet — no Person-as-pupil, no group, no lesson, no attendance. Those
 // arrive per module, in the DAG order `06-delivery.md` §5 sets out, and every
 // one of them is blocked on the phase-0.4 ground rules below.
@@ -31,8 +31,11 @@
 //   - `AuditEvent.organizationId` dropped, with the two indexes over it.
 //   - Every remaining `organizationId` column, foreign key and index dropped.
 //   - `OrganizationMembership` renamed to `Membership`.
-// Still to go: `PlatformSettings` merged into the organisation singleton, and
-// the singleton enforced at the database rather than by convention.
+//   - `PlatformSettings` merged into `Organization`; `slug`, `status` and the
+//     `OrganizationStatus` enum dropped; the singleton enforced by a CHECK
+//     constraint at the database rather than by a constant in the code.
+// DONE. What remains under D-056 is a standing rule, not a task: no tenant id,
+// no platform namespace, no second organisation — ever.
 //
 // NOT EXTRACTED AT ALL (features, not foundation — see
 // `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
@@ -75,16 +78,6 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
-enum OrganizationStatus {
-  ACTIVE
-  /// Temporarily blocked (reversible). Data is preserved.
-  SUSPENDED
-  /// Soft-archived (reversible). All data is preserved (every dependent FK is
-  /// `Restrict`). NOT a deletion: hard-deleting an organisation that still has
-  /// members or role grants would be a side-door mass personal-data erasure.
-  ARCHIVED
-}
-
 enum UserAccountStatus {
   ACTIVE
   DISABLED
@@ -97,23 +90,88 @@ enum MembershipStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Tenant boundary — PHASE 0.3 removes this (D-056)
+// The organisation — an ENFORCED SINGLETON (D-027, D-056)
 // ---------------------------------------------------------------------------
 
-/// The inherited tenant boundary. SplashTrack v1 is ONE organisation per
-/// installation (D-162): there is no tenant id, no control plane and no
-/// platform super administrator. Phase 0.3 collapses this to a singleton — the
-/// organisation/configuration record for THIS instance, enforced at the
-/// database rather than by convention — and drops the `organizationId` column
-/// from every model below. It is extracted unchanged first so that removal is a
-/// reviewable, test-covered diff rather than a rewrite.
+/// THE organisation this installation serves, and its configuration. One
+/// organisation per installation (D-162), so this table holds exactly one row
+/// and that is enforced BY THE DATABASE, not by convention: `id` is pinned to
+/// the constant `organization` by a CHECK constraint, and the primary key does
+/// the rest. Inserting a second organisation fails, whichever id it is given —
+/// `tests/integration/organization-singleton.test.ts` proves both directions.
+///
+/// The CHECK is hand-written in the migration because the Prisma DSL cannot
+/// express one, which makes it invisible in this file and easy to lose in a
+/// future "regenerate the migrations" tidy-up. It must not be lost: removing the
+/// tenant boundary rests on there being exactly one organisation.
+///
+/// It is a NAMED ENTITY and not a settings blob (D-027) — domain objects
+/// legitimately reference the organisation, since a certificate is issued by one
+/// — and it also carries this instance's configuration, because D-056 merges
+/// `PlatformSettings` into it rather than keeping a platform-versus-organisation
+/// settings duality that has no second side.
+///
+/// What went with the tenant boundary: `slug` (subdomain tenant resolution,
+/// D-015 withdrawn — each instance has its own domain, so there is nothing to
+/// resolve) and `status` with its `OrganizationStatus` enum (suspending or
+/// archiving a tenant is a control-plane action, and there is no control plane
+/// and no principal above the organisation to perform it).
+///
+/// PHASE 1: the setup wizard (D-039) UPDATES this row. It must never read the
+/// row's EXISTENCE as "already configured", because the read path creates it
+/// lazily; the boot state machine reads `InstallationBootstrap` (D-100) for
+/// that, and that model does not exist yet.
 model Organization {
-  id        String             @id @default(cuid(2))
-  name      String
-  slug      String             @unique
-  status    OrganizationStatus @default(ACTIVE)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  /// Pinned to the constant `organization` by a CHECK constraint in the
+  /// migration. A well-known id rather than a cuid, so every future foreign key
+  /// to "the organisation" is a constant a human can read in a query.
+  id String @id @default("organization")
+
+  /// The organisation's name, and the portal's brand name — one organisation
+  /// means one name, so the inherited `PlatformSettings.displayName` merges into
+  /// this column rather than sitting beside it as a second thing to get out of
+  /// step. Plain text, no markup; length-bounded at the validation layer.
+  /// Injected over the `common.brand` message so every brand reference follows
+  /// it without per-component wiring.
+  name String @default("SplashTrack")
+
+  /// The configuration document — see `@/lib/settings/config.ts` for its shape,
+  /// its lenient read path and its strict write path. One VERSIONED,
+  /// server-validated JSON document, which is what lets a setting be added
+  /// without a migration per field. Null ⇒ nothing configured yet; the read path
+  /// coerces a complete, safe default.
+  ///
+  /// This is the mechanism D-036/D-037 rest on: every runtime setting is
+  /// database-backed and administrator-editable, and only the three bootstrap
+  /// values in `.env.example` are environment variables. The session idle and
+  /// absolute timeouts live in this document's `security` section, bounded, and
+  /// are enforced live in `@/lib/auth/session.ts` (D-173).
+  ///
+  /// The template additionally carried branding assets, theme configuration,
+  /// notification configuration, profile-field definitions and both identity
+  /// configurations on its settings singleton. None of those are extracted:
+  /// branding and uploads are phase-4 surfaces — and `03-deployment-model.md` §4
+  /// re-homes the theme tokens into a `Branding` singleton when they arrive,
+  /// rather than here — while the Entra/native-sign-in documents belong to the
+  /// IdP registry, which is out of v1.
+  config Json?
+
+  /// Who last changed the configuration. Nullable, `onDelete: SetNull` as
+  /// DEFENCE IN DEPTH: the erasure path severs this column explicitly before
+  /// deleting the Person row in the same transaction, so this action should
+  /// never fire — but a bare `Restrict` leaves the column as a live trap for any
+  /// other future Person-delete path that forgets the sever step. That trap
+  /// sprang once in the template: `OrganizationBranding.updatedByPersonId` was
+  /// `Restrict` with no sever step, and erasing its last editor raised a raw
+  /// FK-constraint error that rolled back an entire Article 17 erasure.
+  /// `SetNull` degrades a forgotten sever to "pointer silently nulled" instead.
+  updatedByPersonId String?
+  updatedBy         Person? @relation("OrganizationUpdatedBy", fields: [updatedByPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedByPersonId])
 }
 
 // ---------------------------------------------------------------------------
@@ -140,10 +198,11 @@ model Person {
   // system, children especially, never will).
   account UserAccount?
 
-  memberships             Membership[]
-  roleAssignments         RoleAssignment[]
-  /// Platform-settings rows this person last edited (0..1 today — the singleton).
-  platformSettingsUpdates PlatformSettings[] @relation("PlatformSettingsUpdatedBy")
+  memberships         Membership[]
+  roleAssignments     RoleAssignment[]
+  /// The organisation singleton, when this person was the last to change its
+  /// configuration (0..1 — there is exactly one organisation).
+  organizationUpdates Organization[]   @relation("OrganizationUpdatedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -691,56 +750,6 @@ model CredentialRoleAssignment {
   @@index([credentialId])
   @@index([roleId])
   @@index([unitId])
-}
-
-// ---------------------------------------------------------------------------
-// Platform settings singleton
-// ---------------------------------------------------------------------------
-
-/// The single-row settings record for this instance. `platformConfig` holds one
-/// VERSIONED, server-validated JSON document (`@/lib/settings/config.ts`), which
-/// is what lets a setting be added without a migration per field.
-///
-/// This is the mechanism D-036/D-037 rest on: every runtime setting is
-/// database-backed and administrator-editable, and only the three bootstrap
-/// values in `.env.example` are environment variables. The session idle and
-/// absolute timeouts live in this document's `security` section, bounded, and
-/// are enforced live in `@/lib/auth/session.ts` (D-173).
-///
-/// The template additionally carried branding assets, theme configuration,
-/// notification configuration, profile-field definitions and both identity
-/// configurations here. None of those are extracted: branding and uploads are
-/// phase 4 surfaces, and the Entra/native-sign-in documents belong to the IdP
-/// registry, which is out of v1.
-model PlatformSettings {
-  id String @id
-
-  /// Portal/brand display name (plain text, no markup). Length-bounded at the
-  /// validation layer. Injected over the `common.brand` message so every brand
-  /// reference follows it without per-component wiring.
-  displayName String @default("SplashTrack")
-
-  /// The general configuration document — see `@/lib/settings/config.ts` for
-  /// its shape, its lenient read path and its strict write path. Null ⇒ no
-  /// config yet; the read path coerces a complete, safe default.
-  platformConfig Json?
-
-  /// Who last changed settings. Nullable, `onDelete: SetNull` as DEFENCE IN
-  /// DEPTH: the erasure path severs this column explicitly before deleting the
-  /// Person row in the same transaction, so this action should never fire — but
-  /// a bare `Restrict` leaves the column as a live trap for any other future
-  /// Person-delete path that forgets the sever step. That trap sprang once in
-  /// the template: `OrganizationBranding.updatedByPersonId` was `Restrict` with
-  /// no sever step, and erasing its last editor raised a raw FK-constraint error
-  /// that rolled back an entire Article 17 erasure. `SetNull` degrades a
-  /// forgotten sever to "pointer silently nulled" instead.
-  updatedByPersonId String?
-  updatedBy         Person? @relation("PlatformSettingsUpdatedBy", fields: [updatedByPersonId], references: [id], onDelete: SetNull)
-
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-
-  @@index([updatedByPersonId])
 }
 
 // ---------------------------------------------------------------------------

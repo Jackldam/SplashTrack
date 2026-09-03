@@ -8,10 +8,10 @@
  * Extracts every top-level `model Name { ... }` block's NAME and BODY.
  *
  * Deliberately NOT the naive `/model\s+(\w+)\s*\{([^}]*)\}/` pattern: that
- * stops at the FIRST literal `}`, and several model doc comments in this
- * schema contain a balanced `{...}` of their own (e.g. the hex-colour regex
- * example "`^#[0-9a-fA-F]{6}$`" in `PlatformSettings`, or a JSON-shape example
- * in `AuditEvent`)
+ * stops at the FIRST literal `}`, and model doc comments in this schema contain
+ * a balanced `{...}` of their own (a JSON-shape example in `AuditEvent`; the
+ * template's `PlatformSettings` had a hex-colour regex `{6}`, and that model is
+ * gone but the hazard is not — the next one arrives with the next doc comment)
  * — which truncates the body right there, before the model's REAL closing
  * brace, and silently drops every field declared after it.
  *

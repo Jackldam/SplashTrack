@@ -194,7 +194,7 @@ export const reauthenticationMarker = new AsyncLocalStorage<true>();
  * The template documented this and left it open on the reasoning that
  * `/sign-up/email` is "the server-side primitive behind bootstrap and admin
  * provisioning" — true of the FUNCTION, not of the ROUTE. It was survivable
- * there because that platform had a deliberate public-registration feature
+ * there because the template had a deliberate public-registration feature
  * behind its own toggle. Here public self-registration is OUT OF v1 (R-12
  * reduces the public surface to a catalogue and an inquiry form), so an open
  * sign-up endpoint is not a feature with a missing gate — it is a stranger

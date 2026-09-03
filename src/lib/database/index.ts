@@ -6,12 +6,15 @@
  * generated output stays an implementation detail of this folder.
  *
  * The template's `organization-scope.ts` (`forOrganization` / `forPrincipal` /
- * `ORG_SCOPED_MODELS`) is deliberately NOT extracted. Two reasons, both
- * decisive: it is the tenant-scoping machinery D-056 removes, and it imports
- * the `Reach` type from the scope model, which is phase 0.4. Bringing it across
- * now would mean bringing a half-matching `Reach` with it. The tenant-aware
- * MODELS are in `prisma/schema.prisma` unchanged, so phase 0.3's removal is
- * still a reviewable diff against a faithful starting point.
+ * `ORG_SCOPED_MODELS`) was never extracted, and phase 0.3 has now removed the
+ * models it would have scoped (D-056). There is no tenant filter to inject and
+ * nothing to inject it into.
+ *
+ * That is NOT a licence to query freely. `05-technical.md` §5 requires every
+ * list query over person data to take a `Reach` from `resolveReach()` as a
+ * required repository argument (D-031), and §3.1 requires each module's
+ * `infrastructure/` to expose a client narrowed to the models that module OWNS
+ * (D-057). Both are phase 0.4.
  */
 export { prisma } from "./client";
 
@@ -33,7 +36,6 @@ export type DatabaseClient =
 // (`@/lib/database`) rather than reaching into the generated output directory.
 export {
   Prisma,
-  OrganizationStatus,
   UserAccountStatus,
   MembershipStatus,
   SessionMfaEvidence,

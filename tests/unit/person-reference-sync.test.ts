@@ -113,7 +113,7 @@ describe("PERSON_REFERENCE_CLASSIFICATION stays in sync with prisma/schema.prism
       "UserAccount.personId",
       "Membership.personId",
       "RoleAssignment.personId",
-      "PlatformSettings.updatedByPersonId",
+      "Organization.updatedByPersonId",
       "ApiCredential.createdByPersonId",
       "AuditEvent.actorPersonId",
     ]) {

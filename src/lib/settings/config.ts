@@ -1,6 +1,6 @@
 /**
  * The instance configuration document, stored in
- * `PlatformSettings.platformConfig`.
+ * `Organization.config`.
  *
  * This is the mechanism D-036/D-037 rest on: one VERSIONED, typed, server-
  * validated JSON document holds every runtime setting, so a setting can be
@@ -9,11 +9,11 @@
  * bootstrap values in `.env.example` are environment variables.
  *
  * Two parse paths, on purpose:
- *   - {@link coercePlatformConfig} — LENIENT, for READS. Never throws; fills
+ *   - {@link coerceOrganizationConfig} — LENIENT, for READS. Never throws; fills
  *     defaults and drops malformed values. An old, partial or corrupt document
  *     must never break rendering or the authentication path. Also
  *     forward-migrates by `version`.
- *   - {@link validatePlatformConfigInput} — STRICT, for WRITES. Throws
+ *   - {@link validateOrganizationConfigInput} — STRICT, for WRITES. Throws
  *     `ApiError("VALIDATION_ERROR")` with a field path on any invalid value, so
  *     nothing untrusted from an admin form is ever persisted.
  *
@@ -33,7 +33,7 @@ import { isLocale, locales, type Locale } from "@/i18n/config";
 
 /**
  * Current schema version of the document. Bump this — and add a branch to
- * {@link coercePlatformConfig} — whenever the shape changes. A stored older
+ * {@link coerceOrganizationConfig} — whenever the shape changes. A stored older
  * document simply lacks the newer sections and the lenient read fills the safe
  * defaults, so an upgrade needs no data migration.
  *
@@ -43,7 +43,7 @@ import { isLocale, locales, type Locale } from "@/i18n/config";
  * surface), so this restarts at 1 rather than inheriting a version history for
  * sections that never existed here.
  */
-export const PLATFORM_CONFIG_VERSION = 1;
+export const ORGANIZATION_CONFIG_VERSION = 1;
 
 /**
  * Closed set of date/time presentation styles. Each maps to a fixed
@@ -106,7 +106,7 @@ export const CONFIG_TEXT_MAX = {
  * These are the TEMPLATE's constants, narrowed — not a new mechanism. The
  * template shipped `{ min: 15, max: 43_200, default: 720 }` for the absolute
  * cap and `{ min: 1, max: 43_200, default: 30 }` for the idle window; 30-day
- * maxima are generous for a general platform and far outside what D-150 intends
+ * maxima are generous for a general-purpose application and far outside what D-150 intends
  * for a system holding children's records.
  * ------------------------------------------------------------------------- */
 
@@ -177,7 +177,7 @@ export const SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES = {
 export const SUPPORT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** The typed configuration document. */
-export interface PlatformConfig {
+export interface OrganizationConfig {
   version: number;
   seo: {
     /** `<meta name="description">` / OpenGraph description. Null ⇒ none emitted. */
@@ -229,9 +229,9 @@ export interface PlatformConfig {
 }
 
 /** The safe default document applied to an instance with no config yet. */
-export function defaultPlatformConfig(): PlatformConfig {
+export function defaultOrganizationConfig(): OrganizationConfig {
   return {
-    version: PLATFORM_CONFIG_VERSION,
+    version: ORGANIZATION_CONFIG_VERSION,
     seo: { metaDescription: null },
     contact: { supportEmail: null },
     localization: {
@@ -289,14 +289,14 @@ function coerceBoundedMinutes(
 }
 
 /**
- * Parses a stored `platformConfig` JSON value into a complete, valid document,
+ * Parses a stored `Organization.config` JSON value into a complete, valid document,
  * filling defaults for anything missing or invalid. Never throws — this runs on
  * the authentication hot path and on every rendered page.
  */
-export function coercePlatformConfig(raw: unknown): PlatformConfig {
-  if (raw == null) return defaultPlatformConfig();
+export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
+  if (raw == null) return defaultOrganizationConfig();
 
-  const defaults = defaultPlatformConfig();
+  const defaults = defaultOrganizationConfig();
   const root = asRecord(raw);
   const seo = asRecord(root.seo);
   const contact = asRecord(root.contact);
@@ -310,7 +310,7 @@ export function coercePlatformConfig(raw: unknown): PlatformConfig {
       : "";
 
   return {
-    version: PLATFORM_CONFIG_VERSION,
+    version: ORGANIZATION_CONFIG_VERSION,
     seo: {
       metaDescription: coerceText(
         seo.metaDescription,
@@ -482,10 +482,10 @@ function strictBoolean(field: string, value: unknown): boolean {
  * on the first invalid field. Missing sections inherit from `current`, so a
  * section-scoped save need not resend everything.
  */
-export function validatePlatformConfigInput(
+export function validateOrganizationConfigInput(
   input: unknown,
-  current: PlatformConfig,
-): PlatformConfig {
+  current: OrganizationConfig,
+): OrganizationConfig {
   const root = asRecord(input);
   const seo = { ...current.seo, ...asRecord(root.seo) };
   const contact = { ...current.contact, ...asRecord(root.contact) };
@@ -532,7 +532,7 @@ export function validatePlatformConfigInput(
   }
 
   return {
-    version: PLATFORM_CONFIG_VERSION,
+    version: ORGANIZATION_CONFIG_VERSION,
     seo: {
       metaDescription: strictTextOrNull(
         "seo.metaDescription",
