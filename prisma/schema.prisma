@@ -24,12 +24,13 @@
 //     columns, not a later feature — which is exactly why they must arrive with
 //     the repaired specification rather than a guess at it.
 //
-// PHASE 0.3 — the multi-tenant machinery (D-056) IS still here, unchanged:
-// `Organization`, `OrganizationMembership`, `OrganizationUnit`,
-// `RoleAssignment`, `PlatformRoleAssignment`. SplashTrack is one organisation
-// per installation with no tenant id and no platform super administrator, so
-// all of it is removed — but incrementally, test-covered, as its own reviewable
-// diff. Extracting it faithfully first is what makes that diff readable.
+// PHASE 0.3 — the multi-tenant machinery (D-056) is being removed, one
+// reviewable commit at a time, with the suite green before and after each.
+// Done so far:
+//   - `PlatformRoleAssignment` deleted. There is no platform-wide grant.
+// Still to go: the `organizationId` columns, `OrganizationMembership` →
+// `Membership`, `PlatformSettings` merged into the organisation singleton, and
+// the singleton enforced at the database rather than by convention.
 //
 // NOT EXTRACTED AT ALL (features, not foundation — see
 // `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
@@ -146,7 +147,6 @@ model Person {
 
   memberships             OrganizationMembership[]
   roleAssignments         RoleAssignment[]
-  platformRoleAssignments PlatformRoleAssignment[]
   /// Platform-settings rows this person last edited (0..1 today — the singleton).
   platformSettingsUpdates PlatformSettings[]       @relation("PlatformSettingsUpdatedBy")
 }
@@ -478,7 +478,6 @@ model Role {
   permissions           RolePermission[]
   accessGroups          RoleAccessGroup[]
   assignments           RoleAssignment[]
-  platformAssignments   PlatformRoleAssignment[]
   credentialAssignments CredentialRoleAssignment[]
 
   @@index([organizationId])
@@ -618,27 +617,19 @@ model RoleAssignment {
   @@index([unitId])
 }
 
-/// Grants a `Role` to a `Person` platform-wide — not tied to any organisation.
-///
-/// PHASE 0.3 DELETES THIS MODEL ENTIRELY. There is no platform super
-/// administrator in SplashTrack (D-056, `CLAUDE.md` §4), and `06-delivery.md`
-/// §5 is explicit that the platform-super-admin branch inside
-/// `requirePermission` is real code and not just prose. It is extracted here
-/// only so that deletion is a diff against what was actually inherited.
-model PlatformRoleAssignment {
-  id        String   @id @default(cuid(2))
-  personId  String
-  roleId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
-  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
-
-  @@unique([personId, roleId])
-  @@index([personId])
-  @@index([roleId])
-}
+// `PlatformRoleAssignment` STOOD HERE AND IS GONE (phase 0.3, D-056).
+//
+// It granted a `Role` to a `Person` platform-wide — the storage behind
+// `platform.super_admin`. There is no platform in SplashTrack and therefore no
+// platform-wide grant: the highest authority is an administrator of THE
+// organisation, holding ordinary permissions (`00-overview.md` §5.1,
+// `02-security-privacy.md` §2.4).
+//
+// PHASE 0.4: when `requirePermission` is written (D-147) it must resolve a
+// principal's permissions from `RoleAssignment` ALONE. There is no second grant
+// table to consult and no branch that bypasses the permission check — D-130
+// binds the MFA mandate and the security alerts to PERMISSIONS precisely
+// because this role name cannot exist.
 
 // ---------------------------------------------------------------------------
 // API credentials — present and unused, deliberately (`05-technical.md` §4)

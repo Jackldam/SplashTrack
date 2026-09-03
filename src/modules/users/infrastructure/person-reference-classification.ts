@@ -90,14 +90,6 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "The person's own role grant. Restrict FK; an explicit deleteMany in " +
       "the erasure.",
   },
-  "PlatformRoleAssignment.personId": {
-    category: "HARD_DELETE",
-    reason:
-      "The person's own platform-wide role grant. Restrict FK; an explicit " +
-      "deleteMany in the erasure. PHASE 0.3 deletes this model entirely — " +
-      "there is no platform super administrator in SplashTrack (D-056) — and " +
-      "this entry goes with it.",
-  },
 
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
   "PlatformSettings.updatedByPersonId": {
