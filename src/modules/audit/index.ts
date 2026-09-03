@@ -11,6 +11,7 @@
  */
 
 export {
+  pruneAuditTrail,
   recordAuditEvent,
   recordAuditEventSafe,
   verifyAuditChain,
@@ -18,3 +19,4 @@ export {
 } from "./application/audit-service";
 
 export type { AuditEventInput, AuditOutcome } from "./domain/audit-event";
+export type { AuditPruneOutcome } from "./infrastructure/audit-repository";

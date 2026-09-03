@@ -32,7 +32,9 @@ import {
  */
 
 async function truncateAuditTrail(): Promise<void> {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "AuditEvent"');
+  await prisma.$executeRawUnsafe(
+    'TRUNCATE TABLE "AuditEvent", "AuditCheckpoint"',
+  );
 }
 
 afterEach(async () => {
@@ -42,9 +44,12 @@ afterEach(async () => {
 describe("audit chain (real database)", () => {
   it("verifies an empty trail", async () => {
     await truncateAuditTrail();
+    // `prunedSegments: 0` — never pruned, so verification anchors on genesis
+    // (checkpoint zero). See tests/integration/audit-checkpoint.test.ts.
     await expect(verifyAuditChain()).resolves.toEqual({
       valid: true,
       count: 0,
+      prunedSegments: 0,
     });
   });
 
@@ -79,6 +84,7 @@ describe("audit chain (real database)", () => {
     await expect(verifyAuditChain()).resolves.toEqual({
       valid: true,
       count: 2,
+      prunedSegments: 0,
     });
   });
 
@@ -96,8 +102,8 @@ describe("audit chain (real database)", () => {
     // Edit the MIDDLE row's audited content without touching its stored hash —
     // exactly what someone quietly rewriting history would do. Only the
     // application role is prevented from this today; D-149's insert-only
-    // database role (phase 0.4) is what makes it impossible rather than merely
-    // detectable.
+    // database role is what makes it impossible rather than merely detectable,
+    // and it is a DEPLOYMENT step — see infra/audit-database-role.sql.
     await prisma.auditEvent.update({
       where: { id: tampered.id },
       data: { reason: "rewritten" },
@@ -105,7 +111,10 @@ describe("audit chain (real database)", () => {
 
     const result = await verifyAuditChain();
     expect(result.valid).toBe(false);
-    expect(result.count).toBe(3);
+    // `count` is rows WALKED, up to and including the one that failed — not the
+    // table's size. The walk is paged now (D-168 rule 4), so a total would
+    // require a second query whose only purpose is a nicer-looking number.
+    expect(result.count).toBe(2);
     expect(result.brokenAtSequence).toBe(tampered.sequence);
   });
 

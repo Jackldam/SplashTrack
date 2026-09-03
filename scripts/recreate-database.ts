@@ -23,7 +23,8 @@ import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
 
 /** Only names that announce themselves as throwaway. */
-const ALLOWED_NAME = /^splashtrack_(freshcheck|scratch|migrationcheck)[a-z0-9_]*$/;
+const ALLOWED_NAME =
+  /^splashtrack_(freshcheck|scratch|migrationcheck)[a-z0-9_]*$/;
 
 async function main(): Promise<void> {
   loadEnv({ path: path.resolve(process.cwd(), ".env") });

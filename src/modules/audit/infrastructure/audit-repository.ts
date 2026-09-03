@@ -4,13 +4,19 @@
  * NO update and NO delete. Appends are serialized by a Postgres advisory lock
  * so the tamper-evidence hash chain never forks.
  *
- * PHASE 0.4 — two things D-149/D-168 require that are NOT here:
- *   - The INSERT-ONLY DATABASE ROLE. Today "append-only" holds because this
- *     module is the only writer and exposes no mutation. D-149 makes it a
- *     `REVOKE UPDATE, DELETE` on the application's role, so it survives a
- *     future author who reaches for `prisma.auditEvent` directly.
- *   - `AuditCheckpoint`, the checkpointing retention path, and the chunked
- *     segment walk `readAuditChain` below needs.
+ * APPEND-ONLY WITH EXACTLY ONE EXCEPTION, and the exception is what makes the
+ * rule enforceable: `pruneAuditEventPrefix` deletes a contiguous expired PREFIX
+ * and writes the covering `AuditCheckpoint` in the same transaction (D-168).
+ * There is no other delete path and no update path at all, so a gap that no
+ * checkpoint accounts for is unambiguously tampering rather than "probably
+ * retention".
+ *
+ * PHASE 0.4 — one thing D-149 requires that is NOT here: the INSERT-ONLY
+ * DATABASE ROLE. Today "append-only" holds because this module is the only
+ * writer and exposes no mutation. D-149 makes it a `REVOKE UPDATE, DELETE` on
+ * the application's role, so it survives a future author who reaches for
+ * `prisma.auditEvent` directly. That is a DEPLOYMENT step and not a migration —
+ * see `infra/audit-database-role.sql` for the SQL and for why.
  *
  * The template's filtered/paginated read surface and its subject-scoped export
  * reads are NOT extracted: both are the audit VIEWER, which is gated on an
@@ -21,6 +27,12 @@
 
 import { Prisma, prisma } from "@/lib/database";
 
+import {
+  computeCheckpointMac,
+  CURRENT_CHECKPOINT_MAC_VERSION,
+  type AuditCheckpointContent,
+  type StoredAuditCheckpoint,
+} from "../domain/audit-checkpoint";
 import {
   AUDIT_GENESIS_HASH,
   computeAuditHash,
@@ -101,7 +113,25 @@ export async function appendAuditEvent(
       orderBy: { sequence: "desc" },
       select: { hash: true },
     });
-    const previousHash = tail?.hash ?? AUDIT_GENESIS_HASH;
+
+    // WHAT AN EMPTY TABLE MEANS DEPENDS ON WHETHER IT WAS EVER PRUNED.
+    //
+    // An instance quieter than its own retention window ends a retention run
+    // with NO events left — every one of them expired. Chaining the next append
+    // from the genesis constant there would silently fork the chain: the latest
+    // checkpoint's `chainHash` is the anchor verification resumes from, and a
+    // first surviving row carrying genesis instead would fail against it
+    // forever. So the fallback is the anchor, and genesis only when there is no
+    // checkpoint either — which is exactly "genesis is checkpoint zero"
+    // (D-168 rule 5) expressed at the write side.
+    const anchor = tail
+      ? null
+      : await tx.auditCheckpoint.findFirst({
+          orderBy: { sequence: "desc" },
+          select: { chainHash: true },
+        });
+
+    const previousHash = tail?.hash ?? anchor?.chainHash ?? AUDIT_GENESIS_HASH;
     const hash = computeAuditHash(previousHash, content);
 
     const row = await tx.auditEvent.create({
@@ -130,44 +160,204 @@ export async function appendAuditEvent(
   });
 }
 
+/** Default page size for the segment walk. Bounded memory, one round trip. */
+export const AUDIT_CHAIN_PAGE_SIZE = 1_000;
+
+const CHAIN_SELECT = {
+  id: true,
+  sequence: true,
+  contentVersion: true,
+  eventType: true,
+  occurredAt: true,
+  outcome: true,
+  actorPersonId: true,
+  actorCredentialId: true,
+  actorAuthMethod: true,
+  targetType: true,
+  targetId: true,
+  requestId: true,
+  changedFields: true,
+  reason: true,
+  previousHash: true,
+  hash: true,
+} as const;
+
 /**
- * Reads every event in chain order (by `sequence`) with the fields needed to
- * recompute the hash chain. Ordered ascending so the walk starts at the genesis
- * link.
+ * Reads ONE PAGE of the chain in `sequence` order, strictly after
+ * `afterSequence`, with the fields needed to recompute the hash chain.
  *
- * PHASE 0.4 (D-168): this loads the WHOLE chain into memory, which is fine for
- * an empty database and wrong for a two-year-old instance. The repair specifies
- * a CHUNKED SEGMENT WALK anchored on `AuditCheckpoint` — verify from the last
- * checkpoint forward, in bounded segments — which is also what makes a
- * retention run possible without breaking the chain permanently. Do not paper
- * over this with a `take`: a partial read that reports "valid" is worse than a
- * slow one that reports the truth.
+ * PAGED, NOT MATERIALISED (D-168 rule 4). The inherited `readAuditChain()` read
+ * every row into memory; `07-operations.md` §2 calls `AuditEvent` the
+ * fastest-growing table in the product, so on a two-year instance that made
+ * verification unrunnable — a control nobody can afford to run is not a
+ * control. This is the replacement, and the caller walks pages until one comes
+ * back short.
+ *
+ * NOTE the shape this deliberately does NOT have: a `take` on a single call
+ * that lets a caller verify "the first N rows" and report valid. A partial read
+ * reporting success is worse than a slow one reporting the truth.
  */
-export async function readAuditChain(): Promise<StoredAuditEvent[]> {
+export async function readAuditChainPage(
+  afterSequence: number,
+  limit: number = AUDIT_CHAIN_PAGE_SIZE,
+): Promise<StoredAuditEvent[]> {
   const rows = await prisma.auditEvent.findMany({
+    where: { sequence: { gt: afterSequence } },
     orderBy: { sequence: "asc" },
-    select: {
-      id: true,
-      sequence: true,
-      contentVersion: true,
-      eventType: true,
-      occurredAt: true,
-      outcome: true,
-      actorPersonId: true,
-      actorCredentialId: true,
-      actorAuthMethod: true,
-      targetType: true,
-      targetId: true,
-      requestId: true,
-      changedFields: true,
-      reason: true,
-      previousHash: true,
-      hash: true,
-    },
+    take: limit,
+    select: CHAIN_SELECT,
   });
   return rows.map((row) => ({
     ...row,
     outcome: row.outcome as AuditOutcome,
     changedFields: row.changedFields ?? null,
   }));
+}
+
+/**
+ * How many events survive at or below `sequence`. Used by verification to catch
+ * the case no anchor can explain: a row still present BELOW the latest
+ * checkpoint's anchor means either an out-of-band insert or a prune that
+ * deleted a sparse subset instead of a prefix. Both are tampering signals.
+ */
+export async function countAuditEventsAtOrBelow(
+  sequence: number,
+): Promise<number> {
+  return prisma.auditEvent.count({ where: { sequence: { lte: sequence } } });
+}
+
+/** Every checkpoint, oldest first. Small: one row per retention run. */
+export async function readAuditCheckpoints(): Promise<StoredAuditCheckpoint[]> {
+  return prisma.auditCheckpoint.findMany({ orderBy: { sequence: "asc" } });
+}
+
+/** The newest checkpoint, or null when the trail has never been pruned. */
+export async function readLatestAuditCheckpoint(): Promise<StoredAuditCheckpoint | null> {
+  return prisma.auditCheckpoint.findFirst({ orderBy: { sequence: "desc" } });
+}
+
+/** What one retention run did. `prunedCount: 0` means it found nothing. */
+export interface AuditPruneOutcome {
+  prunedCount: number;
+  prunedFromSequence?: number;
+  prunedToSequence?: number;
+  checkpointId?: string;
+}
+
+/**
+ * THE ONLY DELETE PATH FOR `AuditEvent` (D-168 rule 1). Writes the checkpoint
+ * and deletes the rows it accounts for IN ONE TRANSACTION, so a gap without a
+ * covering checkpoint can only be tampering.
+ *
+ * PREFIX ONLY (rule 2). An event is deletable only if EVERY event at or below
+ * its sequence is deletable, so the deletable set is `sequence <
+ * firstSurvivingSequence` where the first survivor is the lowest-sequenced row
+ * that has not expired. That is not the same as `occurredAt < cutoff`: appends
+ * take their timestamp in the application before the row is inserted, so under
+ * concurrency a lower sequence can carry a later `occurredAt`, and a naive
+ * `DELETE … WHERE occurredAt < ?` would punch a sparse hole that no anchor can
+ * describe.
+ *
+ * Serialized on the SAME advisory lock as appends, so a prune and an append can
+ * never interleave and read each other's half-written view of the tail.
+ *
+ * Returns `{ prunedCount: 0 }` and writes NOTHING when there is nothing to
+ * prune — a no-op checkpoint would break the strict monotonicity of `sequence`
+ * and add a row that accounts for no gap.
+ */
+export async function pruneAuditEventPrefix(
+  cutoff: Date,
+): Promise<AuditPruneOutcome> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_APPEND_LOCK_KEY})`;
+
+    const anchor = await tx.auditCheckpoint.findFirst({
+      orderBy: { sequence: "desc" },
+    });
+    const floor = anchor?.sequence ?? 0;
+
+    // The lowest-sequenced row that must SURVIVE. Everything below it is a
+    // contiguous expired prefix; everything from it up stays, even if some
+    // later row happens to carry an older timestamp.
+    const firstSurvivor = await tx.auditEvent.findFirst({
+      where: { sequence: { gt: floor }, occurredAt: { gte: cutoff } },
+      orderBy: { sequence: "asc" },
+      select: { sequence: true },
+    });
+
+    const upperBound = firstSurvivor
+      ? firstSurvivor.sequence - 1
+      : // NOTHING survives the cutoff — an instance quieter than its own
+        // retention window. The prefix then runs to the current tail and the
+        // table is left EMPTY, which is correct and not a special case: the
+        // checkpoint still holds the last row's hash as the anchor, and
+        // `appendAuditEvent` chains the next event from that anchor rather than
+        // from genesis. Retaining one row instead would keep an event past its
+        // retention purely to hold a hash, which is the wrong trade in a system
+        // whose audit rows are personal data.
+        ((
+          await tx.auditEvent.findFirst({
+            where: { sequence: { gt: floor } },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+          })
+        )?.sequence ?? floor);
+
+    if (upperBound <= floor) return { prunedCount: 0 };
+
+    const range = { sequence: { gt: floor, lte: upperBound } };
+    const [aggregate, anchorRow] = await Promise.all([
+      tx.auditEvent.aggregate({
+        where: range,
+        _count: { _all: true },
+        _min: { occurredAt: true, sequence: true },
+        _max: { occurredAt: true },
+      }),
+      // `findFirst`, not `findUnique`: `AuditEvent.sequence` is monotonic but
+      // carries no unique constraint, so it is not a unique-input field.
+      tx.auditEvent.findFirst({
+        where: { sequence: upperBound },
+        select: { hash: true },
+      }),
+    ]);
+
+    if (
+      aggregate._count._all === 0 ||
+      !anchorRow ||
+      aggregate._min.sequence == null ||
+      aggregate._min.occurredAt == null ||
+      aggregate._max.occurredAt == null
+    ) {
+      return { prunedCount: 0 };
+    }
+
+    const content: AuditCheckpointContent = {
+      macVersion: CURRENT_CHECKPOINT_MAC_VERSION,
+      // The anchor: the LAST PRUNED row and its hash, which is exactly the
+      // `previousHash` the first surviving row carries. See
+      // `../domain/audit-checkpoint.ts`.
+      sequence: upperBound,
+      chainHash: anchorRow.hash,
+      prunedFromSequence: aggregate._min.sequence,
+      prunedToSequence: upperBound,
+      prunedCount: aggregate._count._all,
+      prunedFrom: aggregate._min.occurredAt,
+      prunedTo: aggregate._max.occurredAt,
+      previousCheckpointHash: anchor?.mac ?? AUDIT_GENESIS_HASH,
+      createdAt: new Date(),
+    };
+
+    const checkpoint = await tx.auditCheckpoint.create({
+      data: { ...content, mac: computeCheckpointMac(content) },
+      select: { id: true },
+    });
+    await tx.auditEvent.deleteMany({ where: range });
+
+    return {
+      prunedCount: content.prunedCount,
+      prunedFromSequence: content.prunedFromSequence,
+      prunedToSequence: content.prunedToSequence,
+      checkpointId: checkpoint.id,
+    };
+  });
 }

@@ -24,7 +24,9 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "secret:init": "tsx scripts/secret-init.ts"
+    "secret:init": "tsx scripts/secret-init.ts",
+    "audit:verify": "tsx scripts/audit-verify.ts",
+    "db:recreate": "tsx scripts/recreate-database.ts"
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.2",

@@ -100,9 +100,13 @@ async function resetAuditTrail(testUrl: string): Promise<void> {
   const client = new Client({ connectionString: testUrl });
   await client.connect();
   try {
-    await client.query('TRUNCATE TABLE "AuditEvent"');
+    // BOTH tables, together. A checkpoint anchors verification at a sequence in
+    // a trail that no longer exists once the events are truncated, so clearing
+    // one and not the other leaves the next run reporting tampering that never
+    // happened — the same orphaning hazard a partial delete has, one level up.
+    await client.query('TRUNCATE TABLE "AuditEvent", "AuditCheckpoint"');
     console.log(
-      '[setup-test-db] Reset the audit trail (TRUNCATE "AuditEvent").',
+      '[setup-test-db] Reset the audit trail (TRUNCATE "AuditEvent", "AuditCheckpoint").',
     );
   } finally {
     await client.end();

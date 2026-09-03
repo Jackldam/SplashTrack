@@ -92,12 +92,17 @@ export const CURRENT_AUDIT_CONTENT_VERSION = 2;
 /**
  * The chain's starting link — a fixed, well-known constant for the first row.
  *
- * PHASE 0.4 (D-168): the genesis constant, `AuditCheckpoint` and the
- * checkpointing retention path are specified together, because the first
- * legitimate retention run breaks the chain permanently without them. This
- * value is SplashTrack's own rather than the template's, so no verification
- * ever accidentally succeeds against a foreign chain — but the checkpointing
- * work may still revise it, and it must be settled before rows accumulate.
+ * SETTLED BY D-168 AND NEVER TO CHANGE AGAIN. Changing it invalidates every
+ * chain written before the change. The value is SplashTrack's own rather than
+ * the template's `genesis:webapp-template:audit:v1`, so no verification ever
+ * accidentally succeeds against a foreign chain.
+ *
+ * It is a `previousHash`, never a row's own hash — and that is precisely what
+ * makes it CHECKPOINT ZERO. `AuditCheckpoint.chainHash` is the same kind of
+ * value (the `previousHash` the next surviving row must show), so verification
+ * has exactly one shape whether it resumes from genesis or from a checkpoint.
+ * The first checkpoint's `previousCheckpointHash` is this constant for the same
+ * reason. See `./audit-checkpoint.ts`.
  */
 export const AUDIT_GENESIS_HASH = "genesis:splashtrack:audit:v1";
 

@@ -788,13 +788,18 @@ enum AuditOutcome {
 /// could recompute it forward after an edit, and truncating the TAIL leaves an
 /// intact chain that still verifies.
 ///
-/// PHASE 0.4 — three things this model does NOT yet have, all specified in
-/// D-149 + D-168 and none of them safe to guess at:
-///   - `AuditCheckpoint` and the checkpointing retention path. Without it the
-///     first legitimate retention run breaks the chain permanently.
+/// CHECKPOINTING IS NOW IN PLACE (D-168, phase 0.4a): rows are deleted ONLY
+/// through the checkpointing retention path, which writes a signed
+/// `AuditCheckpoint` accounting for the deleted prefix in the same transaction.
+/// A deletion without a checkpoint is therefore the tampering signal — there is
+/// no other legitimate producer of a gap.
+///
+/// PHASE 0.4 — two things this model still does NOT have:
 ///   - The insert-only database role. Today "append-only" is an application
 ///     convention enforced by there being no other writer; D-149 makes it a
-///     `REVOKE UPDATE, DELETE` on the application's role.
+///     `REVOKE UPDATE, DELETE` on the application's role. That is a DEPLOYMENT
+///     step, not a migration — the SQL and the reasoning are in
+///     `infra/audit-database-role.sql`.
 ///   - `05-technical.md` §5 rule 7: ONE audit event per aggregate write, not per
 ///     row. At 30 students a group registration would otherwise take 30 chained
 ///     appends one at a time against a lock every other audit writer contends
@@ -862,4 +867,97 @@ model AuditEvent {
   @@index([occurredAt])
   @@index([eventType, sequence])
   @@index([actorPersonId, sequence])
+}
+
+/// The signed anchor a retention run leaves behind, so the audit chain still
+/// verifies across the gap that run made (D-168).
+///
+/// WHY THIS TABLE EXISTS. D-149 part 1 requires `audit:verify` and a
+/// chain-status line a human sees. D-149 part 3 makes audit retention
+/// configurable, and `01-domain-model.md` §5 gives the audit row
+/// `onExpiry: DELETE`. Those cannot both hold: verification walks from a known
+/// anchor forward, and deleting the oldest rows deletes the anchor. On the
+/// FIRST legitimate retention run — month 12 to 24 of the first instance —
+/// `audit:verify` would report a discontinuity, permanently, and the
+/// diagnostics chain-status line would go red and stay red. A tamper detector
+/// with a 100% false-positive rate from month twelve is worse than none: the
+/// volunteer reading diagnostics has been trained by a year of red to ignore
+/// it, and D-128's Article 33 assessment loses all discriminating power.
+/// Finding F-137.
+///
+/// THE RULES THIS TABLE ENFORCES:
+///   1. Deletion happens ONLY through the checkpointing path — the retention
+///      job writes the checkpoint and deletes the rows it accounts for in ONE
+///      transaction. A deletion without a checkpoint is the tampering signal;
+///      there is no other legitimate producer of a gap.
+///   2. PREFIX ONLY. An event is deletable only if every event at or below its
+///      sequence is deletable. That keeps segments contiguous, and it is why
+///      the retention floor is one instance-wide value: per-class expiry would
+///      delete a SPARSE interior subset, which no anchor can describe.
+///   3. Checkpoints are NEVER deleted. They are small, one per retention run,
+///      and they are the record of what the trail no longer contains.
+///
+/// WHAT `sequence` AND `chainHash` MEAN, PRECISELY — read this before changing
+/// either. They are the LAST PRUNED row and ITS hash: exactly the value the
+/// first surviving row carries in `previousHash`. Verification therefore
+/// resumes with `previousHash := chainHash` and walks forward, which is the
+/// same shape genesis has (`AUDIT_GENESIS_HASH` is likewise the `previousHash`
+/// of the first row, never a row's own hash). D-168 rule 5 requires exactly
+/// that — "genesis is treated as checkpoint zero, so verification has exactly
+/// one shape" — and it is why the first checkpoint's `previousCheckpointHash`
+/// IS the genesis constant.
+///
+/// D-168's record sketch calls `sequence` the "last SURVIVING" sequence. Taken
+/// literally that cannot work: a prefix prune deletes the anchor row of every
+/// earlier segment, so every earlier segment becomes unverifiable, and genesis
+/// would need a second, different shape. The rule wins over the sketch;
+/// `docs/build/phase-0.4a-crypto-and-audit-report.md` records the resolution
+/// and it is flagged for the register to be corrected.
+///
+/// WHAT THE MAC DOES AND DOES NOT DO. It binds each anchor to this instance's
+/// own key material, so an attacker with DATABASE WRITE ACCESS ONLY — the
+/// `$executeRaw` path, a stolen `DATABASE_URL`, an injection — cannot delete
+/// interior rows and forge a covering checkpoint. An attacker with HOST ACCESS
+/// holds `SECRET_KEY` and can forge one; nothing in an application can prevent
+/// that, and host access is already the boundary `13-…` §7 treats as proof of
+/// ownership. Saying so is the point: the control is real against the actor it
+/// names, and it is not magic.
+model AuditCheckpoint {
+  id String @id @default(cuid(2))
+
+  /// The LAST PRUNED `AuditEvent.sequence` — the anchor verification resumes
+  /// from. Unique and strictly increasing across checkpoints, which the prefix
+  /// rule guarantees. Always equal to `prunedToSequence`; both are stored
+  /// because they answer different questions (`sequence` is the anchor,
+  /// `prunedToSequence` is part of the accounting) and the MAC covers both.
+  sequence  Int    @unique
+  /// That row's `hash`. The first surviving row's `previousHash` must equal it.
+  chainHash String
+
+  /// First deleted sequence.        ┐ What this checkpoint accounts for, so a
+  prunedFromSequence Int //          │ gap in the trail is a STATED FACT rather
+  /// Last deleted sequence.         │ than an unexplained hole. `audit:verify`
+  prunedToSequence   Int //          │ reports "intact across N pruned
+  /// How many rows were deleted.    │ segments" from exactly these fields.
+  prunedCount        Int //          │
+  /// Earliest `occurredAt` deleted. │
+  prunedFrom         DateTime //     │
+  /// Latest `occurredAt` deleted.   ┘
+  prunedTo           DateTime
+
+  /// The previous checkpoint's `mac`, or `AUDIT_GENESIS_HASH` for the first —
+  /// genesis is checkpoint zero. Checkpoints are themselves chained, so
+  /// removing one from the middle is detectable.
+  previousCheckpointHash String
+
+  /// Canonicalization version of the MAC'd content, for the same reason
+  /// `AuditEvent.contentVersion` exists: the signed shape can grow without
+  /// invalidating checkpoints already written.
+  macVersion Int @default(1)
+
+  /// HMAC-SHA256 over the canonical content under
+  /// `HKDF(SECRET_KEY, info="audit-anchor-v1")`.
+  mac String
+
+  createdAt DateTime @default(now())
 }
