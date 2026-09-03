@@ -25,11 +25,17 @@
  * erased person's id on the row forever. Neither would have failed a migration
  * or a typecheck.
  *
- * PHASE 0.4: the ERASURE PATH this classifies does not exist yet. `erasePersonData`
- * and the retention/erasure registry are D-014/D-065 work, blocked on the
- * repaired specification. What exists today is the classification and the test
- * that keeps it honest — which is the right order round: the map must be
- * accurate before anything is written against it.
+ * PHASE 0.4b: the D-014 erasure REGISTRY is now complete —
+ * `src/lib/retention/erasure-registry.ts`, table-level (`erase` | `exempt`,
+ * D-154), checked against this file's column-level classifications by
+ * construction (`AuditEvent.actorPersonId` is `RETAIN_BY_DESIGN` here because
+ * `AuditEvent` is `exempt` there). STILL ABSENT: the `erasePersonData`
+ * transaction that actually WALKS both registries and performs the erasure —
+ * that is R-25, alongside the D-065 retention scheduled job
+ * (`docs/build/phase-0.4b-reach-and-retention-report.md` §3). What exists
+ * today is a complete, tested map of every table and every column an erasure
+ * would touch — the right order: the map must be accurate before anything is
+ * written against it.
  *
  * Categories:
  *   HARD_DELETE      — the row is the person's OWN data. The erasure deletes it
@@ -137,6 +143,17 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "(`05-technical.md` §4 keeps API credentials in place, unused), which " +
       "is precisely why it needs a classification now rather than when " +
       "someone finally writes to it.",
+  },
+  "RetentionPolicy.confirmedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO confirmed the organisation's lawful basis for a data class (D-065, " +
+      "F-27) — Art. 5(2) accountability evidence, not the confirmer's own " +
+      "data. The policy row itself is organisation configuration and is never " +
+      "erased; only the confirmer's identity is severed, on the same pattern " +
+      "as Organization.updatedByPersonId beside it. The FK is onDelete: " +
+      "SetNull as defence in depth; the erasure severs it explicitly " +
+      "regardless — a confirmation stands after its confirmer leaves.",
   },
 
   // --- RETAIN_BY_DESIGN — the id token is kept, forever, on purpose ---

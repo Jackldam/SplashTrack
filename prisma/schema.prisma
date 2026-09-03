@@ -34,11 +34,27 @@
 //     ordinary mutable fields a rename edits (D-167). That is what makes a
 //     rename safe here where it used to read as tampering (F-136).
 //
-// STILL ABSENT, on purpose:
-//   - Retention-policy and lawful-basis columns on every personal-data table
-//     (D-014, D-065), and the erasure registry. `CLAUDE.md` rule 5 makes these
-//     columns, not a later feature — which is exactly why they must arrive with
-//     the repaired specification rather than a guess at it.
+// DONE (phase 0.4b, retention half —
+// `docs/build/phase-0.4b-reach-and-retention-report.md`):
+//   - `RetentionPolicy`, one row per `DataClass` (D-065): purpose, proposed vs.
+//     organisation-confirmed lawful basis, trigger, `retainForDays`, `onExpiry`
+//     (`DELETE` | `ANONYMISE` | `REVIEW`). `src/lib/retention/catalogue.ts` is
+//     the shipped proposal set — every entry a PROPOSAL, never a seeded
+//     confirmation (F-27).
+//   - Every model in this file carries a `/// @dataClass <CLASS>` doc-comment
+//     binding it to its retention policy, checked bidirectionally against
+//     `src/lib/retention/data-class-registry.ts` — `CLAUDE.md` rule 5's "from
+//     the day it is created" as a forcing function, the same shape D-135
+//     already adopted for `@encrypted` (D-167).
+//   - The D-014 erasure registry, `src/lib/retention/erasure-registry.ts`:
+//     every `Person`-referencing table is `erase` or a named, dated
+//     `exempt(ground, until)` (D-154) — never a silent absence.
+//
+// STILL ABSENT, on purpose: the `erasePersonData` transaction that actually
+// walks the registry and performs the erasure. `02-security-privacy.md` §5.6
+// assigns that to R-25 alongside the retention scheduled job — v1 does not ship
+// the D-120 policy engine, so `onExpiry: REVIEW` today means "nothing happens
+// automatically" and is documented as such, not silently absent.
 //
 // PHASE 0.3 — the multi-tenant machinery (D-056) is being removed, one
 // reviewable commit at a time, with the suite green before and after each.
@@ -166,6 +182,7 @@ enum ScopeType {
 /// row's EXISTENCE as "already configured", because the read path creates it
 /// lazily; the boot state machine reads `InstallationBootstrap` (D-100) for
 /// that, and that model does not exist yet.
+/// @dataClass ORGANIZATION_SETTINGS
 model Organization {
   /// Pinned to the constant `organization` by a CHECK constraint in the
   /// migration. A well-known id rather than a cuid, so every future foreign key
@@ -232,6 +249,7 @@ model Organization {
 /// anything else the school records about a person belong to the modules that
 /// own them, each with its own retention policy from the day the column is
 /// created (D-065, D-014 — phase 0.4).
+/// @dataClass PERSON_IDENTITY
 model Person {
   id         String   @id @default(cuid(2))
   givenName  String
@@ -252,6 +270,10 @@ model Person {
   /// The organisation singleton, when this person was the last to change its
   /// configuration (0..1 — there is exactly one organisation).
   organizationUpdates Organization[] @relation("OrganizationUpdatedBy")
+  /// Retention policies whose lawful basis this person confirmed on the
+  /// organisation's behalf (D-065, F-27). Accountability evidence; severed, not
+  /// deleted, on erasure — a confirmation stands after its confirmer leaves.
+  retentionConfirmations RetentionPolicy[] @relation("RetentionPolicyConfirmedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -268,6 +290,7 @@ model Person {
 ///   - Better-Auth-managed: `email`, `name`, `emailVerified`, `image`,
 ///     `twoFactorEnabled`, `createdAt`, `updatedAt`. `name` is a login display
 ///     name; structured names live on `Person`.
+/// @dataClass LOGIN_CREDENTIALS
 model UserAccount {
   id         String            @id @default(cuid(2))
   personId   String            @unique
@@ -314,6 +337,7 @@ model UserAccount {
 /// A single authenticated session for a `UserAccount`. `token` is the opaque
 /// session identifier stored in the httpOnly, secure session cookie. Deleting a
 /// row revokes that session. Cascades when the account is hard-deleted.
+/// @dataClass LOGIN_CREDENTIALS
 model Session {
   id        String   @id
   token     String   @unique
@@ -405,6 +429,7 @@ enum SessionMfaEvidence {
 /// version in package.json rather than a caret range. The auth library owns the
 /// shape of four tables in this schema; a floating minor can therefore change
 /// the database contract silently, and it did.
+/// @dataClass LOGIN_CREDENTIALS
 model Account {
   id                    String    @id
   accountId             String
@@ -431,6 +456,7 @@ model Account {
 /// expired by Better Auth. Values are secrets — the auth config sets
 /// `verification.storeIdentifier: "hashed"` so the raw token is not the row
 /// identifier, and `@/lib/logging` redacts `Verification.value`.
+/// @dataClass LOGIN_CREDENTIALS
 model Verification {
   id         String   @id
   identifier String
@@ -444,6 +470,7 @@ model Verification {
 
 /// Fixed-window rate-limit counters (`@/lib/rate-limit`). Keys are HASHED
 /// identifiers, never a raw email or IP address.
+/// @dataClass RATE_LIMIT_COUNTERS
 model RateLimitCounter {
   key         String   @id
   windowStart DateTime
@@ -465,6 +492,7 @@ model RateLimitCounter {
 /// surface and the second needs the grant service's write path, both phase 1.
 /// The predicate is no longer the blocker; recorded in
 /// `docs/build/phase-0.4b-reach-and-retention-report.md` §5.
+/// @dataClass LOGIN_CREDENTIALS
 model TwoFactor {
   id                      String    @id
   secret                  String
@@ -495,6 +523,7 @@ model TwoFactor {
 /// private key never leaves the authenticator), but they are still
 /// auth-operational material and CASCADE when the account is hard-deleted.
 /// `aaguid` identifies the authenticator MODEL, not the device or the user.
+/// @dataClass LOGIN_CREDENTIALS
 model Passkey {
   id           String   @id
   /// Server-side backstop on the user-chosen label. The registration path
@@ -543,6 +572,7 @@ model Passkey {
 ///     because it is there.
 /// Membership grants no authorization by itself and is never a prerequisite for
 /// a role (D-060) — permissions come from `RoleAssignment` alone.
+/// @dataClass MEMBERSHIP_PERIODS
 model Membership {
   id        String           @id @default(cuid(2))
   personId  String  @unique
@@ -574,6 +604,7 @@ model Membership {
 /// point, not a fixed object", and a school inventing its own role must not
 /// thereby fall off a security control. `isSystem` marks built-in roles that
 /// seeding manages.
+/// @dataClass ORGANIZATION_SETTINGS
 model Role {
   id          String   @id @default(cuid(2))
   /// Globally unique machine key. System roles use stable constants; org-owned
@@ -606,6 +637,7 @@ model Role {
 /// that (`06-delivery.md` §2.1). The `parentId`/`path`/`depth` columns are
 /// inherited tree machinery that v1 does not walk. Do not let their presence
 /// talk `resolveReach` into a descendant walk.
+/// @dataClass ORGANIZATION_SETTINGS
 model OrganizationUnit {
   id        String   @id @default(cuid(2))
   /// null → a root unit; else the parent unit's id.
@@ -634,6 +666,7 @@ model OrganizationUnit {
 
 /// A named, admin-editable bundle of permissions — a reusable building block a
 /// custom role can include. Enforcement still resolves to atomic permissions.
+/// @dataClass ORGANIZATION_SETTINGS
 model AccessGroup {
   id          String   @id @default(cuid(2))
   name        String
@@ -646,6 +679,7 @@ model AccessGroup {
 }
 
 /// Join: which catalogue permissions an `AccessGroup` grants.
+/// @dataClass ORGANIZATION_SETTINGS
 model AccessGroupPermission {
   accessGroupId String
   permissionId  String
@@ -661,6 +695,7 @@ model AccessGroupPermission {
 /// Join: which access groups a role is composed of. A role's effective
 /// permission set is the union of its direct `RolePermission` rows and its
 /// groups' permissions.
+/// @dataClass ORGANIZATION_SETTINGS
 model RoleAccessGroup {
   roleId        String
   accessGroupId String
@@ -674,6 +709,7 @@ model RoleAccessGroup {
 }
 
 /// A single checkable permission from the catalogue, e.g. `exams.results.record`.
+/// @dataClass ORGANIZATION_SETTINGS
 model Permission {
   id          String   @id @default(cuid(2))
   key         String   @unique
@@ -687,6 +723,7 @@ model Permission {
 
 /// Join table grouping permissions under roles. Pure configuration with no
 /// personal data, so deletes CASCADE.
+/// @dataClass ORGANIZATION_SETTINGS
 model RolePermission {
   roleId       String
   permissionId String
@@ -759,6 +796,7 @@ model RolePermission {
 /// EXPIRY IS NEVER A CLEANUP JOB (D-144). `validUntil` is evaluated INSIDE
 /// `requirePermission` and `resolveReach`. A job that has not run yet is an open
 /// grant; a predicate cannot be behind schedule.
+/// @dataClass ROLE_ASSIGNMENTS
 model RoleAssignment {
   id       String @id @default(cuid(2))
   personId String
@@ -859,6 +897,7 @@ model RoleAssignment {
 /// `api-credential.ts` and credential-auth path were not extracted. The table
 /// is here because the design says to keep it; the first integration brings the
 /// code.
+/// @dataClass API_CREDENTIALS
 model ApiCredential {
   id String @id @default(cuid(2))
 
@@ -904,6 +943,7 @@ model ApiCredential {
 ///
 /// It carries the same three CHECK constraints, hand-written in the same
 /// migration for the same reason.
+/// @dataClass ROLE_ASSIGNMENTS
 model CredentialRoleAssignment {
   id           String @id @default(cuid(2))
   credentialId String
@@ -979,6 +1019,7 @@ enum AuditOutcome {
 /// outcome, and (in `changedFields`) the NAMES of what changed. It deliberately
 /// carries NO foreign keys: the trail must OUTLIVE the entities it references,
 /// because an erasure deletes a Person and retains the accountability record.
+/// @dataClass AUDIT_EVENTS
 model AuditEvent {
   id String @id @default(cuid(2))
 
@@ -1091,6 +1132,7 @@ model AuditEvent {
 /// that, and host access is already the boundary `13-…` §7 treats as proof of
 /// ownership. Saying so is the point: the control is real against the actor it
 /// names, and it is not magic.
+/// @dataClass AUDIT_EVENTS
 model AuditCheckpoint {
   id String @id @default(cuid(2))
 
@@ -1129,4 +1171,242 @@ model AuditCheckpoint {
   mac String
 
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Retention — policy-driven, per data class (D-065, replacing D-007)
+//
+// `CLAUDE.md` rule 5: consent, lawful basis and retention are COLUMNS, not a
+// later feature. Every personal-data table carries its retention policy from the
+// day it is created (D-065, D-014).
+//
+// WHERE THOSE COLUMNS ACTUALLY LIVE, because the phrasing invites the wrong
+// answer. D-065's model is a policy **per data class**, not per row: `purpose`,
+// `lawfulBasis`, `trigger`, `retainFor` and `onExpiry` are the same for every
+// attendance event ever written. Putting them on each row would be ~20 constant
+// columns across ~20 tables — the exact dead weight D-006 was WITHDRAWN for. So:
+//
+//   - the policy is a ROW here, one per data class;
+//   - a table is BOUND to its class by a `/// @dataClass <CLASS>` doc comment,
+//     with `src/lib/retention/data-class-registry.ts` as its other half and
+//     `tests/unit/data-class-registry.test.ts` checking both directions;
+//   - the binding is MANDATORY for any model referencing `Person`, which is the
+//     forcing function "from the day it is created" asks for: a new
+//     personal-data table without a class goes red before it can be merged.
+//
+// The per-ROW retention fact D-065 does describe — "the record is retained WITH
+// ITS GROUND RECORDED" for an individual record an erasure request could not
+// remove — belongs to the tables that carry such records, and none of them
+// exists yet. `docs/build/phase-0.4b-reach-and-retention-report.md` §3 records
+// this reading.
+// ---------------------------------------------------------------------------
+
+/// The data classes of `01-domain-model.md` §5, which is the register of lawful
+/// bases per purpose (D-110) and the table D-153's Article 15 annex is generated
+/// from.
+///
+/// Adding a member is adding a retention POLICY, so it is a reviewed change and
+/// not a convenience. Four members are NOT in §5's table and are recorded as
+/// additions rather than smuggled in — they are the classes this schema already
+/// has tables for and that chapter never listed. Each ships with
+/// `proposedLawfulBasis: UNRESOLVED`, which is D-110's own marker: *"where the
+/// entry reads unresolved, it is unresolved and must be settled before that
+/// default ships"* (F-128).
+enum DataClass {
+  /// `Person`. Trigger: the end of the LAST RELATIONSHIP OF ANY KIND (D-066).
+  PERSON_IDENTITY
+  /// Better Auth's credential and session material.
+  LOGIN_CREDENTIALS
+  /// `Membership` and its periods.
+  MEMBERSHIP_PERIODS
+  /// **Not in §5's table.** Grants — who may do what, to whom, when, issued by
+  /// whom. D-066 counts a role assignment as a relationship that HOLDS a person,
+  /// so it needed a class before it could be one.
+  ROLE_ASSIGNMENTS
+  STUDENT_PROFILE
+  /// Special category, Art. 9. `DELETE` on expiry — never anonymise (D-176).
+  MEDICAL_NOTES
+  /// Special category by inference (D-148, D-087).
+  ASSESSMENT_REMARKS
+  /// `DELETE`, not anonymise — D-111/D-155, and the reason is in §5.3.
+  ATTENDANCE_EVENTS
+  SKILL_PROGRESS
+  ASSESSMENT_RESULTS
+  EXAM_RESULTS_AND_AWARDS
+  CHARGES
+  PAYMENTS
+  CONSENT_RECORDS
+  AUDIT_EVENTS
+  INQUIRIES
+  WAITLIST_ENTRIES
+  OPERATIONAL_LOGS
+  PRE_MIGRATION_BACKUPS
+  PUBLIC_PAGE_CONTENT
+  ORGANIZATION_SETTINGS
+  /// **Not in §5's table.** Rate-limit counters. Keys are HASHED identifiers,
+  /// never a raw email or IP, and they expire by their own window — but the
+  /// table exists and a class is what makes that statement checkable.
+  RATE_LIMIT_COUNTERS
+  /// **Not in §5's table.** The `ApiCredential` register. No integration exists
+  /// in v1 (D-163); the table does, and it names its creator.
+  API_CREDENTIALS
+}
+
+/// The Article 6 (and, for special category, Article 9) basis a class is held
+/// on.
+///
+/// `UNRESOLVED` is a real member and not an omission. §5.2 says the ground for
+/// an award register "must be identified per organisation" and §5.6's whole
+/// argument is that a diploma does not by itself create an Article 17 exception.
+/// A blank cannot be argued with; a proposal can, and an honest `UNRESOLVED`
+/// prints as unresolved on the diagnostics page and in the privacy screen
+/// (D-110, D-155).
+enum LawfulBasis {
+  CONSENT
+  /// Art. 9(2)(a) — the basis for medical remarks and for `SafetyNote` (D-177).
+  EXPLICIT_CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  LEGITIMATE_INTEREST
+  VITAL_INTERESTS
+  UNRESOLVED
+}
+
+/// What starts the retention clock. One per class, from §5's `Trigger` column.
+enum RetentionTrigger {
+  /// D-066: the end of the person's LAST relationship of any kind, not
+  /// membership. The most common person in the database — a child taking
+  /// lessons — has no membership at all, and neither do guardians or external
+  /// examiners; a membership-keyed rule would silently retain the majority
+  /// forever. A guardian is held only while the child they are guardian OF is
+  /// held, which follows from the rule rather than needing a special case.
+  LAST_RELATIONSHIP_END
+  LAST_ENROLMENT_END
+  LAST_MEMBERSHIP_PERIOD_END
+  ACCOUNT_CLOSED
+  SESSION_DATE
+  ASSESSMENT_DATE
+  ACHIEVEMENT_DATE
+  AWARD_ISSUE
+  CHARGE_DUE_DATE
+  PAYMENT_RECEIVED_DATE
+  CONSENT_WITHDRAWN_OR_PURPOSE_EXPIRED
+  EVENT_DATE
+  SUBMISSION
+  PLACEMENT_OR_WITHDRAWAL
+  MIGRATION_RUN
+  RECORD_CREATION
+  /// The class carries no personal data, so nothing expires. Paired with a null
+  /// `retainForDays` and `onExpiry: REVIEW`.
+  NOT_APPLICABLE
+}
+
+/// D-065's three actions, and there are exactly three.
+///
+/// `01-domain-model.md` §5 gives `Charge` and `Payment` a fourth,
+/// `PSEUDONYMISE` (D-092). It is NOT a member here, and the reasoning is
+/// D-154's own: it describes those two rows as an erasure EXEMPTION on a
+/// financial retention ground — *"the same shape already applies to `Charge` and
+/// `Payment` ... so this generalises an exemption the design had already
+/// accepted as a special case"*. Retention expiry and erasure exemption are two
+/// mechanisms; the fiscal ground belongs to the second. Adding a fourth value
+/// here would re-open the argument D-155 spends a page closing, that
+/// pseudonymisation does not end the obligation. Flagged for the register in
+/// `docs/build/phase-0.4b-reach-and-retention-report.md` §3.
+enum OnExpiry {
+  DELETE
+  /// D-155's ONE mechanical definition: destroy the row-level record and retain
+  /// only a PRE-COMPUTED aggregate at a granularity that cannot be reduced to an
+  /// individual — no identifier, no foreign key, no timestamp finer than the
+  /// window, small counts suppressed. An aggregate is kept because it was
+  /// computed and stored, NEVER because a row was stripped. A class that cannot
+  /// meet that bar may only be `DELETE` or `REVIEW`, and the CHECK constraint on
+  /// `anonymisedAggregate` is what stops the next class being decided by
+  /// intuition.
+  ANONYMISE
+  /// Nothing happens automatically. In v1 that is the honest state and not a
+  /// queue: D-120 moved the policy engine out, so `REVIEW` means "we do not
+  /// delete this automatically". What makes it visible rather than silent is
+  /// D-110's `unresolved` marker plus the count of overdue reviews on the
+  /// diagnostics page and the privacy screen.
+  REVIEW
+}
+
+/// The retention policy for one data class — purpose, lawful basis, trigger,
+/// duration and expiry action (D-065).
+///
+/// **Every default that ships is a PROPOSAL, not a rule we impose** (F-27). The
+/// organisation is the controller (D-064) and must decide its own grounds; the
+/// documentation ships sensible defaults *"clearly marked as requiring the
+/// organisation's own confirmation"*. That is why the basis is TWO columns and
+/// not one: `proposedLawfulBasis` is ours and always populated,
+/// `confirmedLawfulBasis` is theirs and is **empty until they confirm it**.
+/// Leaving the confirmation empty rather than asserting a basis is the whole
+/// point — a recorded confirmation nobody made is worth less than an honest
+/// blank, which is also why the setup wizard does NOT block on thirteen legal
+/// questions (§5.6's rejected reviewer proposal).
+///
+/// THREE CHECK CONSTRAINTS, hand-written in the migration because the Prisma DSL
+/// cannot express them, and named by
+/// `tests/integration/retention-policy-constraints.test.ts`:
+///   - `RetentionPolicy_anonymise_requires_aggregate_check` — `ANONYMISE`
+///     requires a named pre-computed aggregate (D-155). This is the constraint
+///     that would have caught the design's own mistake: attendance was
+///     prescribed `ANONYMISE` by stripping `studentProfileId` while keeping
+///     `sessionId` and timestamps, against twelve-child groups with retained
+///     time-bounded memberships and known session dates — re-identification by a
+///     join and a counting argument (F-123, D-111).
+///   - `RetentionPolicy_confirmation_shape_check` — the three confirmation
+///     columns are all null or all set, and a confirmation may not be
+///     `UNRESOLVED`. Half a confirmation is not a confirmation.
+///   - `RetentionPolicy_retain_for_check` — a stated duration is positive.
+///
+/// The PLATFORM MAXIMUM D-150 names is enforced in the write path rather than
+/// here (`src/lib/retention/policy.ts`), because it is a `bounded` setting's
+/// own schema doing its job and changing the ceiling must not need a migration.
+/// @dataClass ORGANIZATION_SETTINGS
+model RetentionPolicy {
+  /// One policy per class — the class IS the key, so a second policy for the
+  /// same class is impossible rather than merely discouraged.
+  dataClass DataClass @id
+
+  /// Why it is kept, in the words a privacy notice can reuse.
+  purpose String
+
+  /// OUR proposal. Always populated, possibly `UNRESOLVED`.
+  proposedLawfulBasis LawfulBasis
+  /// THEIRS. Null until the organisation confirms, and null is the correct
+  /// shipped state (F-27).
+  confirmedLawfulBasis LawfulBasis?
+  confirmedAt          DateTime?
+  /// Who confirmed, for Art. 5(2) accountability. Severed, not deleted, on
+  /// erasure — the confirmation stands after its confirmer leaves.
+  confirmedByPersonId  String?
+
+  trigger RetentionTrigger
+  /// Duration past the trigger. Null means "as long as needed for the purpose",
+  /// which is only honest with `onExpiry: REVIEW` — it contributes no floor to
+  /// D-168's computed audit retention floor, because a class that is never
+  /// deleted imposes no lower bound on anything.
+  retainForDays Int?
+
+  onExpiry OnExpiry
+
+  /// The pre-computed aggregate that survives, for `ANONYMISE` only — named, so
+  /// "anonymised" is a thing that exists rather than a claim.
+  anonymisedAggregate String?
+
+  /// Do audit events evidence changes to this class? Feeds D-168 rule 6's
+  /// computed audit retention floor, `max(12 months, the longest configured
+  /// retention among the classes these events evidence)`. An explicit flag
+  /// rather than an inference, because inferring it would silently change the
+  /// floor whenever a class was added.
+  evidencedByAudit Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  confirmedBy Person? @relation("RetentionPolicyConfirmedBy", fields: [confirmedByPersonId], references: [id], onDelete: SetNull)
+
+  @@index([confirmedByPersonId])
 }
