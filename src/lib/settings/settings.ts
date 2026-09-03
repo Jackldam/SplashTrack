@@ -13,9 +13,11 @@
  * which D-056 deletes, sitting on top of the permission guard, which is phase
  * 0.4 (D-147). Bringing them across would have meant bringing a half-matching
  * guard with them, and the exception path has no meaning here: there is no
- * platform and no principal above the organisation. The settings ADMIN SURFACE
- * arrives with `requirePermission`; until then this file answers "what is
- * configured", and nothing can change it from inside the application.
+ * platform and no principal above the organisation.
+ *
+ * PHASE 0.4: the settings ADMIN SURFACE arrives with `requirePermission`
+ * (D-147). Until then this file answers "what is configured", and nothing can
+ * change it from inside the application.
  *
  * The reads below are what the rest of the foundation depends on:
  *   - `getRequestConfigData` runs on EVERY request (the i18n request path and
