@@ -106,14 +106,29 @@ was removed, what was kept and why, the greps proving the absence, every new
 
 ## 0.4 Ground rules in place before any domain work
 
-These are the retrofit-hostile mechanisms. **Blocked until the core-repair pass
-lands** — four known defects are being fixed in the specification right now
-(Recovery Kit, AAD binding on rename, audit checkpointing, logical export vs
-`pg_dump`). Building against the current text would mean rebuilding.
+These are the retrofit-hostile mechanisms. They were blocked until the
+core-repair pass landed — four known defects in the specification (Recovery Kit,
+AAD binding on rename, audit checkpointing, logical export vs `pg_dump`).
+That pass is in (D-166..D-173), so the work is unblocked and the first half is
+built.
 
-- [ ] Crypto envelope (D-096, as repaired) — before the first encrypted byte
-- [ ] Audit chain + checkpointing (D-149 + the repair) — before audit rows
-      accumulate
+**First half done 2026-09-03. Full record in
+`phase-0.4a-crypto-and-audit-report.md`** — what was built, every design
+ambiguity and how it was resolved, every `PHASE 0.4:` marker closed and left,
+and the real done-check output.
+
+- [x] Crypto envelope (D-096, as repaired by D-167; registry D-097) — before the
+      first encrypted byte. `src/lib/crypto/`. No column is encrypted yet, which
+      is the ordering `CLAUDE.md` rule 1 asks for
+- [x] The one bootstrap secret (D-112). `SECRET_KEY` REPLACES
+      `BETTER_AUTH_SECRET`; the signing secret is now derived from it. The
+      environment surface stays at three application-owned variables
+- [x] Audit chain + checkpointing (D-149 + D-168) — before audit rows
+      accumulate. `AuditCheckpoint`, the prefix-only retention path, the
+      sequence-paged verification walk and `npm run audit:verify`
+- [ ] The insert-only database role (D-149 part 2). SQL and reasoning in
+      `infra/audit-database-role.sql`; it is a DEPLOYMENT step, and wiring it up
+      needs two more connections and therefore an ADR — Jack's call
 - [ ] `requirePermission` / `resolveReach` with the opaque `Reach` type
       (D-147), including `coversResource()` which the design names and does not
       define
