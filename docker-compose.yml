@@ -1,20 +1,95 @@
-# The `web` service is removed until the v1 application exists.
-# It pointed at the deleted prototype (apps/web, removed under D-174/OD-1) and
-# would have been rebuilt wrong: the v1 app lives at the repository root, its
-# environment surface is governed by D-037, and DATABASE_URL must not be a
-# hardcoded default. It is re-added in phase 0.2 alongside the real Dockerfile.
+# The reference deployment (D-033): one application image, plus PostgreSQL as a
+# second service.
 #
-# `docker compose up postgres` is what this file is for today: a local database
-# to develop against.
+# Bundling Postgres INSIDE the application image would trap the data in a
+# container and break every upgrade and backup story, so the image stays
+# app-only and the database is a service here. An operator with a managed
+# database deletes the `postgres` service below and repoints `DATABASE_URL` —
+# nothing else in this file changes.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THE APP SERVICE CARRIES NO DEFAULTS, AND THAT IS THE POINT
+#
+# `${DATABASE_URL:?…}` is Compose's required-variable form: an unset value stops
+# `docker compose up` with the message after the colon rather than starting an
+# instance against something unintended. `03-deployment-model.md` §1.2 lists "no
+# default credentials, ever" first among the properties this image must have,
+# and a connection string with a default in the reference compose file would
+# make that claim false for every operator who never changed it.
+#
+# Put the values in a `.env` file beside this one — Compose reads it
+# automatically, and it is gitignored:
+#
+#     DATABASE_URL=postgresql://splashtrack:<password>@postgres:5432/splashtrack
+#     BETTER_AUTH_URL=http://your-host:3000
+#     POSTGRES_PASSWORD=<the same password>
+#
+# The bootstrap secret is NOT among them: it is a FILE (D-112), mounted as a
+# Docker secret below. Generate it once —
+#
+#     docker compose run --rm app splashtrack secret:init --out /app/secrets/secret_key
+#
+# — and keep a copy with your backups. The backup archive alone cannot recover
+# an instance without it (D-166).
+#
+# FIRST ADMINISTRATOR. There is no public self-registration and the setup wizard
+# is not built yet, so the first account is created from the host, which is the
+# proof of ownership every privileged operation here rests on:
+#
+#     docker compose exec app splashtrack admin:create --email you@example.org
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
+  app:
+    build:
+      context: .
+    image: splashtrack:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The three application-owned variables D-037 permits, and nothing else.
+      # Neither of the two set here has a default — see the header.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env; there is deliberately no default}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env to this instance's public origin}
+      # The third: a path to a mounted file, never the secret itself.
+      SECRET_KEY_FILE: /run/secrets/splashtrack_secret_key
+    secrets:
+      - splashtrack_secret_key
+    volumes:
+      # The one writable path in the container: the MFA enrolment artefacts the
+      # CLI writes, and the migration acknowledgement marker.
+      - splashtrack-data:/app/data
+      # Where `secret:init` writes when run through this compose file. A bind
+      # mount, so the operator ends up holding the key on their own host rather
+      # than inside a Docker volume they might never think to back up.
+      - ./secrets:/app/secrets
+    ports:
+      # `APP_PORT` is a COMPOSE variable, not an application one: it chooses
+      # which host port maps to the container's 3000. It is not part of D-037's
+      # surface — the application never reads it — and it exists because a host
+      # that already has something on 3000 should not need this file edited.
+      # Whatever you choose here must match BETTER_AUTH_URL.
+      - '${APP_PORT:-3000}:3000'
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: splashtrack
       POSTGRES_USER: splashtrack
-      POSTGRES_PASSWORD: splashtrack
+      # A DEVELOPMENT default, and the only one left in this file. It exists
+      # because `docker compose up postgres` is also what a developer runs to
+      # get a local database, and it is safe there and only there: the service
+      # is reachable from the host, so anything beyond a laptop must set
+      # POSTGRES_PASSWORD.
+      #
+      # NOTE: this variable is read by the Postgres image ONLY when it
+      # initialises a fresh volume. Changing it later changes nothing; the
+      # password lives in the volume. `ALTER ROLE splashtrack PASSWORD …` is
+      # what changes it on an existing one.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splashtrack}
     ports:
       - '5432:5432'
     volumes:
@@ -25,5 +100,21 @@ services:
       timeout: 5s
       retries: 10
 
+secrets:
+  splashtrack_secret_key:
+    # A Docker secret rather than an environment variable (D-112). An env var is
+    # readable through `docker inspect`, /proc/<pid>/environ, crash dumps and —
+    # most commonly — the operator's own compose file, committed.
+    #
+    # OWNERSHIP MATTERS HERE. Compose bind-mounts a `file:` secret with the
+    # host file's own uid and mode, so a key written by root at 0600 is
+    # unreadable to the container's user (uid 10001) and the container refuses
+    # to start with exactly that message. Generating the key THROUGH this
+    # compose file avoids it entirely — the command in the header runs as uid
+    # 10001, so the file it creates is already owned correctly. For a key that
+    # came from somewhere else: `chown 10001:10001 ./secrets/secret_key`.
+    file: ./secrets/secret_key
+
 volumes:
   splashtrack-postgres-data:
+  splashtrack-data:

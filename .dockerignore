@@ -1,9 +1,43 @@
+# What must never reach a build context, and what would only make it slower.
+#
+# THE FIRST BLOCK IS A SECURITY BOUNDARY, not tidiness. `03-deployment-model.md`
+# §1.2 requires "no secret in any layer", and a build context is a layer: a
+# `COPY . .` in the build stage would put anything listed here into the image
+# even if the final stage never copies it forward, because intermediate layers
+# are still layers.
+
+secrets/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build output and caches — regenerated inside the image, and copying them in
+# would let a stale local build shadow the one the Dockerfile just made.
 node_modules
 **/node_modules
 .next
 **/.next
+dist
+out
+coverage
+tsconfig.tsbuildinfo
+test-results
+playwright-report
+
+# Not part of the application.
+#
+# `tests/` is deliberately NOT excluded: `next build` runs `tsc` over the whole
+# project, and `scripts/setup-test-db.ts` imports from it, so excluding it turns
+# the build into a type error about a missing module. It reaches the BUILD stage
+# only — the runner copies build output, never the context.
 .git
 .gitignore
+.github
+docs
+ai-agents
+environments
 npm-debug.log*
 **/bin
 **/obj
