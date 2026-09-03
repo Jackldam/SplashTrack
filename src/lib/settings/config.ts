@@ -156,13 +156,19 @@ export const SESSION_IDLE_TIMEOUT_MINUTES = {
  * Strictest wins on any overlap, and an unrecognised principal gets the
  * strictest.
  *
- * PHASE 0.4: nothing SELECTS between this value and the standard one yet.
- * Selection requires the high-risk permission set and the `requirePermission` /
- * `resolveReach` guard (D-147), which is phase 0.4 — `getConfiguredSecurityPolicy()`
- * returns both values and `session.ts` currently applies the standard one to
- * every principal. That is the LOOSER of the two for an elevated principal, so
- * it is a real gap, named here rather than hidden: it closes the moment the
- * permission set exists, and no domain module may ship before it does.
+ * PHASE 1 — the PREDICATE now exists; the WIRING does not. Phase 0.4b built
+ * the high-risk set and `holdsAnyHighRiskPermission()`
+ * (`@/lib/authorization`), so D-173's selection is now one call. It is
+ * deliberately not made here yet, and the reason is the hot path rather than
+ * the rule: `session.ts` reads the policy on EVERY request, and adding a
+ * database query per session read is a caching decision on the busiest path in
+ * the application — not something to slip into the pass that built the
+ * predicate.
+ *
+ * So the gap is narrower than it was and still real: every principal currently
+ * gets the standard window, which is the LOOSER of the two for an elevated one.
+ * Named here rather than hidden. Recorded in
+ * `docs/build/phase-0.4b-reach-and-retention-report.md` §5.
  */
 export const SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES = {
   min: 5,

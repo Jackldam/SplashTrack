@@ -105,7 +105,7 @@ enum UserAccountStatus {
 /// plus `NONE` and `UNION`. Adding a member here is a COMPILE ERROR in every
 /// repository that translates a `Reach` — deliberately (D-147's trade-off).
 ///
-/// `tests/unit/scope-type-sync.test.ts` asserts this enum and the TypeScript
+/// `tests/unit/authorization-vocabulary-sync.test.ts` asserts this enum and the TypeScript
 /// union in `@/lib/authorization/scope` are the same set, in both directions.
 ///
 /// `RELATED` IS NOT HERE AND MUST NOT BE ADDED (OD-5, closed 2026-09-01, D-161).
@@ -456,8 +456,15 @@ model RateLimitCounter {
 /// logged, never returned to a client. Cascades with the account.
 ///
 /// This makes MFA POSSIBLE per account. Enforcing "this permission requires
-/// MFA" is an authorization concern and is phase 0.4 (D-147): it needs the
-/// permission set that does not exist yet.
+/// MFA" is an authorization concern, and the set it keys on now exists —
+/// `HIGH_RISK_PERMISSIONS` / `holdsAnyHighRiskPermission()` in
+/// `@/lib/authorization` (phase 0.4b). §1.2 requires the mandate to be enforced
+/// TWICE: at login, and AT GRANT TIME, so granting a high-risk permission to an
+/// account with no verified factor fails rather than creating an unprotected
+/// administrator. Neither call site exists yet — the first needs the sign-in
+/// surface and the second needs the grant service's write path, both phase 1.
+/// The predicate is no longer the blocker; recorded in
+/// `docs/build/phase-0.4b-reach-and-retention-report.md` §5.
 model TwoFactor {
   id                      String    @id
   secret                  String
@@ -826,11 +833,12 @@ model RoleAssignment {
 // organisation, holding ordinary permissions (`00-overview.md` §5.1,
 // `02-security-privacy.md` §2.4).
 //
-// PHASE 0.4: when `requirePermission` is written (D-147) it must resolve a
-// principal's permissions from `RoleAssignment` ALONE. There is no second grant
-// table to consult and no branch that bypasses the permission check — D-130
-// binds the MFA mandate and the security alerts to PERMISSIONS precisely
-// because this role name cannot exist.
+// DONE (phase 0.4b): `requirePermission` and `resolveReach` resolve a
+// principal's permissions from `RoleAssignment` ALONE
+// (`src/lib/authorization/reach.ts`). There is no second grant table to consult
+// and no branch that bypasses the permission check — D-130 binds the MFA
+// mandate, the security alerts and the elevated idle window to PERMISSIONS
+// precisely because this role name cannot exist.
 
 // ---------------------------------------------------------------------------
 // API credentials — present and unused, deliberately (`05-technical.md` §4)

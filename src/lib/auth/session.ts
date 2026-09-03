@@ -81,9 +81,13 @@ export interface CurrentSession {
    * Was a second factor proven for THIS session? See `Session.mfaEvidence` in
    * schema.prisma. `null` means NOT proven — fail toward strict.
    *
-   * PHASE 0.4: the step-up GATE that consumes this — "an administrative surface
+   * PHASE 1: the step-up GATE that consumes this — "an administrative surface
    * requires a second factor to have been proven for THIS session, not merely
-   * enrolled on the account" — is part of the permission work (D-147). The
+   * enrolled on the account". The permission set it keys on now exists
+   * (`@/lib/authorization`, phase 0.4b); what it still needs is the surface
+   * that raises it, and step-up is a FRESHNESS control rather than an
+   * authorization one (§1.2) — so it sits beside `requirePermission` and never
+   * inside it. The
    * evidence is recorded from day one anyway, because a session that predates
    * the gate would otherwise have no honest value to report and would have to
    * be treated as proven or force everyone to sign in again.
@@ -162,16 +166,18 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
 
   const { session } = result;
 
-  // PHASE 0.4: D-173 selects the idle window by PERMISSION — a principal
-  // holding any permission in the high-risk set gets
+  // PHASE 1 — this is where D-173's selection goes, and the predicate for it
+  // now exists: `holdsAnyHighRiskPermission()` in `@/lib/authorization`
+  // (phase 0.4b). A principal holding any permission in the high-risk set gets
   // `sessionIdleTimeoutMinutesElevated`, everyone else the standard value,
-  // strictest wins on overlap, and an unrecognised principal gets the
-  // strictest. That predicate is the high-risk permission set, which needs
-  // `requirePermission` / `resolveReach` (D-147) — phase 0.4. Until then EVERY
-  // principal gets the standard window, which is the LOOSER of the two for an
-  // elevated one. Named here rather than hidden: this is the one place the
-  // selection goes once the permission set exists, and no domain module ships
-  // before it does.
+  // strictest wins on overlap, and an unrecognised principal gets the strictest.
+  //
+  // It is not wired here yet for one reason, and it is not the rule: this
+  // function runs on EVERY request, `getConfiguredSecurityPolicy()` is
+  // per-request-cached precisely because of that, and adding an unbounded
+  // database query to it is a caching decision on the hottest path in the
+  // application. Until it is made, EVERY principal gets the standard window,
+  // which is the LOOSER of the two for an elevated one — a real, named gap.
   const { sessionAbsoluteTimeoutMinutes, sessionIdleTimeoutMinutes } =
     await getConfiguredSecurityPolicy();
 

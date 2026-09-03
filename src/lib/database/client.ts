@@ -55,9 +55,15 @@ const globalForPrisma = globalThis as unknown as {
  * a client narrowed to the models that module OWNS, so `planning` physically
  * cannot reach `scheduledSession` (D-057).
  *
- * PHASE 0.4: neither exists yet. Until they do, importing this client from a
- * domain module is a boundary violation waiting to happen, and the lint rule
- * that makes it a build failure has not been written.
+ * HALF OF THAT NOW EXISTS. `Reach` and `resolveReach` are built
+ * (`@/lib/authorization`, phase 0.4b), so a repository CAN take a reach as a
+ * required argument today, and a repository that ignores a variant fails to
+ * compile.
+ *
+ * PHASE 1: the per-module NARROWED clients (D-057) and the lint rule that makes
+ * importing this client from a domain module a build failure. Both are about
+ * module boundaries rather than about authorization, and there is no domain
+ * module to narrow a client for yet.
  */
 export const prisma: PrismaClient =
   globalForPrisma.prisma ?? createPrismaClient();

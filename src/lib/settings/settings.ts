@@ -15,8 +15,13 @@
  * guard with them, and the exception path has no meaning here: there is no
  * platform and no principal above the organisation.
  *
- * PHASE 0.4: the settings ADMIN SURFACE arrives with `requirePermission`
- * (D-147). Until then this file answers "what is configured", and nothing can
+ * PHASE 1: the settings ADMIN SURFACE. `requirePermission` now EXISTS
+ * (`@/lib/authorization`, phase 0.4b), so the blocker this comment named is
+ * gone; what is left is a screen, and phase 0.4 builds no screens. When it
+ * arrives the guard is `requirePermission(principal,
+ * 'organization.settings.manage', { organization: true })`, and D-150's
+ * `bounded`/`invariant` classification is what the WRITE path enforces on top
+ * of it. Until then this file answers "what is configured", and nothing can
  * change it from inside the application.
  *
  * The reads below are what the rest of the foundation depends on:
