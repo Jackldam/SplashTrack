@@ -434,21 +434,33 @@ the answer is no.
 
 ---
 
-### OD-15 — Minimum supported operator skill level.
+### OD-15 — **(CLOSED 2026-09-03)** Minimum supported operator skill level.
 
-**Why it matters.** It sets the bar for the install experience. "Comfortable
-with Docker Compose on a VPS" and "a swim school volunteer with a Synology NAS"
-are very different products — the second needs a one-click package, a
-reverse-proxy story and far more documentation.
-**Cost of delay.** Medium. It shapes documentation and packaging, not the
-architecture.
-**Partially answered (2026-08-31).** Jack's requirement — full in-app
-configuration, no restarts — sets the bar firmly at the *low* end: the operator
-must manage Docker, TLS and backups, and **nothing else**. All application
-configuration is in the web interface (`13-configuration-and-setup.md`).
-**Still open:** whether to also ship one-click packages (Synology, Unraid,
-CasaOS, Proxmox helper script), which would widen reach considerably at the cost
-of maintaining packaging we do not control.
+**Answer, from Jack: a plain Docker image, of the kind anyone would find on
+Docker Hub.** No one-click packages for Synology, Unraid, CasaOS or Proxmox.
+
+**The bar is therefore: comfortable with `docker compose` on a host you
+control.** That is a real and common level of skill, and it is the level this
+project can actually support. It also decides several things that were open:
+
+- **One artefact, maintained properly.** Four half-maintained platform packages
+  is worse than one image that works — and each of those platforms has its own
+  update cadence, its own volume conventions and its own way of breaking.
+- **The reference `docker-compose.yml` is the installation documentation**, and
+  is treated as such: it is documentation that *executes*. The 2026-09-03
+  incident (`docs/build/incident-2026-09-03-exposed-postgres.md`) is what that
+  costs when it is treated as an example instead — a convenience default in the
+  compose file is a real credential the moment somebody runs it, and this
+  distribution model is precisely "somebody runs it".
+- **Publishing is out of v1 scope regardless** (D-162): v1 targets one
+  deployment, the author's own club. What this answer settles is the *shape* of
+  the eventual artefact, so nothing built now needs undoing later.
+
+**What this does not license.** It is not permission to assume expertise. An
+operator comfortable with Compose is not thereby comfortable with Postgres role
+grants, WAL archiving or certificate renewal — so the documentation still owes
+exact commands rather than gestures, and the setup wizard still has to work for
+someone who has never seen this product.
 
 ---
 
