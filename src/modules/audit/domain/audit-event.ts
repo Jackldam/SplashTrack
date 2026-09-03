@@ -41,8 +41,6 @@ export interface AuditEventInput {
   actorCredentialId?: string | null;
   /** Authentication method where known (`session` / `api_key`). */
   actorAuthMethod?: string | null;
-  /** Org scope for an org-scoped action; omit for platform/system actions. */
-  organizationId?: string | null;
   /** Resource kind acted on, e.g. `person` / `profile_field_value`. */
   targetType?: string | null;
   targetId?: string | null;
@@ -76,7 +74,6 @@ export interface AuditHashContent {
    * `contentVersion` ≥ 2; ignored by the v1 canonicalization. */
   actorCredentialId: string | null;
   actorAuthMethod: string | null;
-  organizationId: string | null;
   targetType: string | null;
   targetId: string | null;
   requestId: string | null;
@@ -112,7 +109,7 @@ export const AUDIT_GENESIS_HASH = "genesis:splashtrack:audit:v1";
  * identically — a read-back from the DB reproduces the byte-for-byte input.
  *
  * Versioning is what lets the hashed shape grow without rewriting history:
- *   - **v1** — the ORIGINAL 11-field array. This ordering and membership are
+ *   - **v1** — the ORIGINAL field array. This ordering and membership are
  *     FROZEN: every historical row's stored hash committed to exactly it, so it
  *     must never change. A row with `contentVersion` ≤ 1 digests to this.
  *   - **v2** — v1 with `actorCredentialId` APPENDED (never inserted), so the v1
@@ -122,6 +119,20 @@ export const AUDIT_GENESIS_HASH = "genesis:splashtrack:audit:v1";
  * `verifyAuditChain` passes each row's OWN `contentVersion`, so v1 and v2 rows
  * coexist in one chain and every row verifies against the shape it was written
  * with.
+ *
+ * THE V1 ARRAY WAS REDEFINED ONCE, IN PHASE 0.3, AND THAT IS THE ONLY TIME IT
+ * MAY EVER HAPPEN. It carried `organizationId` in position 6 — the tenant scope
+ * D-056 removes. A column that no longer exists cannot be re-read to verify an
+ * old row, so "keep v1 frozen and add a v3" was not available: the choice was
+ * redefine v1 or keep a hardcoded `null` fossil in the canonical array forever,
+ * which is exactly the false signal D-056 exists to delete. Permissible ONLY
+ * because there is no history to protect — zero releases, zero tags, no
+ * deployed instance (OD-1, closed 2026-09-02), the same ground on which phase
+ * 0.2 regenerated the initial migration. Consequence, stated rather than
+ * discovered: any audit row written before this commit no longer verifies, so a
+ * local development database must be recreated. The test database is truncated
+ * by `scripts/setup-test-db.ts` on every run and is unaffected. Once the first
+ * release exists, D-048 applies and this array is frozen for good.
  */
 export function canonicalizeAuditContent(content: AuditHashContent): string {
   // FROZEN v1 field array — do not reorder or remove entries (see above).
@@ -131,7 +142,6 @@ export function canonicalizeAuditContent(content: AuditHashContent): string {
     content.outcome,
     content.actorPersonId,
     content.actorAuthMethod,
-    content.organizationId,
     content.targetType,
     content.targetId,
     content.requestId,

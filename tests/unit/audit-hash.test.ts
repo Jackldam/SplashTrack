@@ -18,7 +18,6 @@ const base: AuditHashContent = {
   actorPersonId: "person_1",
   actorCredentialId: null,
   actorAuthMethod: "session",
-  organizationId: "org_1",
   targetType: "person",
   targetId: "person_2",
   requestId: "req_1",
@@ -86,7 +85,7 @@ describe("canonicalizeAuditContent", () => {
  * new field. `canonicalizeAuditContent` branches on `contentVersion`.
  */
 describe("versioned canonicalization (v1 ↔ v2)", () => {
-  it("v1 canonicalization is FROZEN — the original 11-field array, ignoring actorCredentialId", () => {
+  it("v1 canonicalization is FROZEN — the original 10-field array, ignoring actorCredentialId", () => {
     // A v1 row's canonical form is exactly the historical array and must not
     // depend on the new field, whatever value it carries.
     const v1 = canonicalizeAuditContent({ ...base, contentVersion: 1 });
@@ -99,6 +98,12 @@ describe("versioned canonicalization (v1 ↔ v2)", () => {
 
     // This is the byte-for-byte array every historical row committed to — a
     // regression here would silently invalidate the whole trail's history.
+    //
+    // The array LOST `organizationId` (it sat between "session" and "person")
+    // in phase 0.3, when D-056 removed the tenant scope from `AuditEvent`. That
+    // is the one and only redefinition v1 is allowed, and the long note on
+    // `canonicalizeAuditContent` states the ground for it. Any OTHER change to
+    // this expectation invalidates real history: fix the code, not the test.
     expect(v1).toBe(
       JSON.stringify([
         "test.event",
@@ -106,7 +111,6 @@ describe("versioned canonicalization (v1 ↔ v2)", () => {
         "SUCCESS",
         "person_1",
         "session",
-        "org_1",
         "person",
         "person_2",
         "req_1",

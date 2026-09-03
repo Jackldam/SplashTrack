@@ -131,7 +131,6 @@ export async function verifyAuditChain(): Promise<AuditChainVerification> {
       actorPersonId: row.actorPersonId,
       actorCredentialId: row.actorCredentialId,
       actorAuthMethod: row.actorAuthMethod,
-      organizationId: row.organizationId,
       targetType: row.targetType,
       targetId: row.targetId,
       requestId: row.requestId,

@@ -818,9 +818,6 @@ model AuditEvent {
   /// The authentication method behind the action where known, e.g. `session` /
   /// `api_key`. Null when not applicable.
   actorAuthMethod   String?
-  /// The organisation scope. PHASE 0.3 removes this column with the rest of the
-  /// tenant machinery — with one organisation per installation it is a constant.
-  organizationId    String?
 
   /// The kind of resource acted on, e.g. `person`, `attendance_event`.
   targetType String?
@@ -852,10 +849,8 @@ model AuditEvent {
   hash         String @unique
 
   @@index([actorPersonId])
-  @@index([organizationId])
   @@index([eventType])
   @@index([occurredAt])
-  @@index([organizationId, sequence])
   @@index([eventType, sequence])
   @@index([actorPersonId, sequence])
 }
