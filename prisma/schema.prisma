@@ -28,9 +28,11 @@
 // reviewable commit at a time, with the suite green before and after each.
 // Done so far:
 //   - `PlatformRoleAssignment` deleted. There is no platform-wide grant.
-// Still to go: the `organizationId` columns, `OrganizationMembership` →
-// `Membership`, `PlatformSettings` merged into the organisation singleton, and
-// the singleton enforced at the database rather than by convention.
+//   - `AuditEvent.organizationId` dropped, with the two indexes over it.
+//   - Every remaining `organizationId` column, foreign key and index dropped.
+// Still to go: `OrganizationMembership` → `Membership`, `PlatformSettings`
+// merged into the organisation singleton, and the singleton enforced at the
+// database rather than by convention.
 //
 // NOT EXTRACTED AT ALL (features, not foundation — see
 // `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
@@ -112,13 +114,6 @@ model Organization {
   status    OrganizationStatus @default(ACTIVE)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
-
-  memberships     OrganizationMembership[]
-  roleAssignments RoleAssignment[]
-  roles           Role[]
-  accessGroups    AccessGroup[]
-  apiCredentials  ApiCredential[]
-  units           OrganizationUnit[]
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +381,7 @@ model TwoFactor {
 /// auth-operational material and CASCADE when the account is hard-deleted.
 /// `aaguid` identifies the authenticator MODEL, not the device or the user.
 model Passkey {
-  id String @id
+  id           String   @id
   /// Server-side backstop on the user-chosen label. The registration path
   /// writes the name straight through the plugin, so this database-level bound
   /// is the only server enforcement covering every write path. Deliberately
@@ -423,24 +418,23 @@ model Passkey {
 /// being a member and a member may never swim. This inherited table is not that
 /// concept. Reusing the name is what D-056 asks for; reusing the ROW is not.
 model OrganizationMembership {
-  id             String           @id @default(cuid(2))
-  personId       String
-  organizationId String
-  status         MembershipStatus @default(ACTIVE)
+  id        String           @id @default(cuid(2))
+  personId  String           @unique
+  status    MembershipStatus @default(ACTIVE)
   /// The organisational unit this member belongs to; null = unassigned. `UNIT`
   /// is FLAT in v1 — there is no descendant walk (D-121) — and the club has one
   /// location today, which confirms that choice rather than straining it.
-  unitId         String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  unitId    String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
-  person       Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  unit         OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
-  @@unique([personId, organizationId])
-  @@index([organizationId])
-  @@index([personId])
+  // One organisation, so a person has AT MOST ONE membership row and `personId`
+  // is the natural key. This replaces the inherited `(personId, organizationId)`
+  // pair, which in a single-organisation installation permitted exactly one row
+  // per person anyway — while implying to every reader that it did not.
   @@index([unitId])
 }
 
@@ -460,27 +454,26 @@ model OrganizationMembership {
 /// thereby fall off a security control. `isSystem` marks built-in roles that
 /// seeding manages.
 model Role {
-  id String @id @default(cuid(2))
+  id          String   @id @default(cuid(2))
   /// Globally unique machine key. System roles use stable constants; org-owned
   /// custom roles use an auto-generated unique key. `name` is the human label
   /// and is NOT unique.
-  key  String @unique
-  name String
-  /// null → a system/global role (seeded, `isSystem = true`).
-  /// <org> → an org-owned custom role. PHASE 0.3 collapses this distinction.
-  organizationId String?
-  description    String?
-  isSystem       Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  key         String   @unique
+  name        String
+  description String?
+  /// Marks a built-in role that seeding manages. The inherited
+  /// `organizationId` — null for a global role, set for an org-owned custom one
+  /// — is GONE (phase 0.3): with one organisation, every role belongs to it and
+  /// `isSystem` alone carries the distinction that mattered, "seeded" versus
+  /// "invented here".
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  organization          Organization?              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   permissions           RolePermission[]
   accessGroups          RoleAccessGroup[]
   assignments           RoleAssignment[]
   credentialAssignments CredentialRoleAssignment[]
-
-  @@index([organizationId])
 }
 
 /// A node in an organisation's unit tree — the within-organisation partition
@@ -493,44 +486,37 @@ model Role {
 /// inherited tree machinery that v1 does not walk. Do not let their presence
 /// talk `resolveReach` into a descendant walk.
 model OrganizationUnit {
-  id             String   @id @default(cuid(2))
-  organizationId String
+  id        String   @id @default(cuid(2))
   /// null → a root unit; else the parent unit's id.
-  parentId       String?
-  name           String
+  parentId  String?
+  name      String
   /// Materialized ancestor path, always beginning and ending with a slash.
-  path           String
+  path      String
   /// 0 for a root unit; parent.depth + 1 otherwise.
-  depth          Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  depth     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization              Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent                    OrganizationUnit?          @relation("UnitTree", fields: [parentId], references: [id], onDelete: Restrict)
   children                  OrganizationUnit[]         @relation("UnitTree")
   roleAssignments           RoleAssignment[]
   credentialRoleAssignments CredentialRoleAssignment[]
   memberships               OrganizationMembership[]
 
-  @@index([organizationId])
-  @@index([organizationId, path])
+  @@index([path])
 }
 
 /// A named, admin-editable bundle of permissions — a reusable building block a
 /// custom role can include. Enforcement still resolves to atomic permissions.
 model AccessGroup {
-  id             String   @id @default(cuid(2))
-  organizationId String
-  name           String
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id          String   @id @default(cuid(2))
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  permissions  AccessGroupPermission[]
-  roles        RoleAccessGroup[]
-
-  @@index([organizationId])
+  permissions AccessGroupPermission[]
+  roles       RoleAccessGroup[]
 }
 
 /// Join: which catalogue permissions an `AccessGroup` grants.
@@ -587,31 +573,33 @@ model RolePermission {
   @@index([permissionId])
 }
 
-/// Grants a `Role` to a `Person` within an `Organization`. Restrict deletes, so
-/// a person's or an organisation's role history is never silently removed.
+/// Grants a `Role` to a `Person`, optionally narrowed to one unit. Restrict
+/// deletes, so a person's role history is never silently removed.
+///
+/// THIS IS THE ONLY GRANT TABLE FOR A PERSON. `PlatformRoleAssignment` is gone
+/// (phase 0.3), so `requirePermission` (D-147, phase 0.4) resolves a
+/// principal's permissions from here and nowhere else.
 model RoleAssignment {
-  id             String   @id @default(cuid(2))
-  personId       String
-  roleId         String
-  organizationId String
+  id        String   @id @default(cuid(2))
+  personId  String
+  roleId    String
   /// Unit reach of this grant: null = the whole organisation; a unit = that
   /// unit. See `OrganizationUnit` on why v1 does NOT walk descendants (D-121).
-  unitId         String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  unitId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  person       Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
-  role         Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  unit         OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  role   Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
-  // Unique per (person, role, org, unit). Postgres treats NULLs as DISTINCT, so
-  // this enforces uniqueness for UNIT-scoped grants but NOT for two whole-org
-  // grants (unitId = null). The Prisma DSL cannot express NULLS NOT DISTINCT,
-  // so whole-org-grant uniqueness is enforced at the application layer: the
-  // write path applies a diff keyed on (person, role, org).
-  @@unique([personId, roleId, organizationId, unitId])
-  @@index([organizationId])
+  // Unique per (person, role, unit) — the inherited key was (person, role, org,
+  // unit) and the org component was a constant. Postgres treats NULLs as
+  // DISTINCT, so this enforces uniqueness for UNIT-scoped grants but NOT for two
+  // organisation-wide grants (unitId = null). The Prisma DSL cannot express
+  // NULLS NOT DISTINCT, so organisation-wide-grant uniqueness is enforced at the
+  // application layer: the write path applies a diff keyed on (person, role).
+  @@unique([personId, roleId, unitId])
   @@index([personId])
   @@index([roleId])
   @@index([unitId])
@@ -653,9 +641,8 @@ model RoleAssignment {
 model ApiCredential {
   id String @id @default(cuid(2))
 
-  organizationId String
   /// Human-readable label chosen at creation.
-  name           String
+  name String
 
   /// sha256(rawToken), hex — the ONLY stored form of the secret.
   tokenHash   String @unique
@@ -678,10 +665,7 @@ model ApiCredential {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   roleAssignments CredentialRoleAssignment[]
-
-  @@index([organizationId])
 }
 
 /// Grants a `Role` to an `ApiCredential`. A dedicated grant table mirroring
