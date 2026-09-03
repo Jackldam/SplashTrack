@@ -222,15 +222,70 @@ describe("boot state matrix (D-055, D-098, D-099)", () => {
     expect(decision.detail).toContain("P3009");
   });
 
-  it("FAILED — a migration is recorded rolled back", async () => {
-    const database = await createDatabase("failed_rolledback");
+  it("a ROLLED-BACK migration is EXISTING, not FAILED — the recovery must be reachable", async () => {
+    // D-098 writes predicate 3 as `finished_at IS NULL OR rolled_back_at IS NOT
+    // NULL`. Measured against Prisma 7: `migrate resolve --rolled-back` — the
+    // command the FAILED message tells the operator to run — leaves the row
+    // with `finished_at` NULL and `rolled_back_at` SET, so the literal reading
+    // reports FAILED forever to an operator who did exactly what they were
+    // told. Prisma itself treats a rolled-back row as NOT APPLIED and
+    // `migrate deploy` re-applies it, so this is a pending migration.
+    const database = await createDatabase("resolved_rolledback");
+    await sql(database, [
+      CREATE_MIGRATIONS_TABLE,
+      ...IMAGE_MIGRATIONS.slice(0, -1).map((name) => insertMigration(name)),
+      insertMigration(IMAGE_MIGRATIONS[IMAGE_MIGRATIONS.length - 1], {
+        finished: false,
+        rolledBack: true,
+      }),
+      CREATE_BOOTSTRAP_TABLE,
+      `INSERT INTO "InstallationBootstrap" (id, "completedAt") VALUES ('installation', now())`,
+    ]);
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("EXISTING");
+    expect(decision.pendingMigrations).toEqual([
+      IMAGE_MIGRATIONS[IMAGE_MIGRATIONS.length - 1],
+    ]);
+  });
+
+  it("a rolled-back migration is never counted as applied", async () => {
+    // The other half of the same correction: a rolled-back row IS recorded, so
+    // counting recorded rows as applied would report CURRENT on a schema that
+    // is missing that migration's tables.
+    const database = await createDatabase("rolledback_not_current");
+    await sql(database, [
+      CREATE_MIGRATIONS_TABLE,
+      ...IMAGE_MIGRATIONS.map((name, index) =>
+        index === 0
+          ? insertMigration(name, { finished: false, rolledBack: true })
+          : insertMigration(name),
+      ),
+      CREATE_BOOTSTRAP_TABLE,
+      `INSERT INTO "InstallationBootstrap" (id, "completedAt") VALUES ('installation', now())`,
+    ]);
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("EXISTING");
+    expect(decision.pendingMigrations).toEqual([IMAGE_MIGRATIONS[0]]);
+  });
+
+  it("AHEAD still fires on an unknown migration that was rolled back", async () => {
+    // A newer image reached this database even if its migration was undone.
+    // Refusing to start is recoverable in seconds; guessing is not.
+    const database = await createDatabase("ahead_rolledback");
     await sql(database, [
       CREATE_MIGRATIONS_TABLE,
       ...IMAGE_MIGRATIONS.map((name) => insertMigration(name)),
-      insertMigration(IMAGE_MIGRATIONS[0], { rolledBack: true }),
+      insertMigration("29990101000000_from_a_newer_release", {
+        finished: false,
+        rolledBack: true,
+      }),
     ]);
 
-    expect((await detectAgainst(database)).state).toBe("FAILED");
+    expect((await detectAgainst(database)).state).toBe("AHEAD");
   });
 
   it("PARTIAL — schema present, no bootstrap record, no data", async () => {

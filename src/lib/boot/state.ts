@@ -16,8 +16,8 @@
  *
  *   1. `_prisma_migrations` absent AND no other tables          → EMPTY
  *   2. `_prisma_migrations` names a migration the image lacks   → AHEAD
- *   3. any row with `finished_at IS NULL`
- *      or `rolled_back_at IS NOT NULL`                          → FAILED
+ *   3. any row stuck mid-flight — `finished_at IS NULL` AND
+ *      `rolled_back_at IS NULL` (see the note in the code)      → FAILED
  *   4. no `InstallationBootstrap` row with `completedAt`        → PARTIAL
  *      …with any `UserAccount` / `Person` / `RoleAssignment`    → TAMPERED
  *   5. an image migration missing from `_prisma_migrations`     → EXISTING
@@ -115,12 +115,37 @@ export function imageMigrationNames(
     .sort();
 }
 
-/** Applied migration names, in the order Prisma recorded them. */
-async function appliedMigrationNames(db: BootStateReader): Promise<string[]> {
-  const rows = await db.$queryRaw<{ migration_name: string }[]>`
-    SELECT migration_name FROM "_prisma_migrations" ORDER BY started_at ASC
+/**
+ * One row per recorded migration, with the two flags every predicate below
+ * turns on.
+ *
+ * `finished` and `rolledBack` are read SEPARATELY rather than collapsed into
+ * "did it work", because they mean different things and D-098's predicate 3
+ * conflates them — see {@link detectBootState}.
+ */
+interface MigrationRecord {
+  name: string;
+  finished: boolean;
+  rolledBack: boolean;
+}
+
+async function migrationRecords(
+  db: BootStateReader,
+): Promise<MigrationRecord[]> {
+  const rows = await db.$queryRaw<
+    { migration_name: string; finished: boolean; rolled_back: boolean }[]
+  >`
+    SELECT migration_name,
+           finished_at IS NOT NULL   AS finished,
+           rolled_back_at IS NOT NULL AS rolled_back
+      FROM "_prisma_migrations"
+     ORDER BY started_at ASC
   `;
-  return rows.map((row) => row.migration_name);
+  return rows.map((row) => ({
+    name: row.migration_name,
+    finished: row.finished,
+    rolledBack: row.rolled_back,
+  }));
 }
 
 /** True when a table of this name exists in the connection's search path. */
@@ -229,11 +254,17 @@ export async function detectBootState(
     );
   }
 
-  const applied = await appliedMigrationNames(db);
+  const records = await migrationRecords(db);
   const imageSet = new Set(imageMigrations);
 
   // ── 2. AHEAD ──────────────────────────────────────────────────────────────
-  const unknown = applied.filter((name) => !imageSet.has(name));
+  //
+  // Every RECORDED name, rolled back or not. A rolled-back unknown migration
+  // still means a newer image reached this database, and refusing to start is
+  // recoverable in seconds where guessing is not.
+  const unknown = records
+    .map((record) => record.name)
+    .filter((name) => !imageSet.has(name));
   if (unknown.length > 0) {
     return decide(
       "AHEAD",
@@ -247,13 +278,31 @@ export async function detectBootState(
   }
 
   // ── 3. FAILED ─────────────────────────────────────────────────────────────
-  const broken = await db.$queryRaw<{ migration_name: string }[]>`
-    SELECT migration_name FROM "_prisma_migrations"
-     WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL
-     ORDER BY started_at ASC
-  `;
+  //
+  // D-098 WRITES THIS PREDICATE AS `finished_at IS NULL OR rolled_back_at IS
+  // NOT NULL`, AND THAT READING MAKES ITS OWN RECOVERY UNREACHABLE. Measured,
+  // not reasoned about: `prisma migrate resolve --rolled-back <name>` — the
+  // command this state's message tells the operator to run — leaves the row
+  // with `finished_at` still NULL and `rolled_back_at` SET. Under the literal
+  // predicate the container then reports FAILED forever, having done exactly
+  // what it was told.
+  //
+  // The two flags mean different things, so they are read separately:
+  //
+  //   unfinished, NOT rolled back → the migration is stuck MID-FLIGHT. Prisma
+  //     keeps it recorded and it blocks every later migration (P3009), so a
+  //     restart fails identically. Refuse, and name the recovery.
+  //   rolled back                 → the operator has ALREADY acted. Prisma
+  //     treats the row as not applied and `migrate deploy` re-applies it, so
+  //     this is an ordinary pending migration and falls through to predicate 5.
+  //
+  // This keeps everything D-098 wanted — a stuck migration never turns into a
+  // silent crash loop — and removes a dead end the decision did not intend.
+  const broken = records.filter(
+    (record) => !record.finished && !record.rolledBack,
+  );
   if (broken.length > 0) {
-    const names = broken.map((row) => row.migration_name).join(", ");
+    const names = broken.map((record) => record.name).join(", ");
     return decide(
       "FAILED",
       `A migration is recorded as unfinished or rolled back (${names}). ` +
@@ -264,7 +313,14 @@ export async function detectBootState(
     );
   }
 
-  const appliedSet = new Set(applied);
+  // SUCCESSFULLY applied, which is not the same as recorded: a rolled-back row
+  // is recorded and is not applied, and counting it would let the container
+  // report CURRENT on a schema missing that migration's tables.
+  const appliedSet = new Set(
+    records
+      .filter((record) => record.finished && !record.rolledBack)
+      .map((record) => record.name),
+  );
   const pending = imageMigrations.filter((name) => !appliedSet.has(name));
 
   // ── 4. PARTIAL / TAMPERED ─────────────────────────────────────────────────
@@ -343,7 +399,7 @@ export async function detectBootState(
   // ── 6. CURRENT ────────────────────────────────────────────────────────────
   return decide(
     "CURRENT",
-    `The schema matches this image (${applied.length} migration(s) applied). ` +
+    `The schema matches this image (${appliedSet.size} migration(s) applied). ` +
       "Serving.",
   );
 }

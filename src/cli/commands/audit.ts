@@ -115,7 +115,9 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
     ctx.log("  (none visible to this role)");
   }
   for (const row of rows) {
-    ctx.log(`  ${row.table_name.padEnd(16)} ${row.grantee.padEnd(28)} ${row.privilege_type}`);
+    ctx.log(
+      `  ${row.table_name.padEnd(16)} ${row.grantee.padEnd(28)} ${row.privilege_type}`,
+    );
   }
 
   const appWrites = rows.filter(
@@ -132,14 +134,33 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
         "nor DELETE on AuditEvent.",
     );
   } else {
+    // Two different situations produce the same "not in force", and telling an
+    // operator to run a script they have already run is how a real warning
+    // gets ignored. The separate roles existing is the signal that the
+    // deployment step ran; the application role keeping its writes is then the
+    // KNOWN remaining half, not a forgotten one.
+    const separateRoleExists = rows.some((row) =>
+      row.grantee.startsWith("splashtrack_audit_"),
+    );
+
     ctx.log(
       "D-149 part 2 is NOT in force: the application role still holds " +
         `${appWrites.map((row) => row.privilege_type).join(" and ")} on ` +
         "AuditEvent. Append-only currently rests on the audit repository " +
-        "being the only writer and exposing no mutation, which is a code " +
-        "property rather than a database one. Apply " +
-        "infra/audit-database-role.sql as a privileged role — see the header " +
-        "of that file for why this is a deployment step and not a migration.",
+        "being the only writer and exposing no mutation — a code property, " +
+        "not a database one.",
+    );
+    ctx.log(
+      separateRoleExists
+        ? "  The separate audit roles DO exist, so the deployment step has " +
+            "run. What remains is the application half: revoking the app " +
+            "role's writes needs the second and third connections, which " +
+            "means two new environment variables and therefore an ADR " +
+            "(D-037). That section of infra/audit-database-role.sql is " +
+            "commented out until then, deliberately — applying it today " +
+            "would break the retention path with no connection to run it on."
+        : "  Apply infra/audit-database-role.sql as a privileged role. Its " +
+            "header states why this is a deployment step and not a migration.",
     );
   }
   return 0;
