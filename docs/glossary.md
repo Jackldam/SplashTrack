@@ -63,6 +63,21 @@ Tracking only — no invoicing, no iDEAL/Mollie, no direct debit, no VAT (§6.5)
 | SportLink | — | fixed | External registration, mandatory for competition-swimming and water-polo members only. **Out of v1, no stub column** (OD-19). |
 | wachtlijst | `WaitingList`, `WaitingListEntry` | fixed | **One list for the club**, not a queue per group. An entry records the child and the level; placement is a matching decision against groups that have room, never automatic and never strictly first-in-first-out (D-180). |
 
+## Infrastructure terms
+
+Not domain vocabulary, and not Dutch — none of these has a `leerling`-shaped
+counterpart at the poolside. They are here because `CLAUDE.md` §3 fixes one
+English identifier per concept **in this file, before it is built**, and each of
+these is a permanent name later code must not re-spell.
+
+| Concept | English identifier | Status | Meaning, and why the name is permanent |
+|---|---|---|---|
+| encrypted-column identifier | `columnId` | fixed | The stable logical name of an encrypted column, from the registry in `src/lib/crypto/encrypted-columns.ts`. It is bound into the AAD of every value ever written for that column, so it is assigned once, never renamed and never reused (D-167). The physical model and field are separate, MUTABLE registry fields — that split is the whole decision. |
+| encryption envelope | `Sealed`, `seal`, `open` | fixed | The D-096 envelope `v1:<keyId>:<nonce>:<ct>`. `Sealed<C>` is the branded type a protected column carries; `seal` and `open` are the only ways in and out. |
+| key generation | `keyId` | fixed | WHICH generation of `SECRET_KEY` a value was written under. Distinct from a **purpose label** (`medical-v1`), which selects the HKDF branch. Rotation increments the key id and never changes a purpose (D-096, D-112). |
+| audit checkpoint | `AuditCheckpoint` | fixed | The signed anchor a retention run leaves behind so the audit chain still verifies across the gap that run made (D-168). "Checkpoint" is the design's own word — do not introduce "anchor" or "watermark" as a second spelling for it. |
+| pruned segment | `prunedSegments` | fixed | One contiguous, deleted prefix of the audit trail, accounted for by one checkpoint. `audit:verify` reports "intact across N pruned segments": a stated gap, never an unexplained hole. |
+
 ---
 
 ## To confirm with the domain expert

@@ -11,14 +11,30 @@
 // WHAT IS DELIBERATELY ABSENT, AND WHY IT IS NOT AN OVERSIGHT
 //
 // PHASE 0.4 — the retrofit-hostile mechanisms (`docs/build/phase-0-foundation.md`
-// §0.4). None of these are in this schema, on purpose: their specifications
-// were repaired in D-166..D-173 and building a half-matching version now would
-// have to be rebuilt against data.
-//   - Encrypted columns and the D-096 envelope. No column here is encrypted.
-//     The envelope's AAD binds `(columnId, primary key, keyId)` where `columnId`
-//     is a stable registry identifier, never the physical name (D-167).
-//   - `AuditCheckpoint` and the audit chain's checkpointing (D-168). Without it
-//     the first legitimate retention run breaks the chain permanently.
+// §0.4). Their specifications were repaired in D-166..D-173; building a
+// half-matching version before that would have had to be rebuilt against data.
+//
+// DONE (phase 0.4a — `docs/build/phase-0.4a-crypto-and-audit-report.md`):
+//   - The D-096/D-167 encryption envelope, in `src/lib/crypto/`. NO COLUMN HERE
+//     IS ENCRYPTED YET, and that is the ordering `CLAUDE.md` rule 1 asks for:
+//     the envelope exists before the first encrypted byte, so no value ever has
+//     to be unwrapped and rewritten by hand from a backup.
+//
+//     TO ENCRYPT A COLUMN: mark the field with a `/// @encrypted <columnId>`
+//     doc comment and add the matching entry to
+//     `src/lib/crypto/encrypted-columns.ts`.
+//     `tests/unit/encrypted-column-registry.test.ts` checks both directions and
+//     goes red if either half is missing.
+//
+//         /// @encrypted students.medical_remarks
+//         medicalRemarks String?
+//
+//     `columnId` is PERMANENT — it is bound into the AAD of every value ever
+//     written for that column — while `model` and `field` in the registry are
+//     ordinary mutable fields a rename edits (D-167). That is what makes a
+//     rename safe here where it used to read as tampering (F-136).
+//
+// STILL ABSENT, on purpose:
 //   - Retention-policy and lawful-basis columns on every personal-data table
 //     (D-014, D-065), and the erasure registry. `CLAUDE.md` rule 5 makes these
 //     columns, not a later feature — which is exactly why they must arrive with
