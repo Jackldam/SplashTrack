@@ -94,7 +94,14 @@ Revisit when a customer contractually demands dedicated hardware.
 
 ---
 
-### OD-4 — **(Partly answered)** Fee *tracking* is in v1; invoicing is not.
+### OD-4 — **(CLOSED 2026-09-03)** Fee *tracking* is in v1; invoicing is not.
+
+**The remaining half is now answered: contributie ships in v1 as well** (Jack,
+2026-09-03; **D-178**). This overrules the cut proposal's A-1, which had deferred
+contribution tracking for a season on the reasoning that the incumbent could keep
+doing money — reasoning that was already weak once OD-18 closed in SplashTrack's
+favour. Both fee kinds ship together. The invoicing line below is unchanged and
+is the part that stays out.
 
 **Answered.** Fees are tracked in v1 — fee types, charges, payments, a balance
 view and a CSV export (**R-32**). The school needs it kept, and without it they
