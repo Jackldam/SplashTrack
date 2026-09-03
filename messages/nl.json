@@ -6,10 +6,33 @@
   "landing": {
     "title": "SplashTrack",
     "tagline": "Leerlingvolgsysteem voor zwemscholen.",
-    "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt."
+    "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt.",
+    "signedInAs": "Ingelogd als {email}."
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
     "unexpected": "Er ging iets mis. Probeer het opnieuw."
+  },
+  "setup": {
+    "title": "Deze installatie is nog niet ingericht",
+    "explanation": "Er is nog geen beheerder. Maak de eerste aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
+    "noRegistration": "Zelfregistratie bestaat niet: accounts worden door een beheerder aangemaakt."
+  },
+  "signIn": {
+    "title": "Inloggen",
+    "email": "E-mailadres",
+    "password": "Wachtwoord",
+    "submit": "Verder",
+    "code": "Zescijferige code",
+    "codePrompt": "Voer de code uit je authenticator-app in.",
+    "verify": "Bevestigen",
+    "startOver": "Opnieuw beginnen",
+    "badCredentials": "Inloggen is niet gelukt. Controleer je e-mailadres en wachtwoord.",
+    "badCode": "Die code klopt niet of is verlopen."
+  },
+  "breakGlass": {
+    "title": "Noodtoegang gebruikt",
+    "explanation": "Iemand met toegang tot de host heeft een break-glass-commando uitgevoerd. Controleer of dat klopte voordat je deze melding wegklikt.",
+    "dismiss": "Gezien"
   }
 }

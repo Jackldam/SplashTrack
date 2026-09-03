@@ -434,3 +434,6 @@ apps/web/.env
 # Bootstrap key material (D-112/D-113). NEVER committed, and never inside
 # DATA_DIR — the backup archive captures that tree.
 /secrets/
+
+# Bundled CLI output (`npm run build:cli`), built into the image.
+/dist

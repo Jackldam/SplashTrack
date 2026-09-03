@@ -1,23 +1,66 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { getCurrentSession } from "@/lib/auth/session";
+import { isSetupIncomplete } from "@/lib/boot";
+
+import { BreakGlassBanner } from "./break-glass-banner";
+
 /**
- * A placeholder landing page, and deliberately nothing more.
+ * The landing page, which is also — until D-039's wizard exists — where an
+ * unconfigured installation says so.
  *
- * Phase 0.2 is the foundation: there is no domain module, so there is nothing
- * honest to show. The public course catalogue and inquiry form (R-12, reduced)
- * are a phase 4 surface.
+ * THE SETUP NOTICE IS NOT THE WIZARD. `13-…` §6 puts a browser wizard here that
+ * asks the one question only the operator can answer ("new installation, or
+ * restore from backup?") and then creates the first administrator. That is
+ * phase 1. What this renders instead is the honest reduction: the question is
+ * answered on the HOST, by `splashtrack admin:create`, which is the same
+ * host-access-is-proof-of-ownership pattern D-101 and §7 already use for every
+ * other privileged operation — and it means there is no unauthenticated
+ * administrative surface open on this instance at all, not even a bounded one.
  *
- * This page exists so `next build` has a route to build and so the E2E harness
- * has something to load — not as the beginning of a design.
+ * There is deliberately nothing else here. Phase 0 has no domain module, so
+ * there is nothing honest to show a signed-in instructor yet.
  */
 export default async function LandingPage() {
-  const t = await getTranslations();
+  const [t, setupIncomplete, session] = await Promise.all([
+    getTranslations(),
+    isSetupIncomplete(),
+    getCurrentSession(),
+  ]);
+
+  if (setupIncomplete) {
+    return (
+      <main className="container py-5">
+        <h1>{t("landing.title")}</h1>
+        <div className="alert alert-info mt-4" role="status">
+          <h2 className="h5">{t("setup.title")}</h2>
+          <p>{t("setup.explanation")}</p>
+          <pre className="mb-0">
+            <code>
+              docker compose exec app splashtrack admin:create \{"\n"}
+              {"    "}--email you@example.org --name &apos;Your Name&apos;
+            </code>
+          </pre>
+        </div>
+        <p className="text-muted">{t("setup.noRegistration")}</p>
+      </main>
+    );
+  }
 
   return (
     <main className="container py-5">
+      <BreakGlassBanner />
       <h1>{t("landing.title")}</h1>
       <p className="lead">{t("landing.tagline")}</p>
       <p className="text-muted">{t("landing.foundationNotice")}</p>
+      {session ? (
+        <p>{t("landing.signedInAs", { email: session.userAccount.email })}</p>
+      ) : (
+        <Link className="btn btn-primary" href="/sign-in">
+          {t("signIn.title")}
+        </Link>
+      )}
     </main>
   );
 }

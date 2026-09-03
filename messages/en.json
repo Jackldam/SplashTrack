@@ -6,10 +6,33 @@
   "landing": {
     "title": "SplashTrack",
     "tagline": "Pupil tracking for swim schools.",
-    "foundationNotice": "The foundation is in place. There is no functionality yet — the first module follows."
+    "foundationNotice": "The foundation is in place. There is no functionality yet — the first module follows.",
+    "signedInAs": "Signed in as {email}."
   },
   "errors": {
     "notFound": "This page does not exist.",
     "unexpected": "Something went wrong. Please try again."
+  },
+  "setup": {
+    "title": "This installation is not set up yet",
+    "explanation": "There is no administrator. Create the first one from the host — host access is the proof of ownership here:",
+    "noRegistration": "There is no self-registration: accounts are created by an administrator."
+  },
+  "signIn": {
+    "title": "Sign in",
+    "email": "Email address",
+    "password": "Password",
+    "submit": "Continue",
+    "code": "Six-digit code",
+    "codePrompt": "Enter the code from your authenticator app.",
+    "verify": "Verify",
+    "startOver": "Start over",
+    "badCredentials": "Sign-in failed. Check your email address and password.",
+    "badCode": "That code is wrong or has expired."
+  },
+  "breakGlass": {
+    "title": "Break-glass access was used",
+    "explanation": "Somebody with host access ran a break-glass command. Check that it was expected before dismissing this.",
+    "dismiss": "Acknowledged"
   }
 }
