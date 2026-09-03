@@ -83,12 +83,6 @@ enum UserAccountStatus {
   DISABLED
 }
 
-enum MembershipStatus {
-  INVITED
-  ACTIVE
-  SUSPENDED
-}
-
 // ---------------------------------------------------------------------------
 // The organisation — an ENFORCED SINGLETON (D-027, D-056)
 // ---------------------------------------------------------------------------
@@ -478,17 +472,18 @@ model Passkey {
 /// modelled thinly; the domain shape arrives with the `people` module, which
 /// OWNS this table. Two things it must do then, neither of them phase 0.3 work:
 ///   - Add `memberNumber` and `MembershipPeriod`.
-///   - REMOVE `status`. D-059 is explicit that belonging is a set of intervals
-///     and never a status flag, because a flag destroys the answer to "when
-///     were they a member?". `MembershipStatus` is inherited, nothing in this
-///     repository reads or writes it, and it is left in place only because
-///     replacing it is a domain-model change and this is a removal pass.
+///   - Add `MembershipPeriod`. The inherited `status` flag and its
+///     `MembershipStatus` enum were REMOVED in phase 0.3 rather than carried:
+///     D-059 is explicit that belonging is a set of intervals and never a
+///     status flag, because a flag destroys the answer to "when were they a
+///     member?". Nothing read it, so deleting it was free — and a forbidden
+///     column left lying in the schema is one somebody wires up later precisely
+///     because it is there.
 /// Membership grants no authorization by itself and is never a prerequisite for
 /// a role (D-060) — permissions come from `RoleAssignment` alone.
 model Membership {
   id        String           @id @default(cuid(2))
-  personId  String           @unique
-  status    MembershipStatus @default(ACTIVE)
+  personId  String  @unique
   /// The organisational unit this member belongs to; null = unassigned. `UNIT`
   /// is FLAT in v1 — there is no descendant walk (D-121) — and the club has one
   /// location today, which confirms that choice rather than straining it.

@@ -37,6 +37,5 @@ export type DatabaseClient =
 export {
   Prisma,
   UserAccountStatus,
-  MembershipStatus,
   SessionMfaEvidence,
 } from "@/generated/prisma/client";
