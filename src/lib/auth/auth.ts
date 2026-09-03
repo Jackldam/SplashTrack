@@ -49,6 +49,7 @@ import { passkey } from "@better-auth/passkey";
 import { nextCookies } from "better-auth/next-js";
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 
+import { deriveAuthSigningSecret } from "@/lib/crypto/secret-key";
 import {
   prisma,
   UserAccountStatus,
@@ -464,7 +465,13 @@ const enforceServerSideSignUpOnly = {
 
 export const auth = betterAuth({
   // Signs session tokens and encrypts TOTP secrets. Never logged.
-  secret: process.env.BETTER_AUTH_SECRET,
+  //
+  // DERIVED, NOT CONFIGURED (D-112). This read `BETTER_AUTH_SECRET` — a second
+  // independent secret beside `SECRET_KEY`. Two secrets is the failure mode
+  // F-95 names, not the safe option: a restore that reproduces one but not the
+  // other silently kills every TOTP enrolment while MFA is mandatory. One root,
+  // one HKDF branch per purpose — see `@/lib/crypto/secret-key`.
+  secret: deriveAuthSigningSecret(),
   baseURL: process.env.BETTER_AUTH_URL,
   appName: APP_NAME,
 

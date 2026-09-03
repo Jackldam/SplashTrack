@@ -430,3 +430,7 @@ apps/web/.env
 /playwright-report/
 /test-results/
 /blob-report/
+
+# Bootstrap key material (D-112/D-113). NEVER committed, and never inside
+# DATA_DIR — the backup archive captures that tree.
+/secrets/
