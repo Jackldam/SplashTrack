@@ -70,7 +70,7 @@ export interface CurrentPerson {
 
 /**
  * The resolved current session. `personId` is the key downstream authorization
- * uses to load OrganizationMembership / RoleAssignment for this user.
+ * uses to load Membership / RoleAssignment for this user.
  */
 export interface CurrentSession {
   sessionId: string;

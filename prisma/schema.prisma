@@ -30,9 +30,9 @@
 //   - `PlatformRoleAssignment` deleted. There is no platform-wide grant.
 //   - `AuditEvent.organizationId` dropped, with the two indexes over it.
 //   - Every remaining `organizationId` column, foreign key and index dropped.
-// Still to go: `OrganizationMembership` → `Membership`, `PlatformSettings`
-// merged into the organisation singleton, and the singleton enforced at the
-// database rather than by convention.
+//   - `OrganizationMembership` renamed to `Membership`.
+// Still to go: `PlatformSettings` merged into the organisation singleton, and
+// the singleton enforced at the database rather than by convention.
 //
 // NOT EXTRACTED AT ALL (features, not foundation — see
 // `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
@@ -140,10 +140,10 @@ model Person {
   // system, children especially, never will).
   account UserAccount?
 
-  memberships             OrganizationMembership[]
+  memberships             Membership[]
   roleAssignments         RoleAssignment[]
   /// Platform-settings rows this person last edited (0..1 today — the singleton).
-  platformSettingsUpdates PlatformSettings[]       @relation("PlatformSettingsUpdatedBy")
+  platformSettingsUpdates PlatformSettings[] @relation("PlatformSettingsUpdatedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -405,19 +405,28 @@ model Passkey {
 }
 
 // ---------------------------------------------------------------------------
-// Organisation membership — PHASE 0.3 renames this to `Membership` (D-056)
+// Membership — renamed from `OrganizationMembership` in phase 0.3 (D-056)
 // ---------------------------------------------------------------------------
 
-/// Links a `Person` to an `Organization`. Phase 0.3 renames this to
-/// `Membership` and drops `organizationId`.
+/// This person belongs to the organisation. There is only one organisation to
+/// be a member of, so the name no longer needs to say which
+/// (`01-domain-model.md` §1.1, D-056) and `personId` is the natural key.
 ///
-/// A caution for whoever does that rename: in SplashTrack, `Membership` is a
-/// DOMAIN concept with its own meaning — club membership, with
-/// `MembershipPeriod` history, where leave-and-return is a second period and
-/// never a mutated row (D-059), and where a pupil may have lessons without
-/// being a member and a member may never swim. This inherited table is not that
-/// concept. Reusing the name is what D-056 asks for; reusing the ROW is not.
-model OrganizationMembership {
+/// THE NAME IS NOW THE DOMAIN'S. `docs/glossary.md` fixes `Membership` as
+/// *lid / lidmaatschap* — club membership — and `01-domain-model.md` §3.1
+/// specifies it as `memberNumber` + `unitId?` with N `MembershipPeriod` rows,
+/// one per person for life (D-053, D-059). This row is the same relation
+/// modelled thinly; the domain shape arrives with the `people` module, which
+/// OWNS this table. Two things it must do then, neither of them phase 0.3 work:
+///   - Add `memberNumber` and `MembershipPeriod`.
+///   - REMOVE `status`. D-059 is explicit that belonging is a set of intervals
+///     and never a status flag, because a flag destroys the answer to "when
+///     were they a member?". `MembershipStatus` is inherited, nothing in this
+///     repository reads or writes it, and it is left in place only because
+///     replacing it is a domain-model change and this is a removal pass.
+/// Membership grants no authorization by itself and is never a prerequisite for
+/// a role (D-060) — permissions come from `RoleAssignment` alone.
+model Membership {
   id        String           @id @default(cuid(2))
   personId  String           @unique
   status    MembershipStatus @default(ACTIVE)
@@ -431,10 +440,6 @@ model OrganizationMembership {
   person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
   unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
-  // One organisation, so a person has AT MOST ONE membership row and `personId`
-  // is the natural key. This replaces the inherited `(personId, organizationId)`
-  // pair, which in a single-organisation installation permitted exactly one row
-  // per person anyway — while implying to every reader that it did not.
   @@index([unitId])
 }
 
@@ -501,7 +506,7 @@ model OrganizationUnit {
   children                  OrganizationUnit[]         @relation("UnitTree")
   roleAssignments           RoleAssignment[]
   credentialRoleAssignments CredentialRoleAssignment[]
-  memberships               OrganizationMembership[]
+  memberships               Membership[]
 
   @@index([path])
 }

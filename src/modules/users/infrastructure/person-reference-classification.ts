@@ -74,15 +74,15 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "Account (the password hash) / TwoFactor / Passkey via userId — those " +
       "reference UserAccount, not Person, so they are out of this map.",
   },
-  "OrganizationMembership.personId": {
+  "Membership.personId": {
     category: "HARD_DELETE",
     reason:
       "The person's own membership row. Restrict FK; an explicit deleteMany " +
-      "in the erasure. NOTE for phase 0.3: when this table becomes " +
-      "`Membership`, the SplashTrack domain concept of club membership " +
-      "(D-059, with MembershipPeriod history) is NOT this row, and its " +
-      "retention is a separate decision — a diploma history outliving a " +
-      "membership is the whole point of D-053's split.",
+      "in the erasure. Its RETENTION is a separate decision from the erasure " +
+      "category and is not settled here: a diploma history outliving a lapsed " +
+      "membership is the whole point of D-053's split, and the `people` " +
+      "module brings MembershipPeriod (D-059) and its own retention policy " +
+      "(D-065, phase 0.4) to this table.",
   },
   "RoleAssignment.personId": {
     category: "HARD_DELETE",

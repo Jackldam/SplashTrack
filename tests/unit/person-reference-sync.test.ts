@@ -111,7 +111,7 @@ describe("PERSON_REFERENCE_CLASSIFICATION stays in sync with prisma/schema.prism
     // detection paths.
     for (const known of [
       "UserAccount.personId",
-      "OrganizationMembership.personId",
+      "Membership.personId",
       "RoleAssignment.personId",
       "PlatformSettings.updatedByPersonId",
       "ApiCredential.createdByPersonId",
