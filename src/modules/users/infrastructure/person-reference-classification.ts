@@ -92,6 +92,29 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
   },
 
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
+  "RoleAssignment.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO ISSUED a grant, not who holds it — the accountability evidence that " +
+      "makes §2.6's anti-amplification rule auditable after the fact rather " +
+      "than only preventable in the moment (D-144). It is somebody ELSE's " +
+      "grant, so erasing the granter must not delete it: an instructor's " +
+      "access surviving the administrator who left is correct, and revoking " +
+      "it is a separate, deliberate act. The FK is onDelete: SetNull as " +
+      "defence in depth; the erasure severs it explicitly regardless, on the " +
+      "Organization.updatedByPersonId pattern beside it.",
+  },
+  "CredentialRoleAssignment.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "The same fact for a machine caller's grant. A plain token with no " +
+      "foreign key, matching ApiCredential.createdByPersonId, because the " +
+      "credential is a live permission-managed asset that stays usable after " +
+      "its creator is erased. Nothing reads this table in v1 (D-163, " +
+      "`05-technical.md` §4 keeps API credentials in place and unused), which " +
+      "is precisely why it needs a classification now rather than when " +
+      "somebody finally writes to it.",
+  },
   "Organization.updatedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

@@ -99,6 +99,41 @@ enum UserAccountStatus {
   DISABLED
 }
 
+/// The granular axis of a grant (`02-security-privacy.md` §2.1). A grant is a
+/// permission PLUS a scope; this enum is the closed set of scope kinds, and
+/// `Reach` (D-147, `@/lib/authorization`) carries exactly one variant per member
+/// plus `NONE` and `UNION`. Adding a member here is a COMPILE ERROR in every
+/// repository that translates a `Reach` — deliberately (D-147's trade-off).
+///
+/// `tests/unit/scope-type-sync.test.ts` asserts this enum and the TypeScript
+/// union in `@/lib/authorization/scope` are the same set, in both directions.
+///
+/// `RELATED` IS NOT HERE AND MUST NOT BE ADDED (OD-5, closed 2026-09-01, D-161).
+/// It was simultaneously mandated for v1, deferred to the guardian portal, and
+/// granted by the starter-role catalogue — an administrator could have assigned
+/// a scope whose enforcement nobody had written, and it would have looked like
+/// it worked. A guardian's consent authority is a `PersonRelationship` fact, not
+/// an authorization scope. The member returns with the portal that needs it.
+enum ScopeType {
+  /// The whole installation. Producible only by an organisation-scoped grant.
+  ORGANIZATION
+  /// One `OrganizationUnit` — FLAT, no descendant walk in v1 (D-121).
+  UNIT
+  /// One teaching group.
+  GROUP
+  /// One course across groups — which is why `COURSE` is NOT "below" `UNIT`
+  /// and why confinement is resource containment rather than a type ranking
+  /// (D-170).
+  COURSE
+  /// Participation in ONE scheduled session and its roster, for a bounded
+  /// window (D-068). Weekly machinery, not an exotic case: make-up guests,
+  /// substitutes and the aftest assessor all land here (D-179).
+  SESSION
+  /// The holder's own records, for the closed permission set of D-146. An
+  /// EXPLICIT seeded assignment — never an implicit match.
+  SELF
+}
+
 // ---------------------------------------------------------------------------
 // The organisation — an ENFORCED SINGLETON (D-027, D-056)
 // ---------------------------------------------------------------------------
@@ -208,11 +243,15 @@ model Person {
   // system, children especially, never will).
   account UserAccount?
 
-  memberships         Membership[]
-  roleAssignments     RoleAssignment[]
+  memberships     Membership[]
+  /// Grants held BY this person — the only source `requirePermission` reads.
+  roleAssignments RoleAssignment[] @relation("RoleAssignmentSubject")
+  /// Grants ISSUED by this person. Accountability evidence for §2.6's
+  /// anti-amplification rule, severed (not deleted) on erasure.
+  grantsIssued    RoleAssignment[] @relation("RoleAssignmentGranter")
   /// The organisation singleton, when this person was the last to change its
   /// configuration (0..1 — there is exactly one organisation).
-  organizationUpdates Organization[]   @relation("OrganizationUpdatedBy")
+  organizationUpdates Organization[] @relation("OrganizationUpdatedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -572,11 +611,16 @@ model OrganizationUnit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  parent                    OrganizationUnit?          @relation("UnitTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children                  OrganizationUnit[]         @relation("UnitTree")
-  roleAssignments           RoleAssignment[]
-  credentialRoleAssignments CredentialRoleAssignment[]
-  memberships               Membership[]
+  parent   OrganizationUnit?  @relation("UnitTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children OrganizationUnit[] @relation("UnitTree")
+
+  // The `roleAssignments` / `credentialRoleAssignments` back-relations are GONE
+  // with `unitId` on those tables: a grant now names its referent through
+  // `(scopeType, scopeId)` with no foreign key, because the referent table
+  // depends on the type (D-147). "Which grants reach this unit" is therefore a
+  // query on `(scopeType = 'UNIT', scopeId = <id>)`, which the composite index
+  // on those two columns serves.
+  memberships Membership[]
 
   @@index([path])
 }
@@ -648,36 +692,130 @@ model RolePermission {
   @@index([permissionId])
 }
 
-/// Grants a `Role` to a `Person`, optionally narrowed to one unit. Restrict
-/// deletes, so a person's role history is never silently removed.
+/// Grants a `Role` to a `Person` AT A SCOPE, for a validity window, by a named
+/// granter. Restrict deletes, so a person's role history is never silently
+/// removed.
 ///
 /// THIS IS THE ONLY GRANT TABLE FOR A PERSON. `PlatformRoleAssignment` is gone
-/// (phase 0.3), so `requirePermission` (D-147, phase 0.4) resolves a
-/// principal's permissions from here and nowhere else.
+/// (phase 0.3), so `requirePermission` (D-147) resolves a principal's
+/// permissions from here and nowhere else — there is no second grant table to
+/// consult and no branch that bypasses the permission check.
+///
+/// THE TUPLE, AND WHY EACH COLUMN IS NOT A CONVENTION (D-144, completed by
+/// D-170). The inherited shape was `(personId, roleId, unitId?)` — two of the
+/// six scope types and no validity at all. As inherited, the external examiner
+/// who assessed one Saturday in March kept `exams.assess` and
+/// `exams.results.record` on that session FOREVER, and because results are
+/// append-only (D-062) an amendment they make years later becomes the effective
+/// result. Nobody at the swim school has any reason to look at that assignment
+/// again. Finding F-113.
+///
+/// `unitId` IS GONE, replaced by `(scopeType, scopeId)`. It was one scope type
+/// wearing the schema of all six, and keeping it BESIDE `scopeId` would have
+/// given "which unit does this grant reach" two homes (D-134). The cost is
+/// stated rather than hidden: `scopeId` carries NO foreign key, because its
+/// referent table depends on `scopeType` and four of the five referent tables do
+/// not exist yet. Referential integrity for a scope referent is therefore an
+/// application concern — the grant service resolves the referent through
+/// `@/lib/authorization` before writing, and a dangling `scopeId` resolves to
+/// NO coverage rather than to wide coverage, because every derived coverage rule
+/// is a positive membership test that a missing referent fails (§1.1 rule 2).
+///
+/// THREE CHECK CONSTRAINTS are hand-written in the migration, because the Prisma
+/// DSL cannot express any of them. They are invisible in this file and easy to
+/// lose in a future "regenerate the migrations" tidy-up, which is exactly why
+/// `tests/integration/role-assignment-constraints.test.ts` names each one:
+///   - `RoleAssignment_scope_shape_check` — `scopeId` is NULL for
+///     `ORGANIZATION` and `SELF` (both are implied by the row itself: the
+///     installation, and `personId`) and NOT NULL for the other four. A grant
+///     with a scope type and no referent would otherwise read as "everything of
+///     that kind".
+///   - `RoleAssignment_bounded_window_check` — `validUntil` is MANDATORY for
+///     `SESSION` and `COURSE`. D-144 makes it schema-mandatory for `SESSION`;
+///     D-170's ceiling table adds `COURSE` ("mandatory and bounded"), which is
+///     what §2.4's "Internal examiner, time-bounded" always meant. D-170
+///     completes D-144, so both are enforced here.
+///   - `RoleAssignment_window_order_check` — `validUntil > validFrom`. A
+///     zero-or-negative window is a data-entry accident that would otherwise
+///     read as a silently dead grant.
+///
+/// THE CEILINGS ARE NOT HERE, AND THAT IS NOT AN OVERSIGHT. D-170 bounds
+/// `SESSION` at the session's date + 7 days and `COURSE` at the course's end
+/// date + 7 days. Both ceilings are computed from a table that does not exist
+/// yet (`ScheduledSession`, `Course`), so they are enforced in the grant service
+/// (`assertGrantable`, `@/lib/authorization/grant`) against the scope-relation
+/// port, which DENIES when the referent cannot be resolved. When those tables
+/// arrive the ceiling should move here as a CHECK against a stored derived
+/// column, and `docs/build/phase-0.4b-reach-and-retention-report.md` §4 records
+/// that as the follow-up.
+///
+/// EXPIRY IS NEVER A CLEANUP JOB (D-144). `validUntil` is evaluated INSIDE
+/// `requirePermission` and `resolveReach`. A job that has not run yet is an open
+/// grant; a predicate cannot be behind schedule.
 model RoleAssignment {
-  id        String   @id @default(cuid(2))
-  personId  String
-  roleId    String
-  /// Unit reach of this grant: null = the whole organisation; a unit = that
-  /// unit. See `OrganizationUnit` on why v1 does NOT walk descendants (D-121).
-  unitId    String?
+  id       String @id @default(cuid(2))
+  personId String
+  roleId   String
+
+  /// Which KIND of resource this grant reaches. See the `ScopeType` enum.
+  scopeType ScopeType
+  /// WHICH resource of that kind. NULL for `ORGANIZATION` and `SELF`; required
+  /// for `UNIT`, `GROUP`, `COURSE` and `SESSION`. No foreign key — see the
+  /// model comment.
+  scopeId   String?
+
+  /// When this grant begins. Evaluated live, never assumed to be the past.
+  validFrom  DateTime  @default(now())
+  /// When it ends. NULL = standing, permitted only for `GROUP`, `UNIT`,
+  /// `ORGANIZATION` and `SELF` (D-170's ceiling table) — these are standing
+  /// relationships, and a mandatory date on them produces a fake one.
+  validUntil DateTime?
+
+  /// Who issued this grant. What makes §2.6's anti-amplification rule auditable
+  /// AFTER the fact rather than only preventable in the moment. NULL for the
+  /// grants that come from outside the grant service and are host-access-proven
+  /// instead: seeding, the setup wizard (D-039) and the break-glass CLI (D-141).
+  ///
+  /// `onDelete: SetNull` as DEFENCE IN DEPTH, on the `Organization.updatedBy`
+  /// pattern: the erasure severs this column explicitly, and `SetNull` degrades
+  /// a FUTURE delete path that forgets the sever to "pointer silently nulled"
+  /// rather than to a raw FK error that rolls back an entire Article 17 erasure
+  /// — which is a thing that actually happened in the template.
+  grantedByPersonId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
-  role   Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  person    Person  @relation("RoleAssignmentSubject", fields: [personId], references: [id], onDelete: Restrict)
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  grantedBy Person? @relation("RoleAssignmentGranter", fields: [grantedByPersonId], references: [id], onDelete: SetNull)
 
-  // Unique per (person, role, unit) — the inherited key was (person, role, org,
-  // unit) and the org component was a constant. Postgres treats NULLs as
-  // DISTINCT, so this enforces uniqueness for UNIT-scoped grants but NOT for two
-  // organisation-wide grants (unitId = null). The Prisma DSL cannot express
-  // NULLS NOT DISTINCT, so organisation-wide-grant uniqueness is enforced at the
-  // application layer: the write path applies a diff keyed on (person, role).
-  @@unique([personId, roleId, unitId])
+  // The inherited `@@unique([personId, roleId, unitId])` IS DELIBERATELY GONE.
+  // With validity windows it forbids the ordinary case: an external examiner
+  // graded Diploma B in March and grades it again in June, which is two grants
+  // over the same (person, role, scope) with different windows. A hard unique
+  // key would have made the second one a database error on an exam Saturday.
+  //
+  // What replaces it is a PARTIAL unique index, hand-written in the migration
+  // because the Prisma DSL cannot express a WHERE clause on an index:
+  //
+  //   CREATE UNIQUE INDEX "RoleAssignment_standing_grant_key"
+  //     ON "RoleAssignment" ("personId", "roleId", "scopeType", "scopeId")
+  //     NULLS NOT DISTINCT WHERE "validUntil" IS NULL;
+  //
+  // Duplicate STANDING grants are pure noise and are refused; overlapping
+  // BOUNDED grants are legitimate history and are allowed. `NULLS NOT DISTINCT`
+  // (Postgres 15+) is what makes the constraint bite for `ORGANIZATION` and
+  // `SELF`, whose `scopeId` is NULL — the inherited comment noted that Postgres
+  // treats NULLs as distinct and pushed the check into application code; the
+  // database can express it now, so it does.
   @@index([personId])
   @@index([roleId])
-  @@index([unitId])
+  @@index([grantedByPersonId])
+  // The index `resolveReach` reads on every guarded call: a principal's live
+  // grants, narrowed by window.
+  @@index([personId, validFrom, validUntil])
+  @@index([scopeType, scopeId])
 }
 
 // `PlatformRoleAssignment` STOOD HERE AND IS GONE (phase 0.3, D-056).
@@ -743,24 +881,47 @@ model ApiCredential {
   roleAssignments CredentialRoleAssignment[]
 }
 
-/// Grants a `Role` to an `ApiCredential`. A dedicated grant table mirroring
-/// `PlatformRoleAssignment`, not nullable-polymorphism on `RoleAssignment`.
+/// Grants a `Role` to an `ApiCredential`. A dedicated grant table, not
+/// nullable-polymorphism on `RoleAssignment`.
+///
+/// IT CARRIES THE SAME TUPLE AS `RoleAssignment`, and that is deliberate rather
+/// than tidiness. There is no credential authentication path in v1 (D-163: no
+/// integration with any external system; `05-technical.md` §4 keeps these tables
+/// "in place, unused"), so nothing reads this table today. But "a grant" must
+/// have ONE shape: the day a credential path is written, `resolveReach` has to
+/// resolve a credential principal through the same six scope types and the same
+/// live validity as a person, or the machine caller becomes the one principal
+/// the scope model does not bind. Leaving `unitId` here would have made that a
+/// second grant shape to discover late.
+///
+/// It carries the same three CHECK constraints, hand-written in the same
+/// migration for the same reason.
 model CredentialRoleAssignment {
-  id           String   @id @default(cuid(2))
+  id           String @id @default(cuid(2))
   credentialId String
   roleId       String
-  unitId       String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  credential ApiCredential     @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-  role       Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  unit       OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  scopeType ScopeType
+  scopeId   String?
 
-  @@unique([credentialId, roleId, unitId])
+  validFrom  DateTime  @default(now())
+  validUntil DateTime?
+
+  /// The administrator who minted this grant. A plain token with NO foreign
+  /// key, matching `ApiCredential.createdByPersonId` beside it: the credential
+  /// is a live asset that outlives its creator's erasure, and the erasure severs
+  /// this pointer explicitly.
+  grantedByPersonId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  credential ApiCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  role       Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
   @@index([credentialId])
   @@index([roleId])
-  @@index([unitId])
+  @@index([scopeType, scopeId])
 }
 
 // ---------------------------------------------------------------------------
