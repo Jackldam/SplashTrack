@@ -1174,6 +1174,106 @@ model AuditCheckpoint {
 }
 
 // ---------------------------------------------------------------------------
+// First-run record — the row the boot state machine reads on every start
+// ---------------------------------------------------------------------------
+
+/// The installation's first-run record (D-100), and the one row predicate 4 of
+/// the boot state machine reads (D-098, `13-configuration-and-setup.md` §6.1).
+/// Named `InstallationBootstrap` and NOT `PlatformBootstrap`: D-056 deletes the
+/// `Platform` namespace, and the model the state machine reads on every start is
+/// the worst possible place to leave a name meaning something the architecture
+/// no longer has.
+///
+/// AN ENFORCED SINGLETON, on the `Organization` pattern: `id` is pinned to the
+/// constant `installation` by a CHECK constraint hand-written in the migration,
+/// because the Prisma DSL cannot express one. Two bootstrap records would make
+/// "has setup completed" a question with two answers.
+///
+/// `completedAt` NULL means setup has not finished. That is deliberately NOT the
+/// same question as "does this row exist", and the difference is D-099's whole
+/// point: the gate on the only unauthenticated administrative surface must not
+/// be the presence of ONE DELETABLE ROW. The state machine therefore pairs "no
+/// completed bootstrap record" with three counts — zero `UserAccount`, zero
+/// `Person`, zero `RoleAssignment` — and calls that combination `PARTIAL`. The
+/// same missing record WITH data present is `TAMPERED`: refuse to serve, log
+/// loudly, break-glass CLI only.
+///
+/// `appVersion` records the version that completed setup. It is diagnostic, not
+/// a gate: the version comparison that refuses to start is `AHEAD`, and that is
+/// decided from `_prisma_migrations` against the image's own migrations
+/// directory, never from a version string a restore could carry.
+/// @dataClass ORGANIZATION_SETTINGS
+model InstallationBootstrap {
+  /// Pinned to the constant `installation` by a CHECK constraint in the
+  /// migration.
+  id String @id @default("installation")
+
+  /// When first-run setup completed. NULL while it has not. Setting it is what
+  /// closes setup mode, and it is set exactly once.
+  completedAt DateTime?
+
+  /// How setup was completed — `cli` today. The in-app wizard (D-039) writes
+  /// `wizard` when it exists and a restore writes `restore` (D-046), so
+  /// diagnostics can say which of the three produced this installation.
+  completedVia String?
+
+  /// `package.json` version of the image that completed setup. Diagnostic.
+  appVersion String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A break-glass CLI invocation that every administrator must be told about
+/// (`13-configuration-and-setup.md` §7): *"every invocation writes an audit
+/// event … and every invocation notifies all `ORGANIZATION`-scoped
+/// administrators"*.
+///
+/// WHY THIS IS A TABLE AND NOT A READ OF THE AUDIT TRAIL. The audit event is
+/// the RECORD; this is the NOTIFICATION, and the two have opposite mutability.
+/// A notification has to carry "has a human acknowledged this yet", and
+/// `AuditEvent` is append-only with no update path at all (D-149, D-168) — so
+/// the dismissal state cannot live there without breaking the one property the
+/// trail exists for.
+///
+/// DISMISSED BY SOMEBODY ELSE. There is deliberately no CLI command that
+/// dismisses one of these: the point of the banner is that host access — which
+/// the break-glass operator by definition has — is not enough to make the
+/// warning go away. It is dismissed by a signed-in `ORGANIZATION`-scoped
+/// administrator, and that dismissal is itself audited, which is where WHO
+/// dismissed it is recorded. That is also why this model carries no
+/// `dismissedByPersonId`: the accountability belongs on the trail, and a
+/// person column here would be a second, mutable copy of it.
+///
+/// `auditEventId` is a plain token and NOT a foreign key. `AuditEvent` rows
+/// leave legitimately through `pruneAuditEventPrefix` (D-168), and a `Restrict`
+/// foreign key from here would make a retention run fail on an old alert —
+/// a notification blocking retention on the trail it points at.
+/// @dataClass ORGANIZATION_SETTINGS
+model BreakGlassAlert {
+  id String @id @default(cuid(2))
+
+  /// The subcommand as invoked, e.g. `admin:create`. A fixed vocabulary from
+  /// this repository, never operator input.
+  command String
+
+  /// The `AuditEvent.id` this alert points at. Plain token — see above.
+  auditEventId String
+
+  /// Non-secret context for the banner: the host user and container id §7 asks
+  /// the audit actor to carry, and the target account's id where there is one.
+  /// NEVER a password, a TOTP secret, an enrolment URL or an email address.
+  context Json?
+
+  occurredAt DateTime @default(now())
+
+  /// Null until an administrator who is not the invoker has acknowledged it.
+  dismissedAt DateTime?
+
+  @@index([dismissedAt])
+}
+
+// ---------------------------------------------------------------------------
 // Retention — policy-driven, per data class (D-065, replacing D-007)
 //
 // `CLAUDE.md` rule 5: consent, lawful basis and retention are COLUMNS, not a

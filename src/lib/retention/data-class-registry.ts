@@ -47,4 +47,6 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   AuditEvent: "AUDIT_EVENTS",
   AuditCheckpoint: "AUDIT_EVENTS",
   RetentionPolicy: "ORGANIZATION_SETTINGS",
+  InstallationBootstrap: "ORGANIZATION_SETTINGS",
+  BreakGlassAlert: "ORGANIZATION_SETTINGS",
 };
