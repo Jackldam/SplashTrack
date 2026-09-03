@@ -69,9 +69,30 @@ interface GrantRow {
   privilege_type: string;
 }
 
+interface OwnerRow {
+  table_name: string;
+  owner: string;
+}
+
 /**
  * Prints the grants that actually exist on `AuditEvent` and `AuditCheckpoint`,
- * and says plainly whether the D-149 separation is in force.
+ * the OWNER of each, and says plainly whether the D-149 separation is in force.
+ *
+ * WHY THE OWNER IS PART OF THE REPORT AND NOT A DETAIL. A table's owner holds
+ * its privileges by ownership rather than by grant, and may re-grant them to
+ * itself at any moment. `REVOKE DELETE … FROM <owner>` therefore stops exactly
+ * one statement. Measured on postgres:16-alpine, as the owning role:
+ *
+ *     REVOKE DELETE ON "AuditEvent" FROM app;
+ *     SET ROLE app; DELETE FROM "AuditEvent";           -- permission denied  ✓
+ *     SET ROLE app; GRANT DELETE ON "AuditEvent" TO app;
+ *                   DELETE FROM "AuditEvent";           -- DELETE 1           ✗
+ *
+ * The actor D-149 part 2 names is an external SQL primitive, and a primitive
+ * that can issue `DELETE` can generally issue `GRANT`. So an empty grant list
+ * over a table the application role OWNS is not the separation — and printing
+ * "IN FORCE" for it would make this report wrong in the reassuring direction,
+ * which is worse than not having it. See ADR-0002.
  *
  * Exit code 0 whether or not the role exists: this is a REPORT, and the
  * entrypoint must not refuse to start an instance because a deployment step the
@@ -103,12 +124,28 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
      ORDER BY table_name, grantee, privilege_type
   `;
 
+  const owners = await prisma.$queryRaw<OwnerRow[]>`
+    SELECT tablename AS table_name, tableowner AS owner
+      FROM pg_tables
+     WHERE schemaname = current_schema()
+       AND tablename IN ('AuditEvent', 'AuditCheckpoint')
+     ORDER BY tablename
+  `;
+
   const current = await prisma.$queryRaw<{ role: string }[]>`
     SELECT current_user AS role
   `;
   const appRole = current[0]?.role ?? "unknown";
 
   ctx.log(`Application database role: ${appRole}`);
+  ctx.log("");
+  ctx.log("Owner of the audit tables:");
+  for (const row of owners) {
+    ctx.log(
+      `  ${row.table_name.padEnd(16)} ${row.owner}` +
+        (row.owner === appRole ? "   ← the application's own role" : ""),
+    );
+  }
   ctx.log("");
   ctx.log("Grants on the audit tables:");
   if (rows.length === 0) {
@@ -127,11 +164,31 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
       (row.privilege_type === "UPDATE" || row.privilege_type === "DELETE"),
   );
 
+  const ownedByApp = owners.filter((row) => row.owner === appRole);
+
   ctx.log("");
-  if (appWrites.length === 0) {
+  if (appWrites.length === 0 && ownedByApp.length === 0) {
     ctx.log(
       "D-149 part 2 is IN FORCE: the application role holds neither UPDATE " +
-        "nor DELETE on AuditEvent.",
+        "nor DELETE on AuditEvent, and does not own the table, so it cannot " +
+        "grant them back.",
+    );
+  } else if (appWrites.length === 0) {
+    // The grants look right and the control is still not there. This is the
+    // one state a grant-only report would call green, and it is the reason the
+    // owner is queried at all.
+    ctx.log(
+      "D-149 part 2 is NOT in force, despite the grants above: the " +
+        `application role OWNS ${ownedByApp
+          .map((row) => row.table_name)
+          .join(" and ")}. An owner holds privileges by ownership, not by ` +
+        "grant, and re-grants them to itself in one statement — so the " +
+        "revoke stops a bare DELETE and nothing that can also issue GRANT, " +
+        "which is the actor this control names.",
+    );
+    ctx.log(
+      "  The fix is ownership, not more revokes: migrations must run as a " +
+        "role the application never connects as. See ADR-0002.",
     );
   } else {
     // Two different situations produce the same "not in force", and telling an

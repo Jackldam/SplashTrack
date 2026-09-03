@@ -81,17 +81,36 @@ services:
       POSTGRES_USER: splashtrack
       # A DEVELOPMENT default, and the only one left in this file. It exists
       # because `docker compose up postgres` is also what a developer runs to
-      # get a local database, and it is safe there and only there: the service
-      # is reachable from the host, so anything beyond a laptop must set
-      # POSTGRES_PASSWORD.
+      # NO DEFAULT, for the same reason DATABASE_URL has none. The previous
+      # `${POSTGRES_PASSWORD:-splashtrack}` was described here as "safe on a
+      # laptop and only there" — and it was not, because the line below
+      # published the port on every interface. That combination was live on the
+      # UAT host: `splashtrack:splashtrack` on 0.0.0.0:5432, reachable from the
+      # internet, on a role the Postgres image creates as a SUPERUSER — which
+      # via `COPY … FROM PROGRAM` is command execution, not merely data access.
+      # A default credential is only ever one misconfiguration away from being
+      # the whole authentication story, so there is not one.
       #
       # NOTE: this variable is read by the Postgres image ONLY when it
       # initialises a fresh volume. Changing it later changes nothing; the
       # password lives in the volume. `ALTER ROLE splashtrack PASSWORD …` is
       # what changes it on an existing one.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splashtrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env; there is deliberately no default}
     ports:
-      - '5432:5432'
+      # LOOPBACK ONLY, and deliberately not a variable.
+      #
+      # `'5432:5432'` binds 0.0.0.0. Docker's published ports are DNAT'd in the
+      # nat table and traverse FORWARD, so they do NOT pass through the INPUT
+      # chain where ufw's rules live — a host with `ufw` "enabled" still hands
+      # this port to the internet, and `DOCKER-USER` is empty by default. The
+      # application does not need this mapping at all (it reaches the database
+      # over the compose network at `postgres:5432`); it exists so `npm test`
+      # and `prisma` can run from the host, which is loopback by definition.
+      #
+      # An operator who genuinely needs remote access edits this line and takes
+      # the decision knowingly. Leaving it a variable makes re-exposing it a
+      # typo away, which is how it happened the first time.
+      - '127.0.0.1:5432:5432'
     volumes:
       - splashtrack-postgres-data:/var/lib/postgresql/data
     healthcheck:

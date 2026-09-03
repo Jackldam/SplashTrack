@@ -30,6 +30,35 @@
 -- limit is that host access holds `SECRET_KEY`.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
+-- IT ONLY DEFENDS AGAINST THAT SQL PRIMITIVE IF THE APPLICATION ROLE DOES NOT
+-- **OWN** THE TABLE. This is a precondition, not a detail, and it was missing.
+--
+-- A table's owner does not hold its privileges through a grant — it holds them
+-- by ownership, and it may re-grant them to itself at any time. `REVOKE DELETE
+-- … FROM <owner>` therefore bites exactly one statement deep. Measured on
+-- postgres:16-alpine, as the owning role:
+--
+--     REVOKE DELETE ON "AuditEvent" FROM app;
+--     SET ROLE app; DELETE FROM "AuditEvent";  -- ERROR: permission denied  ✓
+--     SET ROLE app; GRANT DELETE ON "AuditEvent" TO app;  -- GRANT
+--                   DELETE FROM "AuditEvent";  -- DELETE 1                  ✗
+--
+-- An injection that can issue `DELETE` can generally issue `GRANT` on the same
+-- primitive, so against the actor this file names the revoke buys nothing while
+-- reading as though it does. With the table owned by a role the application
+-- never connects as, the same attempt fails on every door:
+--
+--     GRANT DELETE …    → WARNING: no privileges were granted
+--     ALTER TABLE … OWNER TO app → ERROR: must be owner of table
+--     DROP / TRUNCATE   → ERROR: must be owner / permission denied
+--
+-- So §3 below is conditional on a separate owner, and says so where it is
+-- applied. `splashtrack audit:grants` now prints the table's owner beside the
+-- grants for exactly this reason: the grant list alone cannot tell you whether
+-- the separation is real.
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- ─────────────────────────────────────────────────────────────────────────────
 -- WHO RUNS THIS, AND WHEN — decided in phase 1.0
 --
 -- THE OPERATOR RUNS IT, ONCE, AT PROVISIONING TIME, AS A PRIVILEGED ROLE. It is
@@ -107,9 +136,20 @@ REVOKE UPDATE, DELETE, TRUNCATE ON TABLE "AuditCheckpoint"
   FROM splashtrack_audit_retention;
 
 -- ── 3. The ordinary application role ────────────────────────────────────────
--- COMMENTED OUT until the application has the second and third connections
--- above. Applying it today removes the audit trail from the only process that
--- writes it.
+-- COMMENTED OUT, now for TWO reasons rather than one.
+--
+--   (a) Applying it today removes the audit trail from the only process that
+--       writes it, because the application has no second connection to write on.
+--   (b) IT IS INEFFECTIVE UNLESS `:app_role` IS NOT THE TABLE OWNER. See the
+--       header: an owner re-grants itself in one statement. Today `prisma
+--       migrate deploy` runs as the role in `DATABASE_URL`, so the application
+--       role owns every table, and these three lines would produce a green
+--       `audit:grants` report over a control that is not there.
+--
+-- The arrangement that makes them real is ADR-0002: a non-login owner role that
+-- runs migrations, and an application role that owns nothing. Do not uncomment
+-- these until that is in place — a decorative control is worse than an absent
+-- one, because the absent one is still reported honestly.
 --
 -- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE "AuditEvent" FROM :"app_role";
 -- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE "AuditCheckpoint" FROM :"app_role";
