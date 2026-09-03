@@ -38,7 +38,7 @@ migration without asking.**
 | **aftesten / aftest** | `Assessment` (kind: `PRE_EXAM`) | fixed | **The four-eyes gate.** A *different* qualified instructor — never the pupil's own — grades every criterion and decides whether the pupil may sit the exam. This is the load-bearing concept of the domain and it has no English equivalent; "pre-exam assessment" is a description, not a translation. |
 | afzwemmen | `Exam` / `ExamSession` | fixed | The exam itself, at which the diploma is earned. In practice the formality: the decision was made at the aftest. |
 | proefzwemmen | `TrialLesson` | fixed | **A trial lesson for a prospective pupil.** Confirmed 2026-08-31: this is an enrolment concept, *not* a rehearsal before the exam. An earlier draft had it backwards. |
-| inhaalles | `MakeUpLesson` | proposed | A replacement for a missed lesson. The club does not currently run these; the design must accommodate them. |
+| inhaalles | — (a `ScheduledSession` with a guest) | fixed | **Not its own entity.** An ordinary lesson that a student enrolled elsewhere attends once (D-179). The receiving instructor's reach over that child comes from participation in the session, never from group membership. |
 | vaardigheid | `Skill` / `Criterion` | fixed | An assessable requirement. Authored by an administrator in the application, never seeded from source (D-164). |
 | diploma | `AwardType` (kind: `DIPLOMA`) | fixed | Zwem-ABC diplomas. |
 | certificaat | `AwardType` (kind: `CERTIFICATE`) | fixed | Same machinery, relaxed thresholds — data, not a special case. |
@@ -61,7 +61,7 @@ Tracking only — no invoicing, no iDEAL/Mollie, no direct debit, no VAT (§6.5)
 |---|---|---|---|
 | NRZ (Nationale Raad Zwemveiligheid) | — | fixed | Must be told who sits an exam and when; a delegate may attend and must see the candidate list at that moment. **Export/report only — no integration** (D-163). |
 | SportLink | — | fixed | External registration, mandatory for competition-swimming and water-polo members only. **Out of v1, no stub column** (OD-19). |
-| wachtlijst | `WaitingList` | proposed | The club has one. Not yet modelled. |
+| wachtlijst | `WaitingList`, `WaitingListEntry` | fixed | **One list for the club**, not a queue per group. An entry records the child and the level; placement is a matching decision against groups that have room, never automatic and never strictly first-in-first-out (D-180). |
 
 ---
 
@@ -70,8 +70,5 @@ Tracking only — no invoicing, no iDEAL/Mollie, no direct debit, no VAT (§6.5)
 These are my translations and I have not verified them against how the club
 actually speaks. Ask before they reach a migration:
 
-- `MakeUpLesson` for *inhaalles* — is a make-up lesson a normal lesson a guest
-  attends, or its own thing with its own registration?
-- `WaitingList` — one list, or per group / per level / per location?
 - Is there a Dutch term for the person who performs an aftest, distinct from
   "instructeur"? If the club has a word for it, the role should carry it.
