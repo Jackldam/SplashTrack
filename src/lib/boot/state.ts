@@ -305,7 +305,7 @@ export async function detectBootState(
     const names = broken.map((record) => record.name).join(", ");
     return decide(
       "FAILED",
-      `A migration is recorded as unfinished or rolled back (${names}). ` +
+      `A migration is recorded as started and never finished (${names}). ` +
         "Prisma leaves it recorded and it blocks every later migration, so " +
         "restarting will fail identically (P3009). Restore the pre-migration " +
         "backup taken before that start, or resolve it deliberately with " +
