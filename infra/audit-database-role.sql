@@ -30,7 +30,29 @@
 -- limit is that host access holds `SECRET_KEY`.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- NOT WIRED UP YET, AND WHAT IT WOULD TAKE
+-- WHO RUNS THIS, AND WHEN — decided in phase 1.0
+--
+-- THE OPERATOR RUNS IT, ONCE, AT PROVISIONING TIME, AS A PRIVILEGED ROLE. It is
+-- deliberately NOT in the entrypoint, and the three reasons above are why: the
+-- entrypoint runs AS the application role, which by D-116 is not a superuser and
+-- therefore cannot GRANT — and if it could, the separation would be decorative,
+-- because a compromised application could grant itself back.
+--
+-- What the entrypoint DOES do is report. Every container start runs
+-- `splashtrack audit:grants`, which reads `information_schema.table_privileges`
+-- through the application's own connection — reading privileges needs no
+-- privilege — and prints, in words, whether the application role still holds
+-- UPDATE or DELETE on `AuditEvent`. A grant nobody checks is a grant nobody has,
+-- and "we ran that script once" is not evidence. The same line belongs on the
+-- diagnostics page (`13-…` §8) when it exists.
+--
+-- The report is informational and never refuses a start: this is a deployment
+-- step the operator owns, and an instance that will not boot because a SQL file
+-- has not been run yet is a worse failure than the one it prevents.
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STILL NOT WIRED INTO THE APPLICATION, AND WHAT IT WOULD TAKE
 --
 -- D-149 describes three paths with different grants: the ordinary application
 -- role, an append-only writer for `AuditEvent`, and a narrowly-scoped retention

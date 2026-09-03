@@ -67,6 +67,7 @@ const USAGE = `splashtrack <command> [flags]
   admin:grant-admin --email <e>   Grant ORGANIZATION admin for 24 hours
   bootstrap:clear-tampered [--yes]  Clear D-099's TAMPERED state
   audit:verify [--prune-before <d>] [--reason <r>]
+  audit:grants                    Report the D-149 grants that actually exist
   secret:init --out <path>        Generate the one bootstrap secret (D-112)
 
 Every command that changes anything writes an audit event with a system:cli
@@ -89,6 +90,8 @@ async function resolve(name: string): Promise<Command | null> {
       return (await import("./commands/admin")).adminGrantAdmin;
     case "audit:verify":
       return (await import("./commands/audit")).auditVerify;
+    case "audit:grants":
+      return (await import("./commands/audit")).auditGrants;
     case "secret:init":
       return secretInit;
     default:

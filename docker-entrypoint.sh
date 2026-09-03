@@ -211,4 +211,14 @@ case "${ACTION}" in
     ;;
 esac
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. The D-149 grant report — informational, never a reason to refuse.
+#
+# The INSERT-only role is a DEPLOYMENT step an operator runs as a privileged
+# role (see `infra/audit-database-role.sql` for why it cannot be a migration).
+# Printing what is actually true at every start is what stops "we ran that once"
+# being the only evidence anyone has.
+# ─────────────────────────────────────────────────────────────────────────────
+splashtrack audit:grants || true
+
 exec node /app/node_modules/next/dist/bin/next start --port "${PORT:-3000}" --hostname 0.0.0.0

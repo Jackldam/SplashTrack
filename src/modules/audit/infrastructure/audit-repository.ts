@@ -11,12 +11,16 @@
  * checkpoint accounts for is unambiguously tampering rather than "probably
  * retention".
  *
- * PHASE 0.4 — one thing D-149 requires that is NOT here: the INSERT-ONLY
- * DATABASE ROLE. Today "append-only" holds because this module is the only
- * writer and exposes no mutation. D-149 makes it a `REVOKE UPDATE, DELETE` on
- * the application's role, so it survives a future author who reaches for
- * `prisma.auditEvent` directly. That is a DEPLOYMENT step and not a migration —
- * see `infra/audit-database-role.sql` for the SQL and for why.
+ * THE INSERT-ONLY DATABASE ROLE IS A DEPLOYMENT STEP, NOT SOMETHING THIS FILE
+ * CAN DO. Today "append-only" holds because this module is the only writer and
+ * exposes no mutation — a CODE property. D-149 makes it a `REVOKE UPDATE,
+ * DELETE` on the application's role, so it survives a future author who reaches
+ * for `prisma.auditEvent` directly. `infra/audit-database-role.sql` is the SQL
+ * and its header carries the decision: an operator runs it once, as a
+ * privileged role, because the application's own role is not a superuser
+ * (D-116) and could not grant it — and if it could, the separation would be
+ * decorative. `splashtrack audit:grants` reports at every container start
+ * whether it is actually in force, so this is checkable rather than assumed.
  *
  * The template's filtered/paginated read surface and its subject-scoped export
  * reads are NOT extracted: both are the audit VIEWER, which is gated on an
