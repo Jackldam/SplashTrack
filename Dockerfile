@@ -79,11 +79,16 @@ COPY . .
 # The Prisma client is generated into `src/generated/prisma` (schema
 # `generator client.output`), so it must exist before either build step.
 #
-# `prisma.config.ts` resolves `env("DATABASE_URL")` when the CLI loads it, and
-# it loads it for `generate` too. The value below is a syntactically valid
-# placeholder for a connection that is never opened: generation reads the
-# schema file, not the database. It is confined to this RUN.
-RUN DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" npx prisma generate
+# `prisma.config.ts` resolves a connection string when the CLI loads it, and it
+# loads it for `generate` too. Since ADR-0002 that string is
+# DATABASE_MAINTENANCE_URL rather than DATABASE_URL — migrations run as the
+# schema owner, not as the runtime role — so the placeholder moved with it.
+#
+# Both values below are syntactically valid placeholders for connections that
+# are never opened: generation reads the schema FILE, not the database. They are
+# confined to this RUN and appear in no layer of the runner.
+RUN DATABASE_MAINTENANCE_URL="postgresql://build:build@127.0.0.1:5432/build" \
+    npx prisma generate
 
 # `next build` runs `instrumentation.ts`? It does not — that runs at SERVER
 # start — but Next does evaluate modules during prerendering, and
@@ -93,6 +98,7 @@ RUN DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" npx prisma gene
 # entrypoint refuses to start without a real, operator-supplied key.
 RUN SECRET_KEY="build-time-placeholder-not-a-secret-0000000000" \
     DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" \
+    DATABASE_MAINTENANCE_URL="postgresql://build:build@127.0.0.1:5432/build" \
     BETTER_AUTH_URL="http://localhost:3000" \
     npm run build
 
