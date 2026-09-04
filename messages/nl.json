@@ -8,7 +8,9 @@
     "tagline": "Leerlingvolgsysteem voor zwemscholen.",
     "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt.",
     "signedInAs": "Ingelogd als {email}.",
-    "toPeople": "Naar Mensen"
+    "toPeople": "Naar Mensen",
+    "enrolNotice": "Je hebt nog geen authenticator ingesteld. Tot dat gebeurt kan dit account niets anders.",
+    "toEnrolment": "Authenticator instellen"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
@@ -16,7 +18,11 @@
   },
   "setup": {
     "title": "Deze installatie is nog niet ingericht",
-    "explanation": "Er is nog geen beheerder. Maak de eerste aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
+    "noAdministrator": "Er is nog geen beheerder. Maak de eerste aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
+    "pendingTitle": "Bijna klaar: de beheerder moet nog een authenticator instellen",
+    "pendingExplanation": "Het beheerdersaccount bestaat, maar heeft nog geen tweede factor. Zolang dat zo is, is de installatie niet ingericht en kan het account niets anders dan inloggen en de authenticator instellen.",
+    "pendingAction": "Log in met het wachtwoord dat je bij `admin:create` hebt gekozen. Je wordt daarna vanzelf naar de instelpagina gestuurd.",
+    "pendingSignIn": "Inloggen en authenticator instellen",
     "noRegistration": "Zelfregistratie bestaat niet: accounts worden door een beheerder aangemaakt."
   },
   "signIn": {
@@ -162,5 +168,22 @@
       "none": "Er is geen onderbouwing vastgelegd bij deze relatie.",
       "claimNotice": "Dit is wat de school is verteld en hoe dat is vastgesteld. Het is bewijs van een claim, geen juridische vaststelling van het gezag."
     }
+  },
+  "mfaEnrolment": {
+    "title": "Authenticator instellen",
+    "intro": "Je bent ingelogd als {email}. Dit account kan pas iets doen als er een tweede factor is ingesteld.",
+    "whyPassword": "Voer je wachtwoord nog een keer in. Dat voorkomt dat iemand met een overgenomen sessie stiekem een eigen authenticator toevoegt.",
+    "start": "Toon de QR-code",
+    "badPassword": "Dat wachtwoord klopt niet.",
+    "unavailable": "De QR-code kon niet worden gemaakt. Probeer het opnieuw.",
+    "scan": "Scan deze code met je authenticator-app.",
+    "qrAlt": "QR-code voor je authenticator-app",
+    "manualKeyLabel": "Kan je niet scannen? Typ deze sleutel over:",
+    "manualKeyHelp": "Kies in je app \"handmatig invoeren\" of \"sleutel invoeren\". Hoofdletters en spaties maken niet uit.",
+    "backupCodesTitle": "Herstelcodes",
+    "backupCodesHelp": "Bewaar deze codes ergens veilig, buiten dit apparaat. Elke code werkt één keer en is je enige weg terug als je je authenticator kwijtraakt.",
+    "codeHelp": "De zes cijfers die je app nu toont.",
+    "verify": "Instellen afronden",
+    "reloadWarning": "Ververs deze pagina niet: de QR-code verdwijnt dan en je begint opnieuw met je wachtwoord."
   }
 }

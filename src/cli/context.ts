@@ -9,8 +9,6 @@
  * there is one rule rather than a per-command convention.
  */
 
-import { createRequire } from "node:module";
-
 export interface CommandContext {
   /** `--key=value` and `--key value`, both forms, keyed without the dashes. */
   flags: Record<string, string>;
@@ -25,23 +23,12 @@ export interface CommandContext {
 }
 
 /**
- * The application version, read from `package.json`. Recorded on the bootstrap
- * record and reported by `boot:state`; never a gate — the gate that refuses to
- * start against a newer schema is `AHEAD`, decided from `_prisma_migrations`.
+ * The application version. Re-exported from `@/lib/app-version`, which is its
+ * one home: since D-185 the bootstrap record is written by the browser
+ * enrolment flow as well as read by `boot:state`, so the Next server needs the
+ * same value and two readers of one fact is how they come to disagree.
  */
-export const APP_VERSION: string = readVersion();
-
-function readVersion(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    const pkg = require(
-      process.env.SPLASHTRACK_PACKAGE_JSON ?? `${process.cwd()}/package.json`,
-    ) as { version?: string };
-    return pkg.version ?? "unknown";
-  } catch {
-    return "unknown";
-  }
-}
+export { APP_VERSION } from "@/lib/app-version";
 
 /** Parses `--flag value`, `--flag=value` and bare positionals. */
 export function parseArgs(argv: string[]): {

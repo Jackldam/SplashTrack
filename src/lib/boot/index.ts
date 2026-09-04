@@ -11,7 +11,10 @@ export {
 } from "./state";
 
 export {
+  completeSetupIfInvariantHolds,
   INSTALLATION_BOOTSTRAP_ID,
   isSetupIncomplete,
   resetSetupModeLatch,
+  resolveSetupStage,
+  type SetupStage,
 } from "./setup-mode";

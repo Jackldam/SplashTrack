@@ -8,7 +8,9 @@
     "tagline": "Pupil tracking for swim schools.",
     "foundationNotice": "The foundation is in place. There is no functionality yet — the first module follows.",
     "signedInAs": "Signed in as {email}.",
-    "toPeople": "Go to People"
+    "toPeople": "Go to People",
+    "enrolNotice": "You have not set up an authenticator yet. Until you do, this account can do nothing else.",
+    "toEnrolment": "Set up your authenticator"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -16,7 +18,11 @@
   },
   "setup": {
     "title": "This installation is not set up yet",
-    "explanation": "There is no administrator. Create the first one from the host — host access is the proof of ownership here:",
+    "noAdministrator": "There is no administrator. Create the first one from the host — host access is the proof of ownership here:",
+    "pendingTitle": "Almost there: the administrator still has to set up an authenticator",
+    "pendingExplanation": "The administrator account exists but has no second factor yet. Until it does, this installation is not set up, and that account can do nothing but sign in and set up its authenticator.",
+    "pendingAction": "Sign in with the password you chose during `admin:create`. You will be taken to the setup page automatically.",
+    "pendingSignIn": "Sign in and set up your authenticator",
     "noRegistration": "There is no self-registration: accounts are created by an administrator."
   },
   "signIn": {
@@ -162,5 +168,22 @@
       "none": "No evidence was recorded for this relationship.",
       "claimNotice": "This is what the school was told and how it was established. It is evidence of a claim, not a legal determination of guardianship."
     }
+  },
+  "mfaEnrolment": {
+    "title": "Set up your authenticator",
+    "intro": "You are signed in as {email}. This account cannot do anything until a second factor is set up.",
+    "whyPassword": "Enter your password once more. That stops anyone holding a hijacked session from quietly adding an authenticator of their own.",
+    "start": "Show the QR code",
+    "badPassword": "That password is not correct.",
+    "unavailable": "The QR code could not be produced. Please try again.",
+    "scan": "Scan this code with your authenticator app.",
+    "qrAlt": "QR code for your authenticator app",
+    "manualKeyLabel": "Cannot scan? Type this key instead:",
+    "manualKeyHelp": "Choose \"enter a setup key\" or \"manual entry\" in your app. Case and spaces do not matter.",
+    "backupCodesTitle": "Backup codes",
+    "backupCodesHelp": "Keep these somewhere safe and off this device. Each works once, and they are your only way back if you lose your authenticator.",
+    "codeHelp": "The six digits your app is showing now.",
+    "verify": "Finish setting up",
+    "reloadWarning": "Do not reload this page: the QR code disappears and you start again from your password."
   }
 }

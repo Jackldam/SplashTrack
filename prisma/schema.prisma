@@ -1593,9 +1593,12 @@ model InstallationBootstrap {
   /// closes setup mode, and it is set exactly once.
   completedAt DateTime?
 
-  /// How setup was completed — `cli` today. The in-app wizard (D-039) writes
-  /// `wizard` when it exists and a restore writes `restore` (D-046), so
-  /// diagnostics can say which of the three produced this installation.
+  /// How setup was completed — `browser` today, written by the MFA enrolment
+  /// flow at the instant D-141's invariant first holds (D-185). `cli` is the
+  /// pre-D-185 value and still appears on installations created before it. The
+  /// in-app wizard (D-039) writes `wizard` when it exists and a restore writes
+  /// `restore` (D-046), so diagnostics can say which produced this
+  /// installation.
   completedVia String?
 
   /// `package.json` version of the image that completed setup. Diagnostic.
