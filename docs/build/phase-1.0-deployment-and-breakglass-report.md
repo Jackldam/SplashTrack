@@ -968,28 +968,29 @@ access to the workflows is doing so.
 
 ---
 
-## 9. Open, and Jack's to decide
+## 9. What this phase put in front of Jack
 
-1. **The two extra database connections for D-149 part 3.** Revoking the
-   application role's `UPDATE`/`DELETE` on `AuditEvent` requires an append-only
-   writer connection and a retention connection — two new environment variables,
-   and D-037 needs an ADR stating why they cannot live in the database. A
-   connection string plainly cannot, so the ADR is writable; whether to grow the
-   operator-facing surface by two is a decision about the product, not about the
-   code. Until then the commented-out section of
-   `infra/audit-database-role.sql` stays commented out and `audit:grants` says so
-   at every boot.
-2. **The D-044 acknowledgement gate** (§7.1) — is one `touch` per upgrade the
-   right amount of friction for the UAT instance, or should an unbacked migration
-   simply proceed with a loud warning until the export engine lands?
-3. **D-116 is not implemented.** The reference compose's `POSTGRES_USER` is
-   created by the Postgres image as a superuser, so the application's role is one.
-   Fixing it properly means a separate least-privilege role created at first
-   initialisation, which changes the connection string every existing local
-   checkout uses and would break the test harness's ability to create its
-   `_test` databases. It is a contained piece of work and it is not this task's;
-   flagged rather than half-done.
-4. **`LOG_LEVEL` is read by `src/lib/logging` and is not one of the three.** It
-   predates this phase and appears only in local `.env`, never in the image or
-   the compose file. `13-…` §3.1 says a log level belongs in the database. Worth
-   an ADR or a removal, whichever Jack prefers.
+**Read the status from `docs/design/09-decision-register.md`, not from here.**
+This section originally carried four items under the heading "Open, and Jack's
+to decide", and all four were answered the same evening it was written. A status
+automation read the heading rather than the register and reported them to Jack
+as still open — which is the failure mode of writing a *state* into a document
+that is only ever amended, never re-read. A build report records **what a phase
+asked**; the register records **what was decided**. Only one of those two facts
+is allowed to age.
+
+So this section now names the questions and points at where each was answered.
+If a pointer below and the register disagree, the register wins.
+
+| What this phase put in front of Jack | Where it was answered |
+|---|---|
+| **The extra database connections for D-149 part 3.** Revoking the application role's `UPDATE`/`DELETE` on `AuditEvent` needs a connection that still holds `DELETE` for retention — new environment variables, and D-037 requires an ADR for each. Whether to grow the operator-facing surface is a decision about the product, not about the code | **D-182**, and `docs/adr/0002-database-roles-and-least-privilege.md`. Four roles, **two** credentials rather than three: D-149's separate append-only *writer* connection was dropped, because the runtime role **is** the append-only writer once it owns nothing. Built in phase 1.2 — `docs/build/phase-1.2-database-roles-report.md` |
+| **The D-044 acknowledgement gate** (§7.1) — is one `touch` per upgrade the right friction, or should an unbacked migration proceed with a loud warning? | **D-181.** Upgrades apply migrations unattended, with the pre-migration backup and the `FAILED` boot state as the controls. The marker gate is interim, and only until the export engine lands |
+| **D-116 is not implemented** — the reference compose's `POSTGRES_USER` is a superuser, so the application's role is one. §9.3 also claimed a least-privilege role *"would break the test harness's ability to create its `_test` databases"* | **D-182** and ADR-0002 §6. **That claim was wrong and is retracted here**: it conflates `CREATEDB` with `SUPERUSER`, which are different role attributes. The harness needs the first and has never needed the second. Measured both directions in ADR-0002 §6; implemented in phase 1.2 |
+| **`LOG_LEVEL` is read by `src/lib/logging` and is not one of the three** application-owned variables | **ADR-0001**, `docs/adr/0001-log-level-is-an-environment-variable.md`. It stays an environment variable, and the ADR is the D-037 gate that permits it |
+
+The distribution question standing behind the first and third rows — how much
+Postgres a self-hoster can be asked to do — is **OD-15**: comfortable with
+`docker compose` on a host they control, and not thereby comfortable with role
+grants. That is why phase 1.2 provisions the roles from the compose stack rather
+than from a page of `psql` in a README.
