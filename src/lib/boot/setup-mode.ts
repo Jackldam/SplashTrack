@@ -25,6 +25,7 @@
  * from `middleware.ts`, which runs on the Edge runtime.
  */
 
+import { APP_VERSION } from "@/lib/app-version";
 import { countLocalOrganizationAdmins } from "@/lib/auth/local-admin-invariant";
 import { prisma } from "@/lib/database";
 import { logger } from "@/lib/logging";
@@ -104,7 +105,41 @@ export async function resolveSetupStage(): Promise<SetupStage> {
   if (!(await isSetupIncomplete())) return "COMPLETE";
   try {
     const accounts = await prisma.userAccount.count();
-    return accounts > 0 ? "ADMINISTRATOR_PENDING_MFA" : "NO_ADMINISTRATOR";
+    if (accounts === 0) return "NO_ADMINISTRATOR";
+
+    // ── THE REPAIR, and why it belongs on a read path (D-186) ───────────────
+    //
+    // `verifyEnrolment` flips the factor and THEN writes the record, in two
+    // steps that are not one transaction — they cannot be, because the flip
+    // belongs to Better Auth. If anything comes between them, the installation
+    // is left enrolled with no completed record: a state the boot state machine
+    // reads as TAMPERED, because on a restart it genuinely cannot tell that
+    // apart from somebody deleting the record on a live installation. So the
+    // administrator finishes enrolling, and the next restart refuses to serve.
+    //
+    // Measured, not imagined: reached during the phase 1.4 walkthrough by
+    // verifying a factor through the same endpoint the Server Action calls and
+    // not reaching the line after it.
+    //
+    // Here — inside a request, before any restart — the ambiguity does not
+    // exist. `countLocalOrganizationAdmins()` is D-141's invariant, and an
+    // installation where it holds IS set up, whatever the record says. So the
+    // record is written and the answer is COMPLETE.
+    //
+    // A WRITE ON A READ PATH, DELIBERATELY AND ONCE. It is reachable only while
+    // setup is incomplete — the completed answer is latched and never re-reads —
+    // and `completeSetupIfInvariantHolds` is idempotent, so this costs one
+    // additional query per request during setup and nothing at all afterwards.
+    if (await completeSetupIfInvariantHolds(APP_VERSION)) {
+      logger.warn(
+        { event: "boot.setup_completion_repaired" },
+        "a verified MFA factor existed with no completed bootstrap record; " +
+          "setup has been recorded as complete",
+      );
+      return "COMPLETE";
+    }
+
+    return "ADMINISTRATOR_PENDING_MFA";
   } catch (error) {
     // Same deny-by-default direction as `isSetupIncomplete`: an unreadable
     // database serves the notice that asks for the FIRST administrator, which

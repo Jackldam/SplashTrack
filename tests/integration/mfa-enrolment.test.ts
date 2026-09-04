@@ -342,4 +342,60 @@ describe("setup is not complete while the only administrator is mfa_pending", ()
     // Idempotent: a second call does not rewrite a record already written.
     expect(await completeSetupIfInvariantHolds("test")).toBe(false);
   });
+
+  it("repairs a factor verified without the record ever being written", async () => {
+    // THE GAP THIS CLOSES, found by walking the path on UAT rather than by
+    // reading the code. `verifyEnrolment` flips the factor and THEN writes the
+    // record, and those two cannot be one transaction — the flip belongs to
+    // Better Auth. Anything landing between them leaves an installation that is
+    // enrolled with no completed record, and the boot state machine reads that
+    // as TAMPERED on the next restart, correctly: it cannot tell it apart from
+    // somebody deleting the record on a live installation.
+    //
+    // Inside a request the ambiguity does not exist, so the serving path
+    // repairs it. Simulated exactly as it happens: verify the factor, then
+    // remove the record, which is the same observable state as never having
+    // written it.
+    const { cookie } = await createPendingAdministrator();
+    const headers = new Headers({ cookie });
+
+    const enrolment = (await auth.api.enableTwoFactor({
+      body: { password: PASSWORD },
+      headers,
+    })) as { totpURI: string };
+    const key = new TextDecoder().decode(
+      base32.decode(new URL(enrolment.totpURI).searchParams.get("secret")!),
+    );
+    await auth.api.verifyTOTP({
+      body: { code: await createOTP(key).totp() },
+      headers,
+      asResponse: true,
+    });
+    expect(await completeSetupIfInvariantHolds("test")).toBe(true);
+
+    // The state the walkthrough produced: enrolled, and no record.
+    await prisma.installationBootstrap.deleteMany({});
+    resetSetupModeLatch();
+    expect(await isSetupIncomplete()).toBe(true);
+
+    // One page load is the whole repair.
+    expect(await resolveSetupStage()).toBe("COMPLETE");
+    const record = await prisma.installationBootstrap.findUniqueOrThrow({
+      where: { id: INSTALLATION_BOOTSTRAP_ID },
+    });
+    expect(record.completedAt).not.toBeNull();
+
+    // And it does NOT fire for an account that has not enrolled — the repair
+    // is D-141's invariant, not "an account exists".
+    await prisma.installationBootstrap.deleteMany({});
+    await prisma.twoFactor.deleteMany({});
+    await prisma.userAccount.updateMany({ data: { twoFactorEnabled: false } });
+    resetSetupModeLatch();
+    expect(await resolveSetupStage()).toBe("ADMINISTRATOR_PENDING_MFA");
+    await expect(
+      prisma.installationBootstrap.findUnique({
+        where: { id: INSTALLATION_BOOTSTRAP_ID },
+      }),
+    ).resolves.toBeNull();
+  });
 });
