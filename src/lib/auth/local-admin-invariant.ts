@@ -35,6 +35,24 @@
  *     stops satisfying it when it expires, which is the honest reading — it is a
  *     recovery grant, not a standing one.
  *
+ * WHEN "AT ALL TIMES" BEGINS (D-185). It begins when SETUP COMPLETES, and this
+ * is a restatement rather than a weakening: before `admin:create` runs there is
+ * no account at all, so the invariant was never satisfiable on a fresh
+ * installation and the register said otherwise. D-185 moves MFA enrolment into
+ * the browser, which makes that gap explicit and bounded — between
+ * `admin:create` and the administrator verifying a factor there is exactly one
+ * account, it is `mfa_pending`, and `@/lib/auth/mfa-enrolment` lets it do two
+ * things: sign in, and enrol. The bootstrap record — the thing that ends setup
+ * mode — is written by `completeSetupIfInvariantHolds` in `@/lib/boot`, which
+ * calls THIS predicate and writes nothing until it returns a non-zero count. So
+ * the moment setup completes is by construction the moment the invariant first
+ * holds, and it binds continuously from there.
+ *
+ * The consequence for callers: `admin:create` does NOT call
+ * `assertLocalAdminInvariantHolds` — it cannot hold at that point, and
+ * asserting it would make the command fail on success. Every other call site is
+ * on a post-setup path, where "at all times" means what it says.
+ *
  * WHERE IT IS ENFORCED. `13-…` §3.2 places it on the settings write path for
  * the `Authentication` and `Security` categories, and `13-…` §7 adds role
  * revocation and account disable. Two of those three paths do not exist yet —
