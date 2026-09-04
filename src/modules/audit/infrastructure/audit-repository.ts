@@ -29,7 +29,7 @@
  * SERVER-ONLY.
  */
 
-import { Prisma, prisma } from "@/lib/database";
+import { Prisma, prisma, type DatabaseClient } from "@/lib/database";
 
 import {
   computeCheckpointMac,
@@ -87,9 +87,38 @@ export interface StoredAuditEvent extends AuditHashContent {
  * inside a transaction that first serializes on the advisory lock, then links
  * the new row to the current tail via `previousHash` and stores its computed
  * `hash`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * `client` — RUNNING THE APPEND INSIDE THE CALLER'S TRANSACTION (phase 1.1)
+ *
+ * Pass the caller's transaction client to make the audit event and the change
+ * it evidences ATOMIC. This is the `DatabaseClient` pattern `@/lib/database`
+ * exists for, and the first domain module is what made it necessary.
+ *
+ * Without it, a module writing personal data inside `prisma.$transaction` and
+ * calling this function gets a SECOND, independent transaction on a different
+ * pooled connection: it commits on its own, so a rollback of the outer
+ * transaction leaves behind an audit event for a change that never happened —
+ * an append-only trail asserting something false, which cannot then be
+ * corrected. With it, the record and the change commit together or neither
+ * does.
+ *
+ * THE COST, STATED: `pg_advisory_xact_lock` is TRANSACTION-scoped, so the audit
+ * append lock is now held until the CALLER's transaction commits rather than
+ * until this one does. That lengthens the critical section every other audit
+ * writer contends for, which is the same throughput constraint
+ * `05-technical.md` §5 rule 7 is about — one event per aggregate write, and
+ * short transactions around personal-data writes. It is the right trade: a
+ * slower append is a performance problem, and an audit event for a change that
+ * did not happen is an integrity one.
+ *
+ * DO NOT pass a client from a transaction that ALREADY holds this lock
+ * (`pruneAuditEventPrefix`). `pruneAuditTrail` appends after its transaction
+ * commits for exactly that reason, and that remains correct.
  */
 export async function appendAuditEvent(
   input: AuditEventInput,
+  client?: DatabaseClient,
 ): Promise<{ id: string; sequence: number; hash: string }> {
   const occurredAt = new Date();
   const content: AuditHashContent = {
@@ -109,7 +138,12 @@ export async function appendAuditEvent(
     reason: input.reason ?? null,
   };
 
-  return prisma.$transaction(async (tx) => {
+  /**
+   * The append itself. Factored out so it can run EITHER in a transaction of
+   * its own (the default) OR inside a caller's, which is the whole point of the
+   * optional `client` parameter — see the doc comment above.
+   */
+  const append = async (tx: DatabaseClient) => {
     // Serialize appends so the chain never forks (see the lock-key comment).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_APPEND_LOCK_KEY})`;
 
@@ -161,7 +195,9 @@ export async function appendAuditEvent(
       select: { id: true, sequence: true, hash: true },
     });
     return row;
-  });
+  };
+
+  return client ? append(client) : prisma.$transaction(append);
 }
 
 /** Default page size for the segment walk. Bounded memory, one round trip. */

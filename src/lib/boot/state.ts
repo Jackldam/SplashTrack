@@ -69,10 +69,7 @@ export type BootState =
 
 /** What the entrypoint is allowed to do in a state. */
 export type BootAction =
-  | "SETUP_MODE"
-  | "MIGRATE_THEN_SERVE"
-  | "SERVE"
-  | "REFUSE";
+  "SETUP_MODE" | "MIGRATE_THEN_SERVE" | "SERVE" | "REFUSE";
 
 export interface BootDecision {
   state: BootState;

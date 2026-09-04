@@ -42,8 +42,15 @@ import { isLocale, locales, type Locale } from "@/i18n/config";
  * self-registration is out of v1, and the cookie-consent banner is a phase-4
  * surface), so this restarts at 1 rather than inheriting a version history for
  * sections that never existed here.
+ *
+ * **v2 (phase 1.1)** adds the `privacy` section, whose only member is D-151's
+ * age of digital consent. It needs NO branch below and no data migration: a
+ * stored v1 document simply lacks the section and the lenient read fills the
+ * default, which is the whole reason D-036/D-037 chose a versioned JSON
+ * document over a column per setting. The version is bumped anyway, so "which
+ * shape was this written under" stays answerable from the document itself.
  */
-export const ORGANIZATION_CONFIG_VERSION = 1;
+export const ORGANIZATION_CONFIG_VERSION = 2;
 
 /**
  * Closed set of date/time presentation styles. Each maps to a fixed
@@ -177,6 +184,35 @@ export const SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES = {
 } as const;
 
 /**
+ * D-151's AGE OF DIGITAL CONSENT, in whole years. The age at which a person may
+ * consent for themselves, and therefore the age at which a guardian's authority
+ * to consent on their behalf LAPSES BY OPERATION OF LAW.
+ *
+ * A `bounded` setting (D-150) rather than a constant, and the bounds are the
+ * law's own: GDPR Art. 8(1) sets sixteen and permits a member state to lower it
+ * to not below thirteen. The Netherlands kept sixteen, which is the default; the
+ * floor and ceiling are what the Regulation allows anyone to configure, so an
+ * instance cannot be set to a number no jurisdiction permits.
+ *
+ * It is a SETTING and not a constant because the design says so — *"a
+ * configurable age-of-consent setting (NL: 16)"* — and because a self-hosted
+ * instance in another member state is exactly the case D-162 defers rather than
+ * forecloses.
+ *
+ * WHAT IT DOES NOT DO: it does not run anything. `resolveGuardianAuthority`
+ * (`@/modules/people`) reads it at the moment a relationship is displayed or
+ * relied on. Nothing marks a row when a child turns sixteen, because a job that
+ * has not run yet would leave authority apparently valid — the same argument
+ * D-144 makes for grant expiry, and the reason D-151 calls this "the cheapest
+ * control in this section".
+ */
+export const AGE_OF_DIGITAL_CONSENT_YEARS = {
+  min: 13,
+  max: 18,
+  default: 16,
+} as const;
+
+/**
  * A conservative, deliberately simple email shape — a non-empty local part, an
  * `@`, and a dotted domain. FORMAT only; no deliverability check is implied.
  */
@@ -220,6 +256,14 @@ export interface OrganizationConfig {
      */
     sessionIdleTimeoutMinutesElevated: number;
   };
+  privacy: {
+    /**
+     * The age at which a person consents for themselves, and therefore the age
+     * at which guardian authority lapses (D-151). See
+     * {@link AGE_OF_DIGITAL_CONSENT_YEARS}.
+     */
+    ageOfDigitalConsentYears: number;
+  };
   maintenance: {
     /**
      * When true, ordinary visitors see a maintenance page instead of the app.
@@ -252,6 +296,9 @@ export function defaultOrganizationConfig(): OrganizationConfig {
       sessionIdleTimeoutMinutes: SESSION_IDLE_TIMEOUT_MINUTES.default,
       sessionIdleTimeoutMinutesElevated:
         SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES.default,
+    },
+    privacy: {
+      ageOfDigitalConsentYears: AGE_OF_DIGITAL_CONSENT_YEARS.default,
     },
     maintenance: {
       enabled: false,
@@ -295,6 +342,22 @@ function coerceBoundedMinutes(
 }
 
 /**
+ * Coerces a stored whole-year value against its bounds. Same shape as
+ * {@link coerceBoundedMinutes}, kept separate because the two answer to
+ * different bound objects and merging them would invite passing the wrong one.
+ */
+function coerceBoundedYears(
+  value: unknown,
+  bounds: { min: number; max: number },
+  fallback: number,
+): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= bounds.min && n <= bounds.max
+    ? n
+    : fallback;
+}
+
+/**
  * Parses a stored `Organization.config` JSON value into a complete, valid document,
  * filling defaults for anything missing or invalid. Never throws — this runs on
  * the authentication hot path and on every rendered page.
@@ -308,6 +371,7 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
   const contact = asRecord(root.contact);
   const localization = asRecord(root.localization);
   const security = asRecord(root.security);
+  const privacy = asRecord(root.privacy);
   const maintenance = asRecord(root.maintenance);
 
   const rawTimeZone =
@@ -370,6 +434,21 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
         security.sessionIdleTimeoutMinutesElevated,
         SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES,
         defaults.security.sessionIdleTimeoutMinutesElevated,
+      ),
+    },
+    // A malformed or absent value falls back to the DEFAULT (sixteen), not to
+    // the floor. The strictest-on-error asymmetry above exists because a
+    // widened session timeout is a security control quietly relaxed; this is a
+    // legal threshold, where "strictest" is not a coherent direction — thirteen
+    // would lapse authority EARLIER (more re-consent queue items) and eighteen
+    // LATER (parents consenting past the age they may). Sixteen is the correct
+    // value for the jurisdiction this instance runs in, and a corrupt document
+    // is not a reason to apply a different country's law.
+    privacy: {
+      ageOfDigitalConsentYears: coerceBoundedYears(
+        privacy.ageOfDigitalConsentYears,
+        AGE_OF_DIGITAL_CONSENT_YEARS,
+        defaults.privacy.ageOfDigitalConsentYears,
       ),
     },
     maintenance: {
@@ -476,6 +555,26 @@ function strictBoundedMinutes(
   return n;
 }
 
+/**
+ * Strict bounded whole years — D-151's age of digital consent. Refused rather
+ * than clamped, for the reason every `bounded` setting is (D-150): a silently
+ * clamped write tells the administrator their value was accepted.
+ */
+function strictBoundedYears(
+  field: string,
+  value: unknown,
+  bounds: { min: number; max: number },
+): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < bounds.min || n > bounds.max) {
+    fail(
+      field,
+      `Must be a whole number of years between ${bounds.min} and ${bounds.max}.`,
+    );
+  }
+  return n;
+}
+
 /** Strict boolean. */
 function strictBoolean(field: string, value: unknown): boolean {
   if (typeof value !== "boolean") fail(field, "Must be true or false.");
@@ -500,6 +599,7 @@ export function validateOrganizationConfigInput(
     ...asRecord(root.localization),
   };
   const security = { ...current.security, ...asRecord(root.security) };
+  const privacy = { ...current.privacy, ...asRecord(root.privacy) };
   const maintenance = { ...current.maintenance, ...asRecord(root.maintenance) };
 
   const validatedSecurity = {
@@ -578,6 +678,15 @@ export function validateOrganizationConfigInput(
       ),
     },
     security: validatedSecurity,
+    privacy: {
+      // REFUSED rather than clamped, like every other bounded value: an
+      // administrator who typed 21 must be told, not silently given 18.
+      ageOfDigitalConsentYears: strictBoundedYears(
+        "privacy.ageOfDigitalConsentYears",
+        privacy.ageOfDigitalConsentYears,
+        AGE_OF_DIGITAL_CONSENT_YEARS,
+      ),
+    },
     maintenance: {
       enabled: strictBoolean("maintenance.enabled", maintenance.enabled),
       message: strictTextOrNull(

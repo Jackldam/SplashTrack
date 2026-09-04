@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ENCRYPTED_COLUMNS } from "@/lib/crypto";
+import { ENCRYPTED_COLUMN_ENTRIES } from "@/lib/crypto";
 
 /**
  * ADOPTED FROM THE TEMPLATE AS-IS (D-135), and verified to do what
@@ -126,9 +126,9 @@ describe("migrations touching an encrypted column declare their impact (D-167)",
   /** Models carrying at least one registered, non-fixture encrypted column. */
   const protectedModels = [
     ...new Set(
-      Object.values(ENCRYPTED_COLUMNS)
-        .filter((entry) => !entry.fixture)
-        .map((entry) => entry.model),
+      ENCRYPTED_COLUMN_ENTRIES.filter((entry) => !entry.fixture).map(
+        (entry) => entry.model,
+      ),
     ),
   ];
 

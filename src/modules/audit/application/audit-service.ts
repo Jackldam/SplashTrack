@@ -19,6 +19,7 @@
  * SERVER-ONLY.
  */
 
+import type { DatabaseClient } from "@/lib/database";
 import { logger } from "@/lib/logging";
 
 import { verifyCheckpointMac } from "../domain/audit-checkpoint";
@@ -48,6 +49,12 @@ const CHANGED_FIELDS_MAX = 32;
  * id, sequence and hash. Throws if the append fails — the caller decides
  * whether that should fail the surrounding action.
  *
+ * PASS `client` — the caller's transaction — when the event evidences a write
+ * in that same transaction, so the record and the change commit together or
+ * neither does. Every write in the `people` module does. See
+ * `appendAuditEvent`'s doc comment for what happens without it and what it
+ * costs.
+ *
  * Lightly bounds `reason` and `changedFields` size. It does NOT and cannot
  * detect a personal-data value placed there by a mis-using caller: the typed
  * input makes the right thing easy, and code review is what makes the wrong
@@ -55,6 +62,7 @@ const CHANGED_FIELDS_MAX = 32;
  */
 export async function recordAuditEvent(
   input: AuditEventInput,
+  client?: DatabaseClient,
 ): Promise<{ id: string; sequence: number; hash: string }> {
   const reason =
     input.reason != null ? input.reason.slice(0, REASON_MAX) : input.reason;
@@ -65,7 +73,10 @@ export async function recordAuditEvent(
         )
       : input.changedFields;
 
-  const result = await appendAuditEvent({ ...input, reason, changedFields });
+  const result = await appendAuditEvent(
+    { ...input, reason, changedFields },
+    client,
+  );
   // A low-volume confirmation on the operational logger (ids only) so an audit
   // append is itself observable in ops tooling — never the changedFields/reason.
   auditLogger.debug(

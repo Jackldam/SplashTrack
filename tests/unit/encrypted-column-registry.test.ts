@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ENCRYPTED_COLUMNS } from "@/lib/crypto";
+import { ENCRYPTED_COLUMNS, ENCRYPTED_COLUMN_ENTRIES } from "@/lib/crypto";
 import { KEY_PURPOSES } from "@/lib/crypto/secret-key";
 
 import { extractModelBlocks } from "./prisma-schema-parser";
@@ -67,7 +67,7 @@ function schemaMarkers(): Map<string, { model: string; field: string }> {
 
 describe("encrypted-column registry (D-167)", () => {
   const markers = schemaMarkers();
-  const entries = Object.values(ENCRYPTED_COLUMNS);
+  const entries = ENCRYPTED_COLUMN_ENTRIES;
 
   it("keys every entry by its own columnId", () => {
     // The key and the field must agree, or `encryptedColumn()` would resolve a

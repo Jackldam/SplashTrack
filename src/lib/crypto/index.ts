@@ -45,6 +45,7 @@ export {
 
 export {
   ENCRYPTED_COLUMNS,
+  ENCRYPTED_COLUMN_ENTRIES,
   UnknownEncryptedColumnError,
   encryptedColumn,
   type EncryptedColumnEntry,

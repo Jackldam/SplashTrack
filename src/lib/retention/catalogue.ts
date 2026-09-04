@@ -125,6 +125,29 @@ export const RETENTION_CATALOGUE: readonly RetentionProposal[] = [
     source: "01-domain-model.md §5",
   },
   {
+    dataClass: "PERSON_RELATIONSHIPS",
+    purpose:
+      "Knowing who answers for a child — who may consent on their behalf, and " +
+      "who to telephone when something happens in the water — together with " +
+      "the evidence behind that claim (D-063).",
+    // NOT IN §5'S TABLE, and unresolved rather than guessed. Two readings are
+    // defensible and they are the organisation's to choose, not ours: the
+    // relationship is arguably held on CONTRACT (it is part of administering
+    // the lessons the family signed up for) or on LEGAL_OBLIGATION (it is the
+    // accountability evidence behind every consent a guardian gave, which
+    // Art. 5(2) requires the controller to be able to demonstrate). Guessing
+    // here would put a lawful basis nobody chose behind every guardian record
+    // in the database.
+    proposedLawfulBasis: "UNRESOLVED",
+    // D-066's own rule, applied to the relationship rather than to the person:
+    // the row is held as long as either party is held by anything.
+    trigger: "LAST_RELATIONSHIP_END",
+    retainForDays: null,
+    onExpiry: "REVIEW",
+    evidencedByAudit: true,
+    source: "Not in §5 — added by phase 1.1; see the report",
+  },
+  {
     dataClass: "MEDICAL_NOTES",
     purpose:
       "Keeping a child safe in the water — an instructor who does not know " +

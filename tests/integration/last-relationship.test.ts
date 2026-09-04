@@ -49,7 +49,9 @@ describe("D-066 relationship sources (real database)", () => {
     });
 
     it("reports held while the Membership row exists", async () => {
-      await prisma.membership.create({ data: { personId: PERSON_ID } });
+      await prisma.membership.create({
+        data: { personId: PERSON_ID, memberNumber: "M-lastrel-existing" },
+      });
       await expect(membershipSource.resolve(PERSON_ID)).resolves.toEqual({
         held: true,
       });
@@ -139,7 +141,9 @@ describe("D-066 relationship sources (real database)", () => {
       });
       // RoleAssignment alone has expired, but Membership still holds them —
       // the LAST relationship of any kind has not ended.
-      await prisma.membership.create({ data: { personId: PERSON_ID } });
+      await prisma.membership.create({
+        data: { personId: PERSON_ID, memberNumber: "M-lastrel-existing" },
+      });
 
       await expect(resolveLastRelationshipEnd(PERSON_ID)).resolves.toEqual({
         held: true,

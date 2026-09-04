@@ -245,31 +245,83 @@ model Organization {
 /// `docs/glossary.md`). This is the personal-data anchor — every erasure and
 /// every retention decision ultimately resolves here.
 ///
-/// Kept minimal on purpose. Contact details, guardianship, medical remarks and
-/// anything else the school records about a person belong to the modules that
-/// own them, each with its own retention policy from the day the column is
-/// created (D-065, D-014 — phase 0.4).
+/// Kept minimal on purpose — `01-domain-model.md` §3.1's key fields and nothing
+/// else. Medical remarks, pastoral notes, guardianship EVIDENCE, assessment and
+/// attendance all belong to the modules that own their PURPOSE (D-058), each
+/// with its own retention policy from the day the column is created (D-065,
+/// D-014). What lives here is what identifies a human: their name, their date of
+/// birth, and the contact route the school reaches them by.
+///
+/// `email` IS NOT `UserAccount.email`, and the duplication is not accidental.
+/// `UserAccount.email` is a LOGIN IDENTIFIER — unique, Better-Auth-owned, and
+/// present only for the small minority of people who sign in. This column is a
+/// CONTACT address for a person who overwhelmingly has no account at all (a
+/// child, a guardian, an external examiner), it is not unique (two siblings
+/// share a parent's address, which is the ordinary case and not a data-entry
+/// error), and it is not an authentication input. Merging them would either make
+/// a contact address a credential or give every child a login.
 /// @dataClass PERSON_IDENTITY
 model Person {
-  id         String   @id @default(cuid(2))
+  id         String @id @default(cuid(2))
   givenName  String
   familyName String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+
+  /// Date of birth. NULLABLE, and that is D-172 rather than a relaxation of
+  /// §3.1's "non-optional".
+  ///
+  /// D-151 derives guardian authority expiry from this column against the
+  /// configured age of digital consent, evaluated at read time. D-172 then
+  /// settles what happens when the input is missing: a placeholder date is
+  /// FORBIDDEN OUTRIGHT — "it is indistinguishable from a real one the moment it
+  /// is written" — the importer REJECTS a row it cannot parse a date for, and
+  /// "where the column must accept null for an imported record, unknown date ⇒
+  /// authority treated as lapsed ⇒ the consent appears in the re-consent queue".
+  ///
+  /// A NOT NULL column cannot express that. It would force the one thing D-172
+  /// forbids: something plausible written into the column so the insert
+  /// succeeds. So the column is nullable and `resolveGuardianAuthority`
+  /// (`@/modules/people`) fails a null to LAPSED — the safe direction and, more
+  /// importantly, the VISIBLE one.
+  ///
+  /// Stored as a DATE, not a timestamp: a birthday is a calendar day, and giving
+  /// it a time zone makes a child sixteen at a different instant depending on
+  /// where the server is.
+  dateOfBirth DateTime? @db.Date
+
+  /// Contact email. NOT a credential and NOT unique — see the model comment.
+  email String?
+  /// Contact telephone number. Free text: international formats, extensions and
+  /// "bel oma op ..." all occur, and normalising them loses information the
+  /// person at the poolside needs.
+  phone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // 0..1 login account (a Person may have no account — most people in this
   // system, children especially, never will).
   account UserAccount?
 
-  memberships     Membership[]
+  /// 0..1 pupil identity (D-053). A person who takes lessons here; most people
+  /// in the database have one and no `Membership`, which is §5.1's whole point.
+  studentProfile StudentProfile?
+
+  /// Relationships in which this person is the RELATIVE — the guardian, or the
+  /// emergency contact. `PersonRelationship.fromPersonId`.
+  relationshipsAsRelative PersonRelationship[] @relation("RelationshipFrom")
+  /// Relationships in which this person is the SUBJECT — the child who is
+  /// guarded, or the person the contact is for. `PersonRelationship.toPersonId`.
+  relationshipsAsSubject  PersonRelationship[] @relation("RelationshipTo")
+
+  memberships            Membership[]
   /// Grants held BY this person — the only source `requirePermission` reads.
-  roleAssignments RoleAssignment[] @relation("RoleAssignmentSubject")
+  roleAssignments        RoleAssignment[]  @relation("RoleAssignmentSubject")
   /// Grants ISSUED by this person. Accountability evidence for §2.6's
   /// anti-amplification rule, severed (not deleted) on erasure.
-  grantsIssued    RoleAssignment[] @relation("RoleAssignmentGranter")
+  grantsIssued           RoleAssignment[]  @relation("RoleAssignmentGranter")
   /// The organisation singleton, when this person was the last to change its
   /// configuration (0..1 — there is exactly one organisation).
-  organizationUpdates Organization[] @relation("OrganizationUpdatedBy")
+  organizationUpdates    Organization[]    @relation("OrganizationUpdatedBy")
   /// Retention policies whose lawful basis this person confirmed on the
   /// organisation's behalf (D-065, F-27). Accountability evidence; severed, not
   /// deleted, on erasure — a confirmation stands after its confirmer leaves.
@@ -556,37 +608,365 @@ model Passkey {
 /// be a member of, so the name no longer needs to say which
 /// (`01-domain-model.md` §1.1, D-056) and `personId` is the natural key.
 ///
-/// THE NAME IS NOW THE DOMAIN'S. `docs/glossary.md` fixes `Membership` as
+/// THE NAME IS THE DOMAIN'S. `docs/glossary.md` fixes `Membership` as
 /// *lid / lidmaatschap* — club membership — and `01-domain-model.md` §3.1
 /// specifies it as `memberNumber` + `unitId?` with N `MembershipPeriod` rows,
-/// one per person for life (D-053, D-059). This row is the same relation
-/// modelled thinly; the domain shape arrives with the `people` module, which
-/// OWNS this table. Two things it must do then, neither of them phase 0.3 work:
-///   - Add `memberNumber` and `MembershipPeriod`.
-///   - Add `MembershipPeriod`. The inherited `status` flag and its
-///     `MembershipStatus` enum were REMOVED in phase 0.3 rather than carried:
-///     D-059 is explicit that belonging is a set of intervals and never a
-///     status flag, because a flag destroys the answer to "when were they a
-///     member?". Nothing read it, so deleting it was free — and a forbidden
-///     column left lying in the schema is one somebody wires up later precisely
-///     because it is there.
+/// **one per person for life** (D-053, D-059).
+///
+/// PHASE 1.1 COMPLETED THE SHAPE. `memberNumber` and `MembershipPeriod` are
+/// here; the `people` module owns this table.
+///
+/// THERE IS NO `status` COLUMN AND THERE MUST NEVER BE ONE. The inherited flag
+/// and its `MembershipStatus` enum were removed in phase 0.3 rather than
+/// carried, because D-059 is explicit that belonging is a SET OF INTERVALS: a
+/// flag destroys the answer to "when were they a member?", which is the question
+/// contributions, insurance and retention are all decided from. Current
+/// membership is DERIVED — `isCurrentlyAMember` in `@/modules/people` — never
+/// read from a column. A forbidden column left lying in the schema is one
+/// somebody wires up later precisely because it is there.
+///
 /// Membership grants no authorization by itself and is never a prerequisite for
-/// a role (D-060) — permissions come from `RoleAssignment` alone.
+/// a role (D-060) — permissions come from `RoleAssignment` alone. It is also not
+/// required to take lessons: the most common person in the database is a child
+/// with a `StudentProfile` and no membership at all (§5.1).
 /// @dataClass MEMBERSHIP_PERIODS
 model Membership {
-  id        String           @id @default(cuid(2))
-  personId  String  @unique
+  id       String @id @default(cuid(2))
+  personId String @unique
+
+  /// The club's own member number — *lidnummer*. UNIQUE and STABLE ACROSS GAPS:
+  /// §3.1's "one per person, for life. The number stays the same across gaps" is
+  /// the reason leaving and returning may not create a second `Membership` row.
+  ///
+  /// A STRING, not an integer, and administrator-supplied where the club already
+  /// has a numbering scheme — clubs carry legacy numbers with prefixes, letters
+  /// and leading zeros, and an integer column silently destroys "0042". Left
+  /// blank, `allocateMemberNumber` issues the next `M-nnnnn`.
+  memberNumber String @unique
+
   /// The organisational unit this member belongs to; null = unassigned. `UNIT`
   /// is FLAT in v1 — there is no descendant walk (D-121) — and the club has one
   /// location today, which confirms that choice rather than straining it.
-  unitId    String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  ///
+  /// This is the column `unitOfPerson` resolves for `UNIT` coverage of a bare
+  /// `{ person }` reference (`@/lib/authorization/scope-relations`). A person
+  /// with no membership therefore has no unit and is DENIED under `UNIT` reach —
+  /// they are addressed as `{ student }` instead, which resolves through their
+  /// home unit.
+  unitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person  Person             @relation(fields: [personId], references: [id], onDelete: Restrict)
+  unit    OrganizationUnit?  @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  periods MembershipPeriod[]
+
+  @@index([unitId])
+}
+
+/// ONE INTERVAL OF BELONGING (D-059). Leave-and-return is a NEW ROW, never a
+/// mutated one and never a second `Membership`.
+///
+/// `01-domain-model.md` §3.1: *"Belonging is a set of intervals, not a status
+/// flag."* Everything follows from that:
+///   - "Is this person a member?" = does an OPEN period exist right now.
+///   - "When were they a member?" = the rows, all of them, forever.
+///   - Ending a membership CLOSES a period (`endedAt`, `endReason`). It never
+///     deletes one, and re-joining never reopens a closed one.
+///
+/// TWO HAND-WRITTEN CONSTRAINTS, because the Prisma DSL can express neither and
+/// `tests/integration/membership-periods.test.ts` names both:
+///   - `MembershipPeriod_window_order_check` — `endedAt > startedAt`. A period
+///     that ends before it starts is a data-entry accident that would otherwise
+///     read as a silently dead membership.
+///   - `MembershipPeriod_single_open_period_key` — a PARTIAL unique index on
+///     `membershipId WHERE "endedAt" IS NULL`. At most one open period per
+///     member. Without it, "start a membership" twice produces two overlapping
+///     open intervals and "are they a member?" quietly becomes a question with
+///     two answers — the exact failure mode the status flag had, one level down.
+///     Overlapping CLOSED periods are still permitted: a club that back-fills
+///     its paper history will produce them, and refusing legitimate history to
+///     enforce tidiness is how a status flag gets reinvented.
+///
+/// `endReason` is short free text, not an enum. The reasons a family leaves a
+/// swim club are open-ended (*"verhuisd"*, *"kosten"*, *"diploma C gehaald"*),
+/// and a closed vocabulary contains the reasons somebody thought of.
+/// @dataClass MEMBERSHIP_PERIODS
+model MembershipPeriod {
+  id           String @id @default(cuid(2))
+  membershipId String
+
+  /// When this interval of belonging began.
+  startedAt DateTime
+  /// When it ended. NULL = still a member. The ONLY current-membership signal.
+  endedAt   DateTime?
+  /// Why it ended, in the club's own words. Null while the period is open.
+  endReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// CASCADE, uniquely in this file, and deliberately. A period has no meaning
+  /// without its membership — it is not a separate relationship with the person,
+  /// it is one interval OF that relationship. `Membership` itself is `Restrict`
+  /// against `Person`, so an erasure still has to delete the membership
+  /// explicitly (`PERSON_REFERENCE_CLASSIFICATION` classifies it `HARD_DELETE`);
+  /// this cascade only decides what happens to the intervals when it does.
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  // The index the "is this person a member right now" derivation reads.
+  @@index([membershipId, endedAt])
+}
+
+// ---------------------------------------------------------------------------
+// The pupil, their lifecycle, and the people who answer for them
+// (phase 1.1, the `people` module — D-053, D-058, D-059, D-063, D-151)
+// ---------------------------------------------------------------------------
+
+/// *leerling* — THE PUPIL AS A LEARNER, and a table of its own (D-053).
+///
+/// NOT `Person` with a flag, and not `Membership`. Three different lifecycles:
+/// a member may leave while a diploma history is kept for ten years, a child
+/// taking lessons usually has no membership at all, and one retention policy
+/// cannot serve both. `docs/glossary.md` fixes the term.
+///
+/// **PERSISTENT.** Created once and never duplicated on return (D-059). A
+/// swimmer who leaves at seven and comes back at nine is the same profile with
+/// two more `StudentLifecycleEvent` rows — because their skills, their diplomas
+/// and their previous groups are the product's value, and a second profile
+/// fragments exactly that.
+///
+/// WHAT IS DELIBERATELY NOT HERE. §2.3 lists "medical remarks and internal
+/// notes" among a student profile's data; D-058 and D-148 override that reading
+/// and both are correct as later statements. Medical remarks are special
+/// category under `students.medical.*`, the `SafetyNote` free text is D-177 and
+/// the next pass, and pastoral notes are `students.notes.*` — all three
+/// encrypted, read-audited and export-excluded. Putting any of them on this row
+/// would drag that regime onto every read of a student number.
+/// @dataClass STUDENT_PROFILE
+model StudentProfile {
+  id       String @id @default(cuid(2))
+  personId String @unique
+
+  /// The club's own pupil number — *leerlingnummer*. Same shape and same reason
+  /// as `Membership.memberNumber`: a string, unique, administrator-supplied
+  /// where a scheme already exists, otherwise allocated as `L-nnnnn`.
+  ///
+  /// A SEPARATE NUMBERING SPACE from `memberNumber`, which is D-053's "different
+  /// numbering" made literal: a person who is both a member and a pupil has two
+  /// numbers, because the club's member register and its lesson administration
+  /// are two registers.
+  studentNumber String @unique
+
+  /// The pupil's HOME unit — which governs their PROFILE, whatever other units
+  /// they attend in (D-145's cross-unit rule). This is the column
+  /// `homeUnitOfStudent` resolves.
+  ///
+  /// NULLABLE, against §3.1's table, which writes it without a `?`. Nothing in
+  /// v1 creates an `OrganizationUnit`: there is no units module, no seeded unit,
+  /// and the club has exactly one location (`docs/glossary.md`, 2026-09-03). A
+  /// NOT NULL column would make it impossible to register a pupil at all until a
+  /// module that is not in this pass exists. Null DENIES `UNIT` reach rather
+  /// than widening it — `homeUnitOfStudent` returns null and every coverage rule
+  /// is a positive membership test — so the nullable column fails safe. Recorded
+  /// in `docs/build/phase-1.1-people-module-report.md`.
+  unitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
   unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
+  lifecycleEvents StudentLifecycleEvent[]
+
   @@index([unitId])
+}
+
+/// The five lifecycle events of `01-domain-model.md` §3.1, and exactly those.
+///
+/// **`MOVED_GROUP` IS NOT HERE, AND ITS ABSENCE IS A DECISION.** The brief for
+/// this module lists "moved group" among the lifecycle events; §2.2 of the
+/// domain model gives group moves their own entity — `GroupMove >──
+/// StudentProfile (up or down, reason-carrying)` — owned by the `groups`
+/// module. Both cannot hold: D-134 allows a normative fact exactly one home, and
+/// "when did this child change group" recorded in two places drifts the first
+/// time one of them is written without the other. The owning module wins,
+/// because a group move needs the two group ids this table has nowhere to put.
+///
+/// THE DOMAIN CONSTRAINT THAT TRAVELS WITH IT (Jack, domain expert): **moving a
+/// child DOWN a level must be as ordinary in the history as moving up.** That is
+/// a rule about `GroupMove`, and it means no direction flag that reads as a
+/// failure, no "demotion" wording, and no screen that renders one direction in
+/// red. Written here because this is where the reader looking for "moved group"
+/// arrives.
+///
+/// `TRIAL_ATTENDED` is *proefzwemmen* — a trial lesson for a PROSPECTIVE pupil,
+/// an enrolment concept and not a rehearsal before an exam (`docs/glossary.md`,
+/// confirmed 2026-08-31 after an earlier draft had it backwards).
+enum StudentLifecycleEventType {
+  JOINED
+  PAUSED
+  LEFT
+  RETURNED
+  TRIAL_ATTENDED
+}
+
+/// APPEND-ONLY lifecycle history for one pupil (D-059, and D-005's rule applied
+/// to the same shape). Current student status is DERIVED from these rows; there
+/// is no status column, for the same reason `Membership` has no flag.
+///
+/// A correction is a NEW event, never an `UPDATE` of an old one — `CLAUDE.md`
+/// rule 4. The application has no update or delete path for this table.
+///
+/// `reason` is short free text and is NOT encrypted. That is a judgement, not an
+/// oversight: D-148's protected free-text class is medical remarks, pastoral
+/// notes, assessment remarks and `Inquiry` text, and a lifecycle reason
+/// (*"verhuisd"*, *"even te druk op school"*) is not in it. The risk that
+/// somebody types a medical fact here is real and is answered where the design
+/// answers it — a length bound, a purpose line at the capture point, and
+/// `students.notes.*` for anything that is actually a note about the child.
+/// Recorded in the phase 1.1 report so the next reviewer argues with a decision
+/// rather than discovering a gap.
+///
+/// There is no `recordedByPersonId`. WHO recorded the event is accountability
+/// evidence and its home is the append-only audit trail, which already carries
+/// `actorPersonId` for every write in this module (D-134: one home per fact). A
+/// person column here would be a second, mutable copy of it — and a further
+/// `Person` reference for the erasure registry to classify, for no fact the
+/// trail does not already hold.
+/// @dataClass STUDENT_PROFILE
+model StudentLifecycleEvent {
+  id               String @id @default(cuid(2))
+  studentProfileId String
+
+  type       StudentLifecycleEventType
+  /// WHEN IT HAPPENED, which is not when it was typed in. A club catches up on
+  /// Monday morning; `createdAt` beside it records the entry moment.
+  occurredAt DateTime
+  /// Short free text. Never a medical fact — see the model comment.
+  reason     String?
+
+  createdAt DateTime @default(now())
+
+  /// CASCADE from the profile, on the `MembershipPeriod` pattern: a lifecycle
+  /// event has no meaning without the pupil whose lifecycle it is. The profile
+  /// itself is `Restrict` against `Person`, so an erasure still deletes it
+  /// explicitly.
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@index([studentProfileId])
+  @@index([studentProfileId, occurredAt])
+}
+
+/// The two person-to-person relationships v1 records (`01-domain-model.md`
+/// §3.1).
+///
+/// `GUARDIAN_OF` carries consent authority; `EMERGENCY_CONTACT` never does, and
+/// the CHECK constraint in the migration enforces that rather than trusting a
+/// form.
+enum PersonRelationshipType {
+  GUARDIAN_OF
+  EMERGENCY_CONTACT
+}
+
+/// *ouder / voogd* — one person answering for another, with authority recorded
+/// as EVIDENCE OF A CLAIM rather than as legal fact (D-063).
+///
+/// DIRECTION, fixed once and never to be re-read: **`from` is the RELATIVE and
+/// `to` is the SUBJECT.** `fromPersonId` is the guardian or the emergency
+/// contact; `toPersonId` is the child, or the person the contact is for. Read it
+/// as the sentence the type spells: *from* is GUARDIAN_OF *to*.
+///
+/// WHY `authority` IS NOT AN AUTHORIZATION SCOPE. `RELATED` was removed from
+/// `ScopeType` and must not return (OD-5, D-161): an unimplemented but grantable
+/// scope is worse than an absent one. A guardian's consent authority is a FACT
+/// on this row, consulted by the consent module; it is not a grant, it reaches
+/// nothing, and holding it gives a person no read of anything.
+///
+/// **AUTHORITY IS NEVER "true" ON ITS OWN — IT IS DERIVED AT READ TIME (D-151).**
+/// This column records that authority was CLAIMED and evidenced. Whether it
+/// still HOLDS is computed by `resolveGuardianAuthority` (`@/modules/people`)
+/// from the SUBJECT's `dateOfBirth` against the configured age of digital
+/// consent, plus this row's own `validFrom`/`validTo`. Parental authority lapses
+/// by operation of law on a birthday, not on an administrator remembering to set
+/// a `validTo` — so nothing in this schema, and no scheduled job, marks it. A
+/// predicate cannot be behind schedule; a job can (the same argument D-144 makes
+/// for grant expiry). A NULL `dateOfBirth` derives to LAPSED (D-172).
+///
+/// THREE HAND-WRITTEN CONSTRAINTS, named by
+/// `tests/integration/person-relationship-constraints.test.ts`:
+///   - `PersonRelationship_evidence_required_check` — D-063: `evidence` is
+///     **non-optional where `authority = true`**. The application cannot verify
+///     guardianship; it can only record what it was told and HOW the claim was
+///     established, and an authority claim with no recorded basis is the false
+///     comfort D-063 exists to prevent in a custody dispute.
+///   - `PersonRelationship_authority_kind_check` — only `GUARDIAN_OF` may carry
+///     authority. An emergency contact is someone to telephone, not someone who
+///     may consent on a child's behalf, and the two get conflated at exactly the
+///     moment nobody is checking.
+///   - `PersonRelationship_window_order_check` — `validTo > validFrom`.
+///
+/// Plus `PersonRelationship_no_self_reference_check` (a person is not their own
+/// guardian) and a PARTIAL unique index forbidding two OPEN relationships of the
+/// same type between the same pair, on the `RoleAssignment_standing_grant_key`
+/// pattern: duplicate standing facts are noise, while closed historical ones are
+/// legitimate history.
+/// @dataClass PERSON_RELATIONSHIPS
+model PersonRelationship {
+  id String @id @default(cuid(2))
+
+  /// The RELATIVE — the guardian, or the emergency contact.
+  fromPersonId String
+  /// The SUBJECT — the child, or the person the contact is for.
+  toPersonId   String
+
+  type PersonRelationshipType
+
+  /// Does this relationship CLAIM authority to consent on the subject's behalf
+  /// (R-04, D-063)? Never `true` for `EMERGENCY_CONTACT`, and never sufficient on
+  /// its own — see the model comment on read-time derivation.
+  authority Boolean @default(false)
+
+  /// **HOW the claim was established**, in the words of whoever recorded it:
+  /// *"moeder, ingeschreven bij inschrijving 2024-09-01"*, *"beschikking
+  /// rechtbank gezien 2025-03-14"*. Mandatory where `authority = true`.
+  ///
+  /// THE FIRST PRODUCTION ENCRYPTED COLUMN IN THIS SCHEMA. It is free text about
+  /// a family's legal arrangements — D-063's own worked example is a custody
+  /// dispute — so it is written through the D-096/D-167 envelope and typed
+  /// `Sealed<"person_relationships.authority_evidence">` in the repository,
+  /// which makes handing it a plaintext a compile error rather than a review
+  /// miss. The `columnId` is PERMANENT and is bound into the AAD of every value
+  /// ever written here; the registry entry lives in
+  /// `src/lib/crypto/encrypted-columns.ts`.
+  /// @encrypted person_relationships.authority_evidence
+  evidence String?
+
+  /// When the relationship was recorded as beginning.
+  validFrom DateTime  @default(now())
+  /// When it was recorded as ending. NULL = standing. This is the ADMINISTRATIVE
+  /// end (the school was told), never the legal one — authority lapsing at the
+  /// age of digital consent is DERIVED and leaves this column alone (D-151).
+  validTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Restrict on BOTH sides. This row is personal data about two people at once,
+  /// and erasing either of them must be a deliberate, registered step rather
+  /// than a cascade nobody sees — `PERSON_REFERENCE_CLASSIFICATION` classifies
+  /// both columns `HARD_DELETE`.
+  fromPerson Person @relation("RelationshipFrom", fields: [fromPersonId], references: [id], onDelete: Restrict)
+  toPerson   Person @relation("RelationshipTo", fields: [toPersonId], references: [id], onDelete: Restrict)
+
+  @@index([fromPersonId])
+  @@index([toPersonId])
+  // The index the guardian-authority read and D-066's guardian source both use:
+  // "who answers for this child, right now".
+  @@index([toPersonId, type, validTo])
 }
 
 // ---------------------------------------------------------------------------
@@ -659,7 +1039,8 @@ model OrganizationUnit {
   // depends on the type (D-147). "Which grants reach this unit" is therefore a
   // query on `(scopeType = 'UNIT', scopeId = <id>)`, which the composite index
   // on those two columns serves.
-  memberships Membership[]
+  memberships     Membership[]
+  studentProfiles StudentProfile[]
 
   @@index([path])
 }
@@ -1319,6 +1700,16 @@ enum DataClass {
   LOGIN_CREDENTIALS
   /// `Membership` and its periods.
   MEMBERSHIP_PERIODS
+  /// **Not in §5's table.** `PersonRelationship` — who answers for a child, and
+  /// the evidence behind that claim (D-063). It needed a class of its own for
+  /// the same reason `ROLE_ASSIGNMENTS` did: D-066 counts a guardian
+  /// relationship as one of the things that HOLDS a person, so it had to be a
+  /// classified table before it could be a relationship source. Folding it into
+  /// `PERSON_IDENTITY` would have put authority evidence — encrypted,
+  /// custody-relevant free text — under the identity policy's 24-month
+  /// `REVIEW`, which is a retention decision made by accident. Ships with
+  /// `proposedLawfulBasis: UNRESOLVED`, which is D-110's own marker.
+  PERSON_RELATIONSHIPS
   /// **Not in §5's table.** Grants — who may do what, to whom, when, issued by
   /// whom. D-066 counts a role assignment as a relationship that HOLDS a person,
   /// so it needed a class before it could be one.
@@ -1474,7 +1865,7 @@ model RetentionPolicy {
   purpose String
 
   /// OUR proposal. Always populated, possibly `UNRESOLVED`.
-  proposedLawfulBasis LawfulBasis
+  proposedLawfulBasis  LawfulBasis
   /// THEIRS. Null until the organisation confirms, and null is the correct
   /// shipped state (F-27).
   confirmedLawfulBasis LawfulBasis?
@@ -1483,7 +1874,7 @@ model RetentionPolicy {
   /// erasure — the confirmation stands after its confirmer leaves.
   confirmedByPersonId  String?
 
-  trigger RetentionTrigger
+  trigger       RetentionTrigger
   /// Duration past the trigger. Null means "as long as needed for the purpose",
   /// which is only honest with `onExpiry: REVIEW` — it contributes no floor to
   /// D-168's computed audit retention floor, because a class that is never

@@ -68,6 +68,24 @@ export const KEY_PURPOSES = [
   "backup-master-v1",
   "audit-anchor-v1",
   "fixture-v1",
+  /**
+   * ADDED IN PHASE 1.1, for `PersonRelationship.evidence` (D-063) — the record
+   * of HOW a guardian's authority claim was established.
+   *
+   * A LABEL OF ITS OWN rather than `medical-v1`, for the reason per-purpose
+   * derivation exists at all. `medical-v1` is D-112's branch for
+   * SPECIAL-CATEGORY columns (Art. 9): medical remarks, `SafetyNote`,
+   * assessment remarks. Guardian evidence is not special category — it is
+   * ordinary personal data that happens to be sensitive free text about a
+   * family's legal arrangements. Deriving both from one branch would make a
+   * single key the compromise point for two data classes with two lawful bases
+   * and two retention policies, which is the same collapse `BETTER_AUTH_SECRET`
+   * performed in the template (F-95), one layer down.
+   *
+   * Adding a label is additive and safe. The vocabulary is frozen against
+   * EDITING and REMOVAL, because either orphans every value written under it.
+   */
+  "relationship-evidence-v1",
 ] as const;
 
 export type KeyPurpose = (typeof KEY_PURPOSES)[number];

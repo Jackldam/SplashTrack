@@ -96,6 +96,40 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "The person's own role grant. Restrict FK; an explicit deleteMany in " +
       "the erasure.",
   },
+  "StudentProfile.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "The person's own pupil identity — `leerling`, D-053's separate table " +
+      "with its own lifecycle and its own retention. Restrict FK; an explicit " +
+      "delete in the erasure, which in turn CASCADES StudentLifecycleEvent via " +
+      "studentProfileId (those rows reference the profile, not the Person, so " +
+      "they are out of this map by construction). What the erasure must NOT do " +
+      "is treat a retained diploma history as a reason to keep this row: §5.2 " +
+      "is explicit that an award register does not automatically defeat an " +
+      "erasure request, and any ground for retaining an award is recorded " +
+      "against the award, in the `exams` module, never inferred here.",
+  },
+  "PersonRelationship.fromPersonId": {
+    category: "HARD_DELETE",
+    reason:
+      "This row is personal data about TWO people at once, and it is the " +
+      "erased person's own data from whichever end they stand at. Erasing the " +
+      "guardian deletes the row; the child keeps every other relationship they " +
+      "have. Restrict on both foreign keys, so it can never leave as a cascade " +
+      "nobody sees. The `evidence` column being encrypted under the " +
+      "D-096/D-167 envelope changes nothing here: an unreadable ciphertext is " +
+      "still personal data, and deleting the row is what removes it.",
+  },
+  "PersonRelationship.toPersonId": {
+    category: "HARD_DELETE",
+    reason:
+      "The same row from the SUBJECT's end — the child, or the person an " +
+      "emergency contact is for. Erasing them deletes it, which is also what " +
+      "keeps D-066 coherent: a guardian is held only while the child they are " +
+      "guardian of is held, so once the child's record is gone the " +
+      "relationship that held the guardian is gone with it and the guardian's " +
+      "own retention clock starts.",
+  },
 
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
   "RoleAssignment.grantedByPersonId": {

@@ -136,6 +136,7 @@ export const getRequestConfigData = cache(
     brandName: string | null;
     localization: OrganizationConfig["localization"];
     security: OrganizationConfig["security"];
+    privacy: OrganizationConfig["privacy"];
   }> => {
     try {
       const row = await prisma.organization.findUnique({
@@ -147,6 +148,13 @@ export const getRequestConfigData = cache(
         brandName: row?.name ?? null,
         localization: config.localization,
         security: config.security,
+        // Carried on the SAME cached query rather than a second one. D-151's
+        // derivation runs wherever a guardian relationship is displayed or
+        // relied on — a person screen, not a hot path — but this read is made
+        // anyway and deduped per request, so adding one field to a `select`
+        // that already runs costs nothing where a second `findUnique` would
+        // cost a round trip per screen.
+        privacy: config.privacy,
       };
     } catch (error) {
       settingsLogger.warn(
@@ -165,6 +173,11 @@ export const getRequestConfigData = cache(
           sessionIdleTimeoutMinutesElevated:
             SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES.min,
         },
+        // The DEFAULT, not a floor. "Strictest" is not a coherent direction for
+        // a legal threshold — see `coerceOrganizationConfig`'s note on the same
+        // asymmetry. A read failure must not silently apply another member
+        // state's age of consent.
+        privacy: defaults.privacy,
       };
     }
   },
@@ -178,6 +191,22 @@ export async function getConfiguredLocalization(): Promise<
   OrganizationConfig["localization"]
 > {
   return (await getRequestConfigData()).localization;
+}
+
+/**
+ * UNGUARDED, read-only privacy-policy resolver — today, D-151's age of digital
+ * consent. Delegates to {@link getRequestConfigData} so it shares the same
+ * cached query.
+ *
+ * UNGUARDED is correct and is not an oversight. This returns a NUMBER that is
+ * the same for the whole installation and discloses nothing about any person;
+ * the guarded thing is the relationship the number is applied TO, and that read
+ * goes through `requirePermission` in `@/modules/people`.
+ */
+export async function getConfiguredPrivacyPolicy(): Promise<
+  OrganizationConfig["privacy"]
+> {
+  return (await getRequestConfigData()).privacy;
 }
 
 /**

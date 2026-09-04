@@ -78,17 +78,31 @@ export interface EncryptedColumnEntry {
  * THE REGISTRY. Keyed by `columnId` so a duplicate is a syntax error rather
  * than a review miss.
  *
- * IT HOLDS NO PRODUCTION COLUMN YET, AND THAT IS THE POINT OF THE ORDERING.
- * `CLAUDE.md` rule 1 is that the envelope exists before the first encrypted
- * byte — a byte written without it has to be unwrapped and rewritten by hand
- * from a backup. The columns that will live here are named in the design and
- * arrive with the modules that own them: `students.medical_remarks` and the
- * `SafetyNote` free text (D-148, D-177), `AssessmentRemark` (D-148), the
- * settings-registry secrets (SMTP, OAuth) once `OrganizationSettingSecret`
- * exists, and `Inquiry` free text. Each one adds its entry here in the same
- * commit as its column.
+ * THE ORDERING HELD. `CLAUDE.md` rule 1 is that the envelope exists before the
+ * first encrypted byte — a byte written without it has to be unwrapped and
+ * rewritten by hand from a backup. Phase 0.4a built the envelope with NO
+ * production column in this registry at all; phase 1.1 adds the first one, and
+ * it arrives in the same commit as its column, its migration and its
+ * `/// @encrypted` marker, which is the property this file exists to enforce.
+ *
+ * Still to come, named in the design and arriving with the modules that own
+ * them: `students.medical_remarks` and the `SafetyNote` free text (D-148,
+ * D-177), `AssessmentRemark` (D-148), the settings-registry secrets (SMTP,
+ * OAuth) once `OrganizationSettingSecret` exists, and `Inquiry` free text.
  */
 export const ENCRYPTED_COLUMNS = {
+  "person_relationships.authority_evidence": {
+    columnId: "person_relationships.authority_evidence",
+    model: "PersonRelationship",
+    field: "evidence",
+    purpose: "relationship-evidence-v1",
+    note:
+      "HOW a guardian's authority claim was established (D-063) — free text " +
+      "about a family's legal arrangements, whose worked example in the design " +
+      "is a custody dispute. Not special category, so it derives under its own " +
+      "HKDF branch rather than `medical-v1`; sensitive enough that read access " +
+      "to the database alone must not disclose it.",
+  },
   "fixture.round_trip": {
     columnId: "fixture.round_trip",
     model: "__fixture__",
@@ -104,6 +118,23 @@ export const ENCRYPTED_COLUMNS = {
 
 /** Every registered column identifier, as a type. */
 export type EncryptedColumnId = keyof typeof ENCRYPTED_COLUMNS;
+
+/**
+ * Every entry, typed as the INTERFACE rather than as its own literal type.
+ *
+ * `ENCRYPTED_COLUMNS` is `as const`, so each value's inferred type is exactly
+ * the properties that entry writes — which means `fixture` is absent from the
+ * type of any entry that is not a fixture, and `Object.values(...)` produces a
+ * union on which `entry.fixture` does not typecheck. That was invisible while
+ * the registry held one entry and appeared the moment phase 1.1 added the
+ * second (a real column, with no `fixture` key).
+ *
+ * Iterating a heterogeneous registry belongs on the interface, not on the union
+ * of literals, so this is the shape every consumer that walks the registry
+ * takes. Lookups by id keep the literal types and their exhaustiveness.
+ */
+export const ENCRYPTED_COLUMN_ENTRIES: readonly EncryptedColumnEntry[] =
+  Object.values(ENCRYPTED_COLUMNS);
 
 /** The registry as an injectable shape, so tests can supply a variant. */
 export type EncryptedColumnRegistry = Readonly<

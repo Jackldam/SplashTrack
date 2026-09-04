@@ -34,6 +34,16 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   TwoFactor: "LOGIN_CREDENTIALS",
   Passkey: "LOGIN_CREDENTIALS",
   Membership: "MEMBERSHIP_PERIODS",
+  MembershipPeriod: "MEMBERSHIP_PERIODS",
+  // The pupil's own record and its append-only lifecycle history share one
+  // class: both are held for the same purpose (administering lessons) and both
+  // expire on the same trigger (`LAST_ENROLMENT_END`). Giving the history a
+  // class of its own would be a second retention decision about one fact.
+  StudentProfile: "STUDENT_PROFILE",
+  StudentLifecycleEvent: "STUDENT_PROFILE",
+  // Its own class, added by phase 1.1 — see the enum member's comment in
+  // `prisma/schema.prisma` for why it is not folded into `PERSON_IDENTITY`.
+  PersonRelationship: "PERSON_RELATIONSHIPS",
   Role: "ORGANIZATION_SETTINGS",
   OrganizationUnit: "ORGANIZATION_SETTINGS",
   AccessGroup: "ORGANIZATION_SETTINGS",

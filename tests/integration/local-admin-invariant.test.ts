@@ -34,8 +34,12 @@ async function cleanUp(): Promise<void> {
   await prisma.twoFactor.deleteMany({
     where: { userId: { startsWith: PREFIX } },
   });
-  await prisma.account.deleteMany({ where: { userId: { startsWith: PREFIX } } });
-  await prisma.userAccount.deleteMany({ where: { id: { startsWith: PREFIX } } });
+  await prisma.account.deleteMany({
+    where: { userId: { startsWith: PREFIX } },
+  });
+  await prisma.userAccount.deleteMany({
+    where: { id: { startsWith: PREFIX } },
+  });
   await prisma.person.deleteMany({ where: { id: { startsWith: PREFIX } } });
   await prisma.rolePermission.deleteMany({
     where: { roleId: { startsWith: PREFIX } },

@@ -30,6 +30,16 @@
  * here — the two files agree by construction, and
  * `tests/unit/erasure-registry-sync.test.ts` checks the schema side.
  *
+ * TWO PHASE-1.1 TABLES ARE DELIBERATELY ABSENT, and their absence is checked
+ * rather than assumed. `MembershipPeriod` and `StudentLifecycleEvent` reference
+ * no `Person` — they reference `Membership` and `StudentProfile`, which do — so
+ * the completeness test neither requires nor permits an entry for them (its
+ * third assertion refuses a registered model that does not reference `Person`).
+ * They leave by CASCADE when the row they belong to is erased, which is why
+ * their foreign keys are the only `onDelete: Cascade` edges in the domain half
+ * of the schema. Recorded here because "no entry" and "forgotten" look identical
+ * from the outside, and this file's whole premise is that they must not.
+ *
  * `Charge` and `Payment` are NOT yet in this registry — the `fees` module has
  * not been extracted (no such tables exist in `prisma/schema.prisma` yet).
  * D-092/D-154 already describe their shape: `exempt("fiscal administration
@@ -65,6 +75,8 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     Organization: { kind: "erase" },
     UserAccount: { kind: "erase" },
     Membership: { kind: "erase" },
+    StudentProfile: { kind: "erase" },
+    PersonRelationship: { kind: "erase" },
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },
