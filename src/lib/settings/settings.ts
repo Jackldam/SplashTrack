@@ -96,11 +96,35 @@ async function getOrCreateOrganization() {
  * Wrapped in `React.cache()` so several callers on the same request share one
  * query instead of each triggering their own upsert. Deduping is safe: nothing
  * else writes this row mid-request.
+ *
+ * IT DEGRADES TO THE DEFAULTS, exactly as `getRequestConfigData` below does,
+ * and for a reason found by walking a first install rather than by reading the
+ * code. Its one caller is `generateMetadata` in the root layout, which runs on
+ * EVERY page — including the setup notice, against a database with no tables at
+ * all. There the upsert throws `P2021`, and that throw escaped into Next's
+ * metadata boundary: the page still rendered, and the operator's very first
+ * page load printed an unhandled `PrismaClientKnownRequestError` with a stack
+ * trace into the log they had just been told to follow. Nothing was wrong, and
+ * it read exactly like something was.
+ *
+ * There is no security direction to get wrong here — these values are a meta
+ * description and a support contact, rendered to every visitor — so the
+ * fallback is simply the built-in defaults, logged at `warn` beside the other
+ * first-run degradations.
  */
 export const getPublicOrganizationConfig = cache(
   async (): Promise<PublicOrganizationSettings> => {
-    const organization = await getOrCreateOrganization();
-    return { config: coerceOrganizationConfig(organization.config) };
+    try {
+      const organization = await getOrCreateOrganization();
+      return { config: coerceOrganizationConfig(organization.config) };
+    } catch (error) {
+      settingsLogger.warn(
+        { event: "settings.public_config_read_failed", err: error },
+        "could not read the organisation singleton; rendering the built-in " +
+          "defaults. Expected before first-run setup has migrated the schema",
+      );
+      return { config: defaultOrganizationConfig() };
+    }
   },
 );
 
