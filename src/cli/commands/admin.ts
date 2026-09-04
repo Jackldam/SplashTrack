@@ -2,40 +2,51 @@
  * The break-glass administrator commands (D-141, `13-…` §7).
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * HOW A HUMAN ENROLS MFA WITHOUT THE SECRET LANDING IN A TRANSCRIPT
+ * WHERE MFA IS ENROLLED, AND WHY IT IS NO LONGER HERE (D-185)
  *
- * This is the constraint the whole file is shaped around. F-20 states as a
- * design assumption that self-hosters debugging a problem paste logs and
- * terminal output into public issues, and D-101 already redesigned the setup
- * token around exactly that: *the token goes to a 0600 file and only its PATH is
- * printed*. A TOTP secret is strictly worse than a setup token — it does not
- * expire, it is the second factor for the highest-privilege account in the
- * product, and printing it as a `otpauth://` URI or as a terminal QR code puts
- * it in the same paste.
+ * The constraint has not changed: F-20 states as a design assumption that
+ * self-hosters debugging a problem paste logs and terminal output into public
+ * issues, and a TOTP secret is strictly worse than the setup token D-101
+ * already moved off the terminal for that reason — it does not expire, and it
+ * is the second factor for the highest-privilege account in the product. THE
+ * SECRET STILL NEVER REACHES STDOUT, STDERR OR THE LOGGER.
  *
- * So the secret is never written to stdout, to stderr or to the logger. It goes
- * to ONE file, created with mode 0600 before a byte is written, and the command
- * prints only that file's path. The operator opens the file themselves — that
- * is a deliberate act on their own host, not something that scrolls past in a
- * terminal they were about to copy.
+ * What changed is the PLACE. `admin:create` used to enrol: it wrote the secret
+ * to a 0600 file, printed only that path, and then blocked on a prompt
+ * demanding a six-digit code. The operator could not open the file without
+ * abandoning the prompt, so the command could not be completed by the person it
+ * exists for. That is not a rough edge; it is the command not working.
  *
- * And the command does not finish there. It then asks for a **code from the
- * authenticator**, and verifies it. That does three things at once:
+ * A terminal is simply the wrong surface for enrolling an authenticator. A
+ * browser can draw a QR code, is where every other product does this, and is
+ * not something anybody pastes into a chat. So:
  *
- *   1. It proves the enrolment worked before the account is treated as usable.
- *      D-141's invariant says *verified* MFA factor; enrolled-but-unverified is
- *      an account that cannot complete a sign-in.
- *   2. It means the enrolment file has already served its purpose by the time
- *      the command returns, so the closing instruction to delete it is real
- *      advice rather than a suggestion to destroy the only copy of something
- *      still needed.
- *   3. It closes the window in which an account with `ORGANIZATION` scope
- *      exists with no second factor at all.
+ *   `admin:create`   creates the account with a password and STOPS. The account
+ *                    is `mfa_pending` (`@/lib/auth/mfa-enrolment`): it may sign
+ *                    in and enrol, and every other route, page, API and Server
+ *                    Action refuses it. Setup is NOT complete while it is in
+ *                    that state, and the command prints the URL to visit.
  *
- * The password is read the same way (`../prompt`): from a file the operator
- * holds, or from a TTY with echo disabled. No command here takes a password as
- * a flag value — a flag value is in the shell history and in `ps` for every user
- * on the host.
+ *   the browser      `/mfa-enrolment` shows the QR, takes a code, verifies the
+ *                    factor and writes the bootstrap record — the instant
+ *                    D-141's invariant first holds.
+ *
+ * `admin:reset-mfa` BELOW STILL ENROLS FROM THE TERMINAL, and therefore still
+ * writes the 0600 artefact. That is deliberate and it is not an oversight: it
+ * exists for an administrator whose authenticator is gone, and D-141 requires a
+ * verified factor on a local ORGANIZATION account AT ALL TIMES. Deleting the
+ * factor and telling a single-administrator installation to go and enrol in a
+ * browser would leave the invariant false for as long as that took, on exactly
+ * the shape of installation this command exists for. Re-enrolling inside the
+ * same command keeps it false for one transaction and true again before the
+ * command returns. So the file-writing path stays, used by one caller, and the
+ * usability defect it carries is bounded to a recovery command run by somebody
+ * who already knows they are recovering.
+ *
+ * The password is read as before (`../prompt`): from a file the operator holds,
+ * or from a TTY with echo disabled. No command here takes a password as a flag
+ * value — a flag value is in the shell history and in `ps` for every user on
+ * the host.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -56,13 +67,12 @@ import {
   SELF_ROLE_KEY,
   seedInstallation,
 } from "@/lib/boot/seed";
-import { INSTALLATION_BOOTSTRAP_ID } from "@/lib/boot/setup-mode";
 import { detectBootState } from "@/lib/boot/state";
 import { prisma } from "@/lib/database";
 
 import { recordBreakGlassInvocation } from "../break-glass";
 import { resolveSecret, readSecretLine } from "../prompt";
-import { APP_VERSION, type CommandContext } from "../context";
+import type { CommandContext } from "../context";
 import { migrateAndApplyRoleModel } from "./setup";
 
 /** `admin:grant-admin` is a RECOVERY grant, not provisioning (`13-…` §7). */
@@ -124,6 +134,28 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
     return 1;
   }
 
+  // Since D-185 this command no longer closes setup mode, so it is no longer
+  // self-limiting: a second run with a different address creates a second
+  // administrator. That is REPORTED rather than refused, because refusing would
+  // strand an operator who mistyped the address on the first run — the account
+  // they cannot use would also be the one blocking the account they need.
+  // Nothing is widened by allowing it: every one of these accounts is
+  // `mfa_pending` until somebody proves a factor, host access is already total
+  // authority here, and each invocation writes its own break-glass audit event
+  // and raises its own banner.
+  const existingAccounts = await prisma.userAccount.findMany({
+    select: { email: true },
+  });
+  if (existingAccounts.length > 0) {
+    ctx.error(
+      `NOTE: ${existingAccounts.length} account(s) already exist and setup is ` +
+        "not complete, so none of them has enrolled MFA yet: " +
+        `${existingAccounts.map((row) => row.email).join(", ")}. Creating ` +
+        "another is allowed and audited; whichever enrols first completes " +
+        "setup. Remove the rest from the application afterwards.",
+    );
+  }
+
   // Read the password BEFORE anything is written, so a mistyped confirmation
   // aborts a command that has changed nothing.
   const password = await resolveSecret({
@@ -151,14 +183,10 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
   // the id of the `Person` the create hook makes, so a failure after that hook
   // does not leave an orphaned personal-data row behind.
   const tracked: { personId?: string } = {};
-  let signUp: Response;
   try {
-    signUp = await personCreationTracker.run(tracked, () =>
+    await personCreationTracker.run(tracked, () =>
       accountProvisioningMarker.run(true, () =>
-        auth.api.signUpEmail({
-          body: { email, password, name },
-          asResponse: true,
-        }),
+        auth.api.signUpEmail({ body: { email, password, name } }),
       ),
     );
   } catch (error) {
@@ -170,91 +198,70 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
     throw error;
   }
 
-  const cookie = sessionCookieOf(signUp);
   const account = await prisma.userAccount.findUniqueOrThrow({
     where: { email },
     select: { id: true, personId: true },
   });
-
-  // --- MFA enrolment, forced (13-… §6.3 step 3) ----------------------------
-  const enrolment = (await auth.api.enableTwoFactor({
-    body: { password },
-    headers: new Headers({ cookie }),
-  })) as { totpURI: string; backupCodes: string[] };
-
-  const artefactPath = writeEnrolmentArtefact(ctx, email, enrolment);
-  ctx.log("");
-  ctx.log("MFA enrolment written to:");
-  ctx.log(`    ${artefactPath}`);
-  ctx.log("");
-  ctx.log(
-    "That file holds the TOTP secret and the backup codes. It is NOT printed " +
-      "here and must not be pasted anywhere. Open it on this host, add the " +
-      "account to your authenticator, then delete the file.",
-  );
-  ctx.log("");
-
-  const code = (
-    await readSecretLine("Six-digit code from your authenticator: ")
-  ).trim();
-
-  try {
-    await auth.api.verifyTOTP({
-      body: { code },
-      headers: new Headers({ cookie }),
-      asResponse: true,
-    });
-  } catch (error) {
-    ctx.error(
-      "That code did not verify, so the MFA factor is not enrolled and this " +
-        "account is being removed rather than left half-created. Nothing " +
-        "about the installation has changed apart from the seeded catalogue, " +
-        "which is idempotent — run `admin:create` again.",
-    );
-    await rollbackAccount(account.id, account.personId);
-    throw error;
-  }
 
   // --- the grants ----------------------------------------------------------
   await assignRole(account.personId, INSTANCE_ADMINISTRATOR_ROLE_KEY);
   // D-146: SELF is an explicit seeded assignment, never an implicit match.
   await assignRole(account.personId, SELF_ROLE_KEY, "SELF");
 
-  // --- setup is complete ---------------------------------------------------
-  await prisma.installationBootstrap.upsert({
-    where: { id: INSTALLATION_BOOTSTRAP_ID },
-    update: {
-      completedAt: new Date(),
-      completedVia: "cli",
-      appVersion: APP_VERSION,
-    },
-    create: {
-      id: INSTALLATION_BOOTSTRAP_ID,
-      completedAt: new Date(),
-      completedVia: "cli",
-      appVersion: APP_VERSION,
-    },
-  });
-
-  // The CLI held a live session to drive the enrolment endpoints. It must not
-  // outlive the command: a session token in a container's memory is not an
-  // artefact anybody agreed to keep.
+  // `signUpEmail` establishes a session for the caller. This one belongs to
+  // nobody: the operator is at a terminal, not in the browser that will finish
+  // enrolment, and a session token left in a container's memory is not an
+  // artefact anybody agreed to keep. The administrator signs in themselves.
   await prisma.session.deleteMany({ where: { userId: account.id } });
 
-  await assertLocalAdminInvariantHolds("Creating the first administrator");
-
+  // --- what has NOT happened, deliberately ---------------------------------
+  // No MFA factor, so no bootstrap record either: setup is not complete while
+  // the only administrator is `mfa_pending`, and `completeSetupIfInvariantHolds`
+  // in `@/lib/boot` writes that record from the enrolment flow at the instant
+  // D-141's invariant first holds. `assertLocalAdminInvariantHolds` is likewise
+  // NOT called here — it cannot hold yet, by construction, and asserting it
+  // would make this command fail on success.
   ctx.log("");
   ctx.log(`Administrator created: ${email}`);
   ctx.log(`  role       ${INSTANCE_ADMINISTRATOR_ROLE_KEY} @ ORGANIZATION`);
-  ctx.log(`  MFA        TOTP, verified`);
+  ctx.log(`  MFA        NOT YET ENROLLED — the account can do nothing else`);
   ctx.log(`  audit      ${auditEventId}`);
   ctx.log(
     "  banner     raised for all administrators; it is dismissed in-app, " +
       "not from here",
   );
   ctx.log("");
-  ctx.log(`Delete ${artefactPath} once your authenticator is set up.`);
+  ctx.log("SETUP IS NOT COMPLETE. Finish it in a browser:");
+  ctx.log("");
+  ctx.log(`    ${signInUrl()}`);
+  ctx.log("");
+  ctx.log(
+    "Sign in with the password you just chose. You will be taken straight to " +
+      "the page that shows a QR code for your authenticator; scan it, enter " +
+      "the six digits it shows, and this installation is set up.",
+  );
+  ctx.log(
+    "Until then the account may do exactly two things — sign in, and enrol. " +
+      "Every other page, route and action refuses it.",
+  );
+  ctx.log("");
+  ctx.log(
+    "The TOTP secret is shown in that browser page and nowhere else: not " +
+      "here, not in a file, not in a log (D-185).",
+  );
   return 0;
+}
+
+/**
+ * Where to send the operator to finish. `BETTER_AUTH_URL` is this instance's
+ * public origin and is required for the container to start at all, so in a real
+ * deployment it is always right. A bare checkout running the CLI without it
+ * gets the honest placeholder rather than a guessed `localhost` that might send
+ * somebody to the wrong machine.
+ */
+function signInUrl(): string {
+  const base = process.env.BETTER_AUTH_URL?.trim().replace(/\/$/, "");
+  return base ? `${base}/sign-in` : "<this instance's address>/sign-in";
 }
 
 // ── admin:reset-mfa ─────────────────────────────────────────────────────────
@@ -434,8 +441,11 @@ export async function adminGrantAdmin(ctx: CommandContext): Promise<number> {
   const admins = await countLocalOrganizationAdmins();
   if (admins === 0) {
     ctx.error(
-      "Note: this account has no verified MFA factor, so it does not yet " +
-        "satisfy D-141's invariant. Run `admin:reset-mfa` for it.",
+      "Note: no account on this installation holds a verified MFA factor, so " +
+        "D-141's invariant does not hold. If this one has never enrolled, it " +
+        `can sign in at ${signInUrl()} and will be taken straight to ` +
+        "enrolment (D-185). If its authenticator is lost, run " +
+        "`admin:reset-mfa` instead.",
     );
   }
   return 0;
@@ -507,22 +517,6 @@ function writeEnrolmentArtefact(
   // Belt and braces: `mode` is masked by the process umask on some platforms.
   chmodSync(file, 0o600);
   return file;
-}
-
-/** Undoes a half-created account so a failed enrolment leaves nothing behind. */
-async function rollbackAccount(
-  userAccountId: string,
-  personId: string,
-): Promise<void> {
-  await prisma.session
-    .deleteMany({ where: { userId: userAccountId } })
-    .catch(() => undefined);
-  await prisma.userAccount
-    .delete({ where: { id: userAccountId } })
-    .catch(() => undefined);
-  await prisma.person
-    .delete({ where: { id: personId } })
-    .catch(() => undefined);
 }
 
 /** Creates a standing grant of a seeded role, idempotently. */

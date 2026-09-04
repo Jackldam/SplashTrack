@@ -172,7 +172,15 @@ case "${ACTION}" in
     log "      docker compose exec app splashtrack admin:create \\"
     log "          --email you@example.org --name 'Your Name'"
     log ""
-    log "  Until then every page serves the setup notice."
+    log "  That command creates the account and stops. SETUP IS NOT COMPLETE"
+    log "  until its second factor exists (D-185): sign in at"
+    log "  ${BETTER_AUTH_URL}/sign-in with the password you chose, and you are"
+    log "  taken straight to a page showing a QR code for your authenticator."
+    log "  The TOTP secret is shown there and nowhere else — not in this log,"
+    log "  not in a file, not on a terminal."
+    log ""
+    log "  Until then every page serves the setup notice, and the account may"
+    log "  do exactly two things: sign in, and enrol."
     log ""
     ;;
 

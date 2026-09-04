@@ -15,7 +15,9 @@
  * BEFORE the change.
  *
  * WHAT NO COMMAND HERE DOES: print a password, a TOTP secret, a backup code or
- * a session token. See `./commands/admin.ts` for how enrolment works instead.
+ * a session token. Since D-185 `admin:create` does not ENROL either — it
+ * creates the account and prints the URL where the administrator enrols in a
+ * browser. See `./commands/admin.ts`.
  *
  * `secret:init` IS here, and it is the one command that must run with no
  * database and no `SECRET_KEY` — it is what creates the key. That is why every
@@ -60,9 +62,10 @@ const USAGE = `splashtrack <command> [flags]
 
   boot:state                      Print the boot state and the action it implies
   setup:init                      Apply migrations and seed the catalogue
-  admin:create --email <e>        Create the FIRST ORGANIZATION administrator
-                 [--name <n>] [--password-file <p>] [--out <dir>]
-  admin:reset-mfa --email <e>     Replace an account's MFA factor and re-enrol
+  admin:create --email <e>        Create the FIRST ORGANIZATION administrator.
+                 [--name <n>]     MFA is enrolled afterwards in a browser, and
+                 [--password-file <p>]  setup is not complete until it is
+  admin:reset-mfa --email <e>     Replace a LOST authenticator, and re-enrol
                  [--password-file <p>] [--out <dir>]
   admin:grant-admin --email <e>   Grant ORGANIZATION admin for 24 hours
   bootstrap:clear-tampered [--yes]  Clear D-099's TAMPERED state
@@ -74,7 +77,13 @@ const USAGE = `splashtrack <command> [flags]
 
 Every command that changes anything writes an audit event with a system:cli
 actor and raises a banner for all administrators. None of them prints a
-password, a TOTP secret or a backup code.`;
+password, a TOTP secret or a backup code.
+
+A NEW INSTALLATION, END TO END:
+
+    splashtrack admin:create --email you@example.org --name 'Your Name'
+    …then open <this instance>/sign-in, sign in with that password, and scan
+      the QR code you are taken to. That completes setup.`;
 
 async function resolve(name: string): Promise<Command | null> {
   switch (name) {

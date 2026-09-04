@@ -1,6 +1,6 @@
 /**
- * `setup:init` on a GENUINELY EMPTY database, end to end, as a self-hoster runs
- * it.
+ * A new installation on a GENUINELY EMPTY database, end to end, as a
+ * self-hoster runs it: `setup:init`, then `admin:create`.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE DEFECT THIS PINS
@@ -30,9 +30,13 @@
  * its own environment is also simply what the operator types.
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { base32 } from "@better-auth/utils/base32";
+import { createOTP } from "@better-auth/utils/otp";
 import { Client } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -258,3 +262,206 @@ describe("setup:init on an empty database", () => {
     },
   );
 });
+
+describe("admin:create on a migrated, seeded database", () => {
+  it(
+    "creates a pending administrator without ever asking for a code",
+    { timeout: 120_000 },
+    async () => {
+      const database = await createEmptyDatabase("admin");
+      runCli(database, "setup:init");
+
+      // `--password-file` is the documented non-interactive path (see
+      // `src/cli/prompt.ts`); a flag VALUE would be in shell history and `ps`.
+      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
+      const passwordFile = path.join(workDirectory, "password");
+      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
+        mode: 0o600,
+      });
+
+      // THE DEFECT, AS A TEST. `stdio` is not a TTY and carries no input at
+      // all, so the old command — which blocked on "Six-digit code from your
+      // authenticator:" — could only have failed here. Completing is the
+      // proof: `runCli` throws on a non-zero exit and the case times out if
+      // the command ever waits for a human again.
+      const output = runCli(
+        database,
+        "admin:create",
+        "--email",
+        "beheerder@example.org",
+        "--name",
+        "Eerste Beheerder",
+        "--password-file",
+        passwordFile,
+      );
+
+      expect(output).toContain("Administrator created: beheerder@example.org");
+      expect(output).toContain("NOT YET ENROLLED");
+      expect(output).toContain("SETUP IS NOT COMPLETE");
+      // The URL it sends the operator to, taken from BETTER_AUTH_URL.
+      expect(output).toMatch(/https?:\/\/\S+\/sign-in/);
+      // And it did NOT ask for anything it could not show.
+      expect(output).not.toContain("Six-digit code");
+      expect(output).not.toContain("otpauth://");
+
+      // NO ARTEFACT. The 0600 enrolment file is gone from this path: there is
+      // no secret for it to hold, and `data/` is where it used to land.
+      const workingDirectoryEntries = readdirSync(process.cwd());
+      expect(
+        workingDirectoryEntries.includes("data") &&
+          readdirSync(path.join(process.cwd(), "data")).some((entry) =>
+            entry.startsWith("mfa-enrolment-"),
+          ),
+      ).toBe(false);
+
+      await asRuntime(database, async (client) => {
+        // The account exists, with its ORGANIZATION grant …
+        const accounts = await client.query<{ id: string; email: string }>(
+          'SELECT id, email FROM "UserAccount"',
+        );
+        expect(accounts.rows).toHaveLength(1);
+        expect(accounts.rows[0].email).toBe("beheerder@example.org");
+
+        const grants = await client.query<{ scopeType: string; key: string }>(
+          `SELECT ra."scopeType", r.key
+             FROM "RoleAssignment" ra JOIN "Role" r ON r.id = ra."roleId"
+            ORDER BY r.key`,
+        );
+        expect(grants.rows).toEqual([
+          { scopeType: "ORGANIZATION", key: "instance_administrator" },
+          { scopeType: "SELF", key: "self" },
+        ]);
+
+        // … and NO MFA factor, which is what makes it `mfa_pending`.
+        const factors = await client.query('SELECT 1 FROM "TwoFactor"');
+        expect(factors.rowCount).toBe(0);
+
+        // … and no session left behind for a browser nobody was using.
+        const sessions = await client.query('SELECT 1 FROM "Session"');
+        expect(sessions.rowCount).toBe(0);
+
+        // SETUP IS NOT COMPLETE. The bootstrap record is written by the
+        // enrolment flow, at the instant D-141's invariant first holds.
+        const bootstrap = await client.query(
+          'SELECT 1 FROM "InstallationBootstrap" WHERE "completedAt" IS NOT NULL',
+        );
+        expect(bootstrap.rowCount).toBe(0);
+
+        // The break-glass event and its banner are unchanged.
+        const audit = await client.query<{ eventType: string }>(
+          `SELECT "eventType" FROM "AuditEvent"
+            WHERE "eventType" = 'security.break_glass.admin_create'`,
+        );
+        expect(audit.rowCount).toBe(1);
+      });
+    },
+  );
+});
+
+describe("admin:reset-mfa", () => {
+  it(
+    "still enrols from the terminal, for a lost authenticator",
+    { timeout: 180_000 },
+    async () => {
+      // KEPT DELIBERATELY, and therefore tested. D-185 moved `admin:create`'s
+      // enrolment to the browser but left this one on the terminal, because
+      // D-141 requires a verified factor on a local ORGANIZATION account AT ALL
+      // TIMES and this command is what a single-administrator installation runs
+      // when its authenticator is gone — see the header of
+      // `src/cli/commands/admin.ts`. It is also the only remaining caller of
+      // the 0600 artefact writer, so this case is what keeps that path alive
+      // rather than merely present.
+      //
+      // It is driven the way an operator drives it: the command blocks on a
+      // prompt, the artefact file is read WHILE it blocks, and the code is
+      // typed back. That is exactly the interaction `admin:create` could not
+      // support — there the file and the prompt were both new, so there was
+      // nothing to read yet when the block began.
+      const database = await createEmptyDatabase("resetmfa");
+      runCli(database, "setup:init");
+
+      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
+      const passwordFile = path.join(workDirectory, "password");
+      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
+        mode: 0o600,
+      });
+
+      runCli(
+        database,
+        "admin:create",
+        "--email",
+        "beheerder@example.org",
+        "--password-file",
+        passwordFile,
+      );
+
+      const artefactDirectory = path.join(workDirectory, "out");
+      const child = spawn(
+        process.execPath,
+        [
+          path.resolve(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+          path.resolve(process.cwd(), "scripts/cli-dev.ts"),
+          "admin:reset-mfa",
+          "--email",
+          "beheerder@example.org",
+          "--password-file",
+          passwordFile,
+          "--out",
+          artefactDirectory,
+        ],
+        {
+          env: {
+            ...process.env,
+            DATABASE_URL: runtimeUrlFor(database),
+            DATABASE_MAINTENANCE_URL: maintenanceUrlFor(database),
+          },
+        },
+      );
+
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += String(chunk)));
+      child.stderr.on("data", (chunk) => (output += String(chunk)));
+
+      // Wait for the artefact to appear — the command has reached its prompt.
+      const artefact = await waitForArtefact(artefactDirectory);
+      const totpURI = artefact.match(/otpauth:\/\/\S+/)![0];
+      const key = new TextDecoder().decode(
+        base32.decode(new URL(totpURI).searchParams.get("secret")!),
+      );
+      child.stdin.write(`${await createOTP(key).totp()}\n`);
+      child.stdin.end();
+
+      const status = await new Promise<number>((resolve) =>
+        child.on("close", (code) => resolve(code ?? 1)),
+      );
+      expect(status, output).toBe(0);
+      expect(output).toContain("MFA reset and re-enrolled");
+      // The secret went to the file and to nowhere else.
+      expect(output).not.toContain(totpURI);
+      expect(output).not.toContain(key);
+
+      await asRuntime(database, async (client) => {
+        const factors = await client.query<{ verified: boolean }>(
+          'SELECT verified FROM "TwoFactor"',
+        );
+        expect(factors.rows).toEqual([{ verified: true }]);
+      });
+    },
+  );
+});
+
+/** Polls for the one file `writeEnrolmentArtefact` creates, then reads it. */
+async function waitForArtefact(directory: string): Promise<string> {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    try {
+      const [file] = readdirSync(directory).filter((entry) =>
+        entry.startsWith("mfa-enrolment-"),
+      );
+      if (file) return readFileSync(path.join(directory, file), "utf8");
+    } catch {
+      // The directory does not exist yet.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`No enrolment artefact appeared in ${directory}`);
+}
