@@ -97,13 +97,24 @@ interface OwnerRow {
  * Exit code 0 whether or not the role exists: this is a REPORT, and the
  * entrypoint must not refuse to start an instance because a deployment step the
  * operator owns has not been run yet. It is loud instead — the diagnostics page
- * carries the same line when it exists (`13-…` §8).
+ * carries the same line when it exists (`13-…` §8). `db:apply-grants` is the
+ * command that DOES refuse, because it is an action rather than a report.
+ *
+ * IT TAKES A CLIENT so the "not in force" branch can be proved against a
+ * database where ownership really is wrong, rather than by asserting on a
+ * string. `tests/integration/database-role-model.test.ts` builds exactly that
+ * database and runs THIS function against it: same code, two databases, two
+ * different answers. A report whose reassuring branch is the only one anybody
+ * ever exercises is how §3's defect survived review the first time.
  */
-export async function auditGrants(ctx: CommandContext): Promise<number> {
+export async function auditGrants(
+  ctx: CommandContext,
+  client: typeof prisma = prisma,
+): Promise<number> {
   // "No grants found" and "the table does not exist yet" produce the same empty
   // result set, and reporting the second as "the separation is in force" would
   // be a green light on an installation that has not been migrated. Ask first.
-  const present = await prisma.$queryRaw<{ present: boolean }[]>`
+  const present = await client.$queryRaw<{ present: boolean }[]>`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
        WHERE table_schema = current_schema() AND table_name = 'AuditEvent'
@@ -117,14 +128,14 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
     return 0;
   }
 
-  const rows = await prisma.$queryRaw<GrantRow[]>`
+  const rows = await client.$queryRaw<GrantRow[]>`
     SELECT grantee, table_name, privilege_type
       FROM information_schema.table_privileges
      WHERE table_name IN ('AuditEvent', 'AuditCheckpoint')
      ORDER BY table_name, grantee, privilege_type
   `;
 
-  const owners = await prisma.$queryRaw<OwnerRow[]>`
+  const owners = await client.$queryRaw<OwnerRow[]>`
     SELECT tablename AS table_name, tableowner AS owner
       FROM pg_tables
      WHERE schemaname = current_schema()
@@ -132,7 +143,7 @@ export async function auditGrants(ctx: CommandContext): Promise<number> {
      ORDER BY tablename
   `;
 
-  const current = await prisma.$queryRaw<{ role: string }[]>`
+  const current = await client.$queryRaw<{ role: string }[]>`
     SELECT current_user AS role
   `;
   const appRole = current[0]?.role ?? "unknown";

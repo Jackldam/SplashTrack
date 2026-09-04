@@ -48,6 +48,8 @@ export async function applyRoleModel(
   maintenanceUrl: string,
   names: RoleModelNames,
 ): Promise<RoleModelOutcome> {
+  await claimSchemaForOwner(maintenanceUrl, names.owner);
+
   const client = new Client({
     connectionString: migrationUrlFrom(maintenanceUrl, names.owner),
   });
@@ -96,6 +98,62 @@ export async function applyRoleModel(
     }
 
     return { ...identity, failures: await verify(client, names) };
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/**
+ * Hands schema `public` to the owner, connecting AS THE RETENTION ROLE ITSELF
+ * rather than as the owner.
+ *
+ * WHY IT CANNOT BE THE FIRST STATEMENT OF THE OWNER SESSION. A database created
+ * by the retention role has its `public` schema owned by `pg_database_owner`,
+ * whose implicit member is the database's owner — the retention role. The owner
+ * role has no rights there at all yet, so a session acting AS the owner cannot
+ * hand the schema to itself; only the role that currently owns it can give it
+ * away. Hence a separate, briefly-held connection.
+ *
+ * WHY THE THROWAWAY DATABASES ARE OWNED BY RETENTION IN THE FIRST PLACE. They
+ * have to be DROPPED again — by `boot-state-matrix`, by `db:recreate`, by the
+ * `audit:grants` proof — and dropping a database requires owning it. The
+ * membership in the owner role is deliberately NON-INHERITING (see
+ * `infra/provision-roles.sql` §3), so retention does not own an
+ * owner-owned database and could not drop one. Owning them outright and then
+ * handing over the schema is what keeps both properties.
+ *
+ * The REAL database is different: `provision-roles.sql` gives it to the owner,
+ * and nothing ever drops it.
+ *
+ * THE TEST IS THE PRIVILEGE, NOT THE `nspowner` COLUMN, and getting that wrong
+ * cost a debugging round. On the real database `public` is owned by
+ * `pg_database_owner` — a system role whose implicit member is whoever owns the
+ * database — so `nspowner` reads `pg_database_owner` while the owner role
+ * nevertheless has every right it needs. Comparing names there sends this
+ * function on to an `ALTER SCHEMA` that the retention role is not entitled to
+ * issue, and the whole command fails with `must be owner of schema public` on a
+ * database that was already correct. `has_schema_privilege` answers the
+ * question actually being asked: can the owner create things here?
+ */
+export async function claimSchemaForOwner(
+  maintenanceUrl: string,
+  owner: string,
+): Promise<void> {
+  const client = new Client({ connectionString: maintenanceUrl });
+  await client.connect();
+  try {
+    const already = await client.query<{ usable: boolean }>(
+      "SELECT has_schema_privilege($1, current_schema(), 'CREATE') AS usable",
+      [owner],
+    );
+    if (already.rows[0]?.usable) return;
+
+    // `format(%I)` rather than interpolation: the owner name reaches here from
+    // a `--owner` flag or an environment variable.
+    await client.query(
+      `DO $$ BEGIN EXECUTE format('ALTER SCHEMA public OWNER TO %I', ` +
+        `'${owner.replace(/'/g, "''")}'); END $$`,
+    );
   } finally {
     await client.end().catch(() => undefined);
   }

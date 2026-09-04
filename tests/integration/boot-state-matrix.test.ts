@@ -42,6 +42,7 @@ import {
   imageMigrationNames,
   type BootStateReader,
 } from "@/lib/boot/state";
+import { claimSchemaForOwner } from "@/lib/database/apply-role-model";
 import {
   migrationUrlFrom,
   REFERENCE_OWNER_ROLE,
@@ -68,9 +69,14 @@ function adminUrl(): string {
  * limitation to work around.
  */
 function urlFor(database: string): string {
+  return migrationUrlFrom(urlForSession(database), REFERENCE_OWNER_ROLE);
+}
+
+/** The same database, as the retention role itself rather than as the owner. */
+function urlForSession(database: string): string {
   const url = new URL(process.env.DATABASE_MAINTENANCE_URL as string);
   url.pathname = `/${database}`;
-  return migrationUrlFrom(url.toString(), REFERENCE_OWNER_ROLE);
+  return url.toString();
 }
 
 async function withAdmin<T>(fn: (client: Client) => Promise<T>): Promise<T> {
@@ -91,10 +97,15 @@ async function createDatabase(name: string): Promise<string> {
   const database = `splashtrack_boot_${name}_test`;
   await withAdmin(async (client) => {
     await client.query(`DROP DATABASE IF EXISTS "${database}"`);
-    await client.query(
-      `CREATE DATABASE "${database}" OWNER "${REFERENCE_OWNER_ROLE}"`,
-    );
+    // Owned by the retention role that creates it, so `afterAll` can drop it
+    // again: the owner membership is non-inheriting (infra/provision-roles.sql
+    // §3), so an owner-owned database could not be dropped from here.
+    await client.query(`CREATE DATABASE "${database}"`);
   });
+  // Hand schema `public` to the owner before anything is created in it, so the
+  // tables these cases build by hand are owned where every other table in this
+  // product is (ADR-0002 §3).
+  await claimSchemaForOwner(urlForSession(database), REFERENCE_OWNER_ROLE);
   created.push(database);
   return database;
 }

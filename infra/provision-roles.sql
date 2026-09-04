@@ -125,10 +125,42 @@ ALTER ROLE splashtrack_app PASSWORD :'app_password';
 -- boundary: whoever can start the retention job can start the migration.
 --
 -- WHAT MEMBERSHIP COSTS, STATED PLAINLY. A member of the owner can SET ROLE to
--- it and grant itself anything. So this credential is as powerful as the owner,
--- and the separation ADR-0002 buys is between the RUNTIME role and everything
--- else — not between the migrator and the owner. That is the right boundary:
--- the runtime role is the one an injection lands on.
+-- it and grant itself anything. So this credential is ultimately as powerful as
+-- the owner, and the separation ADR-0002 buys is between the RUNTIME role and
+-- everything else — not between the migrator and the owner. That is the right
+-- boundary: the runtime role is the one an injection lands on.
+--
+-- BUT THE MEMBERSHIP DOES NOT INHERIT, AND THAT MATTERS MORE THAN IT LOOKS.
+--
+-- PostgreSQL role membership is INHERITING by default, which means a plain
+-- `GRANT splashtrack_owner TO splashtrack_retention` silently hands the
+-- retention role every privilege the owner holds — including UPDATE and
+-- TRUNCATE on `AuditEvent` — with no SET ROLE required. Measured on
+-- postgres:16-alpine while writing this:
+--
+--     UPDATE "AuditEvent" SET reason = 1;   -- UPDATE 0   ← permitted, silently
+--
+-- That would make "the retention role holds SELECT, INSERT and DELETE and
+-- nothing more" false at the moment it was written, and the grant list in
+-- `audit:grants` would still have shown exactly the three intended privileges.
+-- A privilege you hold through an inherited membership does not appear beside
+-- your name in `information_schema.table_privileges`.
+--
+-- With the membership non-inheriting, the same statement is refused, and the
+-- migration connection still works because SET ROLE is unaffected:
+--
+--     UPDATE "AuditEvent" …                 -- ERROR: permission denied  ✓
+--     SET ROLE splashtrack_owner; …         -- permitted                 ✓
+--
+-- THE ORDER OF THE THREE STATEMENTS BELOW IS THE PORTABLE WAY TO GET THIS.
+-- PostgreSQL 16 records the inherit option ON THE MEMBERSHIP, taken from the
+-- member role's own INHERIT attribute AT GRANT TIME — so `ALTER ROLE …
+-- NOINHERIT` after the fact changes nothing, which is a quiet way to think you
+-- have fixed it. `GRANT … WITH INHERIT FALSE` says it explicitly but is PG16+
+-- syntax and fails on 15. Setting NOINHERIT first and then re-granting produces
+-- `inherit_option = f` on 16 and the same behaviour on 15, with no version
+-- test. The REVOKE is what makes it work on a re-run rather than only on a
+-- fresh volume.
 
 DO $$
 BEGIN
@@ -139,8 +171,27 @@ END
 $$;
 
 ALTER ROLE splashtrack_retention
-  LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS NOREPLICATION;
+  LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS NOREPLICATION NOINHERIT;
 ALTER ROLE splashtrack_retention PASSWORD :'retention_password';
+
+-- The REVOKE is guarded because on a FRESH volume there is no membership to
+-- revoke, and PostgreSQL answers a pointless REVOKE with a WARNING naming both
+-- roles. That warning appears in the init log of every new install, where the
+-- one thing an operator should be able to do is read past it — a routine
+-- warning is how a real one gets ignored.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_auth_members m
+      JOIN pg_roles member ON member.oid = m.member
+      JOIN pg_roles grantor ON grantor.oid = m.roleid
+     WHERE member.rolname = 'splashtrack_retention'
+       AND grantor.rolname = 'splashtrack_owner'
+  ) THEN
+    REVOKE splashtrack_owner FROM splashtrack_retention;
+  END IF;
+END
+$$;
 
 GRANT splashtrack_owner TO splashtrack_retention;
 
@@ -194,6 +245,17 @@ BEGIN
   EXECUTE format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO splashtrack_retention', db);
 END
 $$;
+
+-- The SCHEMA, named explicitly rather than left to `pg_database_owner`.
+--
+-- A fresh database's `public` is owned by the system role `pg_database_owner`,
+-- whose implicit member is whoever owns the database — so the owner already has
+-- the rights it needs, and this line changes no privilege. It exists so that
+-- `pg_namespace.nspowner` and `pg_tables.tableowner` answer the question "who
+-- owns this installation" with the SAME name, instead of one of them answering
+-- with a system role. `audit:grants` prints an owner to a human, and
+-- `pg_database_owner` is not an answer anybody can act on.
+ALTER SCHEMA public OWNER TO splashtrack_owner;
 
 -- ── 6. The provisioning superuser is NOT an application credential ──────────
 --

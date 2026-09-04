@@ -39,7 +39,10 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
 
-import { applyRoleModel } from "../src/lib/database/apply-role-model";
+import {
+  applyRoleModel,
+  claimSchemaForOwner,
+} from "../src/lib/database/apply-role-model";
 import {
   migrationUrlFrom,
   REFERENCE_OWNER_ROLE,
@@ -76,13 +79,16 @@ async function ensureTestDatabaseExists(maintenanceUrl: string): Promise<void> {
     if (existing.rowCount === 0) {
       // dbName came from resolveTestDatabaseUrl(), which already validated it
       // ends in "_test" — not arbitrary user input — so inlining it is safe.
-      // OWNER is the non-connecting owner role, so the schema and every table
-      // in this database belong where ADR-0002 §3 requires — the precondition
-      // without which D-149 part 2's REVOKE is decorative. `applyRoleModel`
-      // asserts it afterwards rather than assuming it took.
-      await client.query(
-        `CREATE DATABASE "${dbName}" OWNER "${REFERENCE_OWNER_ROLE}"`,
-      );
+      // Owned by the RETENTION role, which is what creates it — because this
+      // database gets dropped and rebuilt, and dropping one requires owning it.
+      // The membership in the owner role does not inherit (see
+      // infra/provision-roles.sql §3), so a database owned by the OWNER could
+      // never be dropped from here.
+      //
+      // The SCHEMA still ends up owned by splashtrack_owner, which is the part
+      // ADR-0002 §3 actually requires — `applyRoleModel` hands it over below,
+      // and then asserts it rather than assuming it took.
+      await client.query(`CREATE DATABASE "${dbName}"`);
       console.log(`[setup-test-db] Created database "${dbName}".`);
     } else {
       console.log(`[setup-test-db] Database "${dbName}" already exists.`);
@@ -149,6 +155,13 @@ async function main(): Promise<void> {
   const maintenanceUrl = resolveTestMaintenanceUrl();
 
   await ensureTestDatabaseExists(maintenanceUrl);
+
+  // BEFORE the migrations, not after: they run as the owner (prisma.config.ts
+  // derives that connection), and in a database the retention role has just
+  // created the owner has no rights on schema `public` at all. The very first
+  // CREATE TABLE would fail.
+  await claimSchemaForOwner(maintenanceUrl, REFERENCE_OWNER_ROLE);
+
   applyMigrations(maintenanceUrl);
 
   // Step 5, new with ADR-0002: the test database gets the SAME role model as a

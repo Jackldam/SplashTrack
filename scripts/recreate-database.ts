@@ -22,7 +22,10 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
 
-import { applyRoleModel } from "../src/lib/database/apply-role-model";
+import {
+  applyRoleModel,
+  claimSchemaForOwner,
+} from "../src/lib/database/apply-role-model";
 import {
   REFERENCE_OWNER_ROLE,
   roleNameFrom,
@@ -67,16 +70,19 @@ async function main(): Promise<void> {
   await client.connect();
   try {
     await client.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-    // OWNER, so this scratch database is shaped like a real one from the first
-    // statement. R-20's fresh-install path is what this script reproduces, and
-    // a fresh install now ends with the role model in force.
-    await client.query(
-      `CREATE DATABASE "${name}" OWNER "${REFERENCE_OWNER_ROLE}"`,
-    );
+    // Owned by the retention role that creates it, so this script can drop it
+    // again on the next run — the owner membership does not inherit, so an
+    // owner-owned database would be undroppable from here. `applyRoleModel`
+    // hands the SCHEMA to the owner, which is the part that matters.
+    await client.query(`CREATE DATABASE "${name}"`);
   } finally {
     await client.end();
   }
   console.log(`[recreate-database] Dropped and recreated "${name}".`);
+
+  // Before migrating: they run as the owner, which has no rights on schema
+  // `public` in a database the retention role has just created.
+  await claimSchemaForOwner(target.toString(), REFERENCE_OWNER_ROLE);
 
   const require = createRequire(import.meta.url);
   const prismaBin = path.join(
