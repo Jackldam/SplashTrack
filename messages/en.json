@@ -7,7 +7,8 @@
     "title": "SplashTrack",
     "tagline": "Pupil tracking for swim schools.",
     "foundationNotice": "The foundation is in place. There is no functionality yet — the first module follows.",
-    "signedInAs": "Signed in as {email}."
+    "signedInAs": "Signed in as {email}.",
+    "toPeople": "Go to People"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -34,5 +35,132 @@
     "title": "Break-glass access was used",
     "explanation": "Somebody with host access ran a break-glass command. Check that it was expected before dismissing this.",
     "dismiss": "Acknowledged"
+  },
+  "people": {
+    "title": "People",
+    "subtitle": "People, memberships and pupils. Three separate things — a child can take lessons without being a member, and a member need never swim.",
+    "backToList": "Back to the list",
+    "backToPerson": "Back to the person",
+    "empty": "No people found.",
+    "yes": "Yes",
+    "no": "No",
+    "save": "Save",
+    "saved": "Saved.",
+    "unknownDateOfBirth": "Unknown",
+    "denied": {
+      "title": "No access",
+      "explanation": "You are not permitted to do this. Required: {permission}. Ask an administrator to extend your role."
+    },
+    "errors": {
+      "denied": "You are not permitted to do this.",
+      "validation": "The submitted details are not valid. Check the fields and try again.",
+      "ALREADY_OPEN": "This member already has an open membership period. End that one first, so the gap between two periods stays visible.",
+      "NOT_OPEN": "There is no open membership period to end. Returning starts a new period; a closed period is never reopened.",
+      "ENDS_BEFORE_IT_STARTS": "A membership period cannot end before it started."
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Name, member number or pupil number",
+      "submit": "Search"
+    },
+    "columns": {
+      "name": "Name",
+      "dateOfBirth": "Date of birth",
+      "memberNumber": "Member number",
+      "studentNumber": "Pupil number",
+      "member": "Member",
+      "studentState": "Pupil"
+    },
+    "fields": {
+      "givenName": "Given name",
+      "familyName": "Family name",
+      "dateOfBirth": "Date of birth",
+      "dateOfBirthHelp": "Leave blank if you do not know it. Never enter a guess: with an unknown date of birth guardian authority lapses automatically and the consent appears in the queue.",
+      "email": "Email address",
+      "phone": "Telephone number"
+    },
+    "create": {
+      "title": "New person",
+      "submit": "Create person"
+    },
+    "sections": {
+      "identity": "Personal details",
+      "membership": "Membership",
+      "student": "Pupil",
+      "guardians": "Who answers for this person",
+      "dependants": "Who this person answers for"
+    },
+    "membership": {
+      "number": "Member number",
+      "numberHelp": "Leave blank to allocate one automatically. The member number stays the same, including across a break.",
+      "startedAt": "Started on",
+      "endedAt": "Ended on",
+      "endReason": "Reason",
+      "open": "Open",
+      "create": "Create membership",
+      "end": "End period",
+      "startAgain": "Start a new period",
+      "returnHelp": "Returning starts a new period. The old period stays, so 'when was this person a member?' remains answerable."
+    },
+    "student": {
+      "number": "Pupil number",
+      "numberHelp": "Leave blank to allocate one automatically. Separate from the member number: that is a different register.",
+      "occurredAt": "When",
+      "event": "Event",
+      "reason": "Note",
+      "create": "Create pupil record",
+      "record": "Record",
+      "reasonPurpose": "A short note about this event. No medical or sensitive information — the medical and pastoral notes exist for that."
+    },
+    "lifecycle": {
+      "PROSPECTIVE": "Trial lesson",
+      "ACTIVE": "Active",
+      "PAUSED": "Paused",
+      "LEFT": "Left"
+    },
+    "lifecycleEvent": {
+      "JOINED": "Joined",
+      "PAUSED": "Paused",
+      "LEFT": "Left",
+      "RETURNED": "Returned",
+      "TRIAL_ATTENDED": "Attended a trial lesson"
+    },
+    "relationshipType": {
+      "GUARDIAN_OF": "Parent or guardian",
+      "EMERGENCY_CONTACT": "Emergency contact"
+    },
+    "relationships": {
+      "relative": "Person",
+      "subject": "Concerns",
+      "type": "Kind",
+      "authority": "May give consent",
+      "validFrom": "From",
+      "validTo": "Until",
+      "evidence": "Evidence",
+      "evidencePurpose": "Record HOW the relationship was established — for example 'mother, given at registration on 2024-09-01' or 'court order seen on 2025-03-14'. Required if this person may give consent. This field is stored encrypted and every time somebody opens it that is recorded.",
+      "showEvidence": "Show evidence",
+      "noEvidence": "None",
+      "end": "End",
+      "addTitle": "Add a relationship",
+      "add": "Record relationship",
+      "relativeId": "Id of the other person",
+      "relativeIdHelp": "Copy the id from the address bar on that person's page.",
+      "noGuardians": "Nobody is recorded as answering for this person.",
+      "noDependants": "This person is not recorded as answering for anybody."
+    },
+    "authority": {
+      "ACTIVE": "Valid",
+      "LAPSED_BY_AGE": "Lapsed — age reached",
+      "LAPSED_BY_RECORD": "Lapsed — relationship ended",
+      "LAPSED_UNKNOWN_BIRTHDATE": "Lapsed — date of birth unknown",
+      "NOT_CLAIMED": "Not applicable",
+      "lapsesOn": "Lapses on"
+    },
+    "evidence": {
+      "title": "Evidence for the relationship",
+      "auditNotice": "The fact that you opened this has been recorded in the audit trail, with your name and the moment.",
+      "none": "No evidence was recorded for this relationship.",
+      "claimNotice": "This is what the school was told and how it was established. It is evidence of a claim, not a legal determination of guardianship."
+    }
   }
 }

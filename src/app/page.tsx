@@ -19,8 +19,9 @@ import { BreakGlassBanner } from "./break-glass-banner";
  * other privileged operation — and it means there is no unauthenticated
  * administrative surface open on this instance at all, not even a bounded one.
  *
- * There is deliberately nothing else here. Phase 0 has no domain module, so
- * there is nothing honest to show a signed-in instructor yet.
+ * Phase 1.1 gives it its first domain link: the `people` register. There is
+ * still deliberately little else — a landing page that lists modules nobody
+ * has built is a promise, not a product.
  */
 export default async function LandingPage() {
   const [t, setupIncomplete, session] = await Promise.all([
@@ -55,7 +56,19 @@ export default async function LandingPage() {
       <p className="lead">{t("landing.tagline")}</p>
       <p className="text-muted">{t("landing.foundationNotice")}</p>
       {session ? (
-        <p>{t("landing.signedInAs", { email: session.userAccount.email })}</p>
+        <>
+          <p>{t("landing.signedInAs", { email: session.userAccount.email })}</p>
+          {/* The first domain surface. Shown to anyone signed in and NOT gated
+              here on a permission: §1.1 rule 1 keeps UI gating and
+              authorization on separate code paths, and the screen itself
+              refuses — with a denial that says which permission is missing —
+              rather than pretending it does not exist. Hiding it would also be
+              the wrong lesson: a volunteer who cannot see the link cannot ask
+              for the grant. */}
+          <Link className="btn btn-primary" href="/people">
+            {t("landing.toPeople")}
+          </Link>
+        </>
       ) : (
         <Link className="btn btn-primary" href="/sign-in">
           {t("signIn.title")}

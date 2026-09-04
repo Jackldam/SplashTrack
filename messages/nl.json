@@ -7,7 +7,8 @@
     "title": "SplashTrack",
     "tagline": "Leerlingvolgsysteem voor zwemscholen.",
     "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt.",
-    "signedInAs": "Ingelogd als {email}."
+    "signedInAs": "Ingelogd als {email}.",
+    "toPeople": "Naar Mensen"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
@@ -34,5 +35,132 @@
     "title": "Noodtoegang gebruikt",
     "explanation": "Iemand met toegang tot de host heeft een break-glass-commando uitgevoerd. Controleer of dat klopte voordat je deze melding wegklikt.",
     "dismiss": "Gezien"
+  },
+  "people": {
+    "title": "Mensen",
+    "subtitle": "Personen, lidmaatschappen en leerlingen. Drie aparte dingen — een kind kan lessen volgen zonder lid te zijn, en een lid hoeft nooit te zwemmen.",
+    "backToList": "Terug naar de lijst",
+    "backToPerson": "Terug naar de persoon",
+    "empty": "Geen mensen gevonden.",
+    "yes": "Ja",
+    "no": "Nee",
+    "save": "Opslaan",
+    "saved": "Opgeslagen.",
+    "unknownDateOfBirth": "Onbekend",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je hebt hier geen rechten voor. Vereist: {permission}. Vraag een beheerder om je rol uit te breiden."
+    },
+    "errors": {
+      "denied": "Je hebt geen rechten voor deze handeling.",
+      "validation": "De ingevoerde gegevens kloppen niet. Controleer de velden en probeer het opnieuw.",
+      "ALREADY_OPEN": "Dit lid heeft al een lopende lidmaatschapsperiode. Beëindig die eerst — zo blijft het gat tussen twee periodes zichtbaar.",
+      "NOT_OPEN": "Er is geen lopende lidmaatschapsperiode om te beëindigen. Terugkomen start een nieuwe periode; een afgesloten periode wordt nooit heropend.",
+      "ENDS_BEFORE_IT_STARTS": "Een lidmaatschapsperiode kan niet eindigen voordat die begonnen is."
+    },
+    "search": {
+      "label": "Zoeken",
+      "placeholder": "Naam, lidnummer of leerlingnummer",
+      "submit": "Zoeken"
+    },
+    "columns": {
+      "name": "Naam",
+      "dateOfBirth": "Geboortedatum",
+      "memberNumber": "Lidnummer",
+      "studentNumber": "Leerlingnummer",
+      "member": "Lid",
+      "studentState": "Leerling"
+    },
+    "fields": {
+      "givenName": "Voornaam",
+      "familyName": "Achternaam",
+      "dateOfBirth": "Geboortedatum",
+      "dateOfBirthHelp": "Laat leeg als je hem niet weet. Vul nooit een gok in: bij een onbekende geboortedatum vervalt het ouderlijk gezag automatisch en komt de toestemming in de wachtrij.",
+      "email": "E-mailadres",
+      "phone": "Telefoonnummer"
+    },
+    "create": {
+      "title": "Nieuwe persoon",
+      "submit": "Persoon aanmaken"
+    },
+    "sections": {
+      "identity": "Persoonsgegevens",
+      "membership": "Lidmaatschap",
+      "student": "Leerling",
+      "guardians": "Wie is verantwoordelijk voor deze persoon",
+      "dependants": "Voor wie is deze persoon verantwoordelijk"
+    },
+    "membership": {
+      "number": "Lidnummer",
+      "numberHelp": "Laat leeg om automatisch een nummer toe te kennen. Het lidnummer blijft hetzelfde, ook na een onderbreking.",
+      "startedAt": "Begonnen op",
+      "endedAt": "Beëindigd op",
+      "endReason": "Reden",
+      "open": "Lopend",
+      "create": "Lidmaatschap aanmaken",
+      "end": "Periode beëindigen",
+      "startAgain": "Nieuwe periode starten",
+      "returnHelp": "Terugkomen start een nieuwe periode. De oude periode blijft staan, zodat de vraag 'wanneer was deze persoon lid?' beantwoordbaar blijft."
+    },
+    "student": {
+      "number": "Leerlingnummer",
+      "numberHelp": "Laat leeg om automatisch een nummer toe te kennen. Los van het lidnummer: dat is een ander register.",
+      "occurredAt": "Wanneer",
+      "event": "Gebeurtenis",
+      "reason": "Toelichting",
+      "create": "Leerling aanmaken",
+      "record": "Vastleggen",
+      "reasonPurpose": "Korte toelichting bij deze gebeurtenis. Geen medische of gevoelige informatie — daar zijn de medische en pedagogische notities voor."
+    },
+    "lifecycle": {
+      "PROSPECTIVE": "Proefles",
+      "ACTIVE": "Actief",
+      "PAUSED": "Pauze",
+      "LEFT": "Vertrokken"
+    },
+    "lifecycleEvent": {
+      "JOINED": "Ingeschreven",
+      "PAUSED": "Pauze",
+      "LEFT": "Vertrokken",
+      "RETURNED": "Teruggekomen",
+      "TRIAL_ATTENDED": "Proefles gevolgd"
+    },
+    "relationshipType": {
+      "GUARDIAN_OF": "Ouder of voogd",
+      "EMERGENCY_CONTACT": "Noodcontact"
+    },
+    "relationships": {
+      "relative": "Persoon",
+      "subject": "Betreft",
+      "type": "Soort",
+      "authority": "Mag toestemming geven",
+      "validFrom": "Vanaf",
+      "validTo": "Tot",
+      "evidence": "Onderbouwing",
+      "evidencePurpose": "Leg vast hóe de relatie is vastgesteld — bijvoorbeeld 'moeder, opgegeven bij inschrijving 01-09-2024' of 'beschikking rechtbank gezien 14-03-2025'. Verplicht als deze persoon toestemming mag geven. Dit veld is versleuteld opgeslagen en elke keer dat iemand het opent wordt dat vastgelegd.",
+      "showEvidence": "Onderbouwing tonen",
+      "noEvidence": "Geen",
+      "end": "Beëindigen",
+      "addTitle": "Relatie toevoegen",
+      "add": "Relatie vastleggen",
+      "relativeId": "Id van de andere persoon",
+      "relativeIdHelp": "Kopieer het id uit de adresbalk op de pagina van die persoon.",
+      "noGuardians": "Niemand is vastgelegd als verantwoordelijke voor deze persoon.",
+      "noDependants": "Deze persoon is voor niemand vastgelegd als verantwoordelijke."
+    },
+    "authority": {
+      "ACTIVE": "Geldig",
+      "LAPSED_BY_AGE": "Vervallen — leeftijd bereikt",
+      "LAPSED_BY_RECORD": "Vervallen — relatie beëindigd",
+      "LAPSED_UNKNOWN_BIRTHDATE": "Vervallen — geboortedatum onbekend",
+      "NOT_CLAIMED": "Niet van toepassing",
+      "lapsesOn": "Vervalt op"
+    },
+    "evidence": {
+      "title": "Onderbouwing van de relatie",
+      "auditNotice": "Dat je dit hebt geopend is vastgelegd in het auditlogboek, met je naam en het moment.",
+      "none": "Er is geen onderbouwing vastgelegd bij deze relatie.",
+      "claimNotice": "Dit is wat de school is verteld en hoe dat is vastgesteld. Het is bewijs van een claim, geen juridische vaststelling van het gezag."
+    }
   }
 }
