@@ -1,8 +1,9 @@
 # ADR-0002 — Database roles, least privilege, and how many connections this needs
 
-- **Status:** Proposed. §2 is **already implemented** on this branch — it is a live exposure, not a design question.
-- **Date:** 2026-09-03
-- **Decided by:** proposed by the security review Jack asked for ("laat een security agent hier met specialisme naar kijken"); the role model in §5–§7 is Jack's to accept or reject.
+- **Status:** **Accepted**, and implemented in phase 1.2.
+- **Date:** 2026-09-03. **Accepted 2026-09-04 by Jack** — *"ADR-0002 ja doen"* — and recorded as **D-182**.
+- **Implemented:** 2026-09-04, `docs/build/phase-1.2-database-roles-report.md`. §5–§7 are in force on this branch; §10 records what the earlier commit did and §12 what acceptance changed.
+- **Decided by:** proposed by the security review Jack asked for ("laat een security agent hier met specialisme naar kijken"); the role model in §5–§7 was Jack's to accept or reject, and he accepted it.
 - **Governs:** D-116 (the application role is not a superuser), D-149 part 2 (`INSERT`-only on `AuditEvent`), D-168 (checkpointed retention), D-037 (what may live in the environment)
 - **Supersedes:** the "open, Jack's to decide" items 1 and 3 in `docs/build/phase-1.0-deployment-and-breakglass-report.md` §9
 
@@ -449,3 +450,163 @@ Verified against the running image rather than read from the Dockerfile:
 | `SECRET_KEY_FILE` silently producing a wrong key (D-166) | **No silent path found.** File-first with a hard throw if unreadable — no fallback to `SECRET_KEY`; empty file rejected; under 32 bytes rejected; the base64-vs-passphrase decision in `decodeSecret` is a pure function of file content, and whitespace-insensitive on the base64 path. One rough edge worth knowing: 64 hex characters (`openssl rand -hex 32`) are all in the base64 alphabet and round-trip, so such a file is read as 48 decoded bytes rather than 64 text bytes. Deterministic, so not a D-166 violation, but the documentation should say "base64 or a passphrase" rather than leaving hex to chance |
 | D-142 egress filtering | **Not implemented, and not yet a gap** — `grep` finds no outbound `fetch()` call site in `src/`. It becomes live with the first admin-configured destination (OIDC discovery, SMTP test, backup endpoint, version check) |
 | Container network reach | The compose file declares no `networks:`, so the app container reaches the host LAN and any cloud metadata endpoint. That is the default for every Compose stack and D-142 is the intended control; noted, not faulted |
+
+---
+
+## 12. What acceptance changed, and where this ADR was wrong
+
+*Added 2026-09-04, on implementing §5–§7. The sections above are left as they
+were written, because a decision record that quietly edits its own reasoning is
+worth less than one that shows where the reasoning was corrected.*
+
+### 12.1 Two places where this ADR and D-182 disagreed
+
+Both were resolved toward **D-182**, which is the governing decision. Both were
+put to Jack before implementation; no answer arrived inside the window, so the
+reading that makes D-182 coherent was implemented and is flagged here and in the
+phase report.
+
+**(a) §7.2 gives `splashtrack_owner` `LOGIN`. D-182 calls it *"a non-connecting
+owner/migrator"*.** Taken literally, §7.2 also makes the owner the second
+configuration credential (§8), which leaves §7.4's `splashtrack_retention` with
+no connection string and therefore no way to run — a role that exists in the
+document and nowhere else. That is the shape §3 spends a page arguing against.
+
+**Implemented as D-182 states it.** `splashtrack_owner` is `NOLOGIN` and has no
+password, so the identity that owns every table is one no connection string can
+name and no leak can carry. `splashtrack_retention` is the second credential; it
+is a **member** of the owner, and `prisma migrate deploy` runs as the owner by
+`SET ROLE`. The gain over §7.2 is not theoretical: one fewer password exists.
+
+**(b) §7.4 grants the retention role `SELECT, DELETE` on `AuditEvent`, and omits
+`INSERT`.** But a retention run is itself an audited action — `pruneAuditTrail`
+appends `audit.retention_pruned` once its transaction commits, which D-168
+requires. The role §7.4 describes could delete audit rows and could not record
+having done so, which is the unaccounted gap this whole design exists to
+prevent. **`INSERT` is granted**, and `infra/audit-database-role.sql` says why
+where the grant is made.
+
+### 12.2 The membership inherits by default, which nearly made §7.4 false
+
+Found by the proof tests, not by reading. PostgreSQL role membership is
+**inheriting** unless told otherwise, so `GRANT splashtrack_owner TO
+splashtrack_retention` silently handed the retention role every privilege the
+owner holds — `UPDATE` and `TRUNCATE` on `AuditEvent` included — with no
+`SET ROLE` required:
+
+```
+UPDATE "AuditEvent" SET reason = 1;   -- UPDATE 0   ← permitted, silently
+```
+
+**And it is invisible to the report.** A privilege held through an inherited
+membership does not appear beside the role in
+`information_schema.table_privileges`, so `audit:grants` would have listed
+exactly the three intended privileges while the role held five.
+
+The membership is now non-inheriting. The portable way to get that is an
+ordering rather than a syntax: PostgreSQL 16 fixes the inherit option **on the
+membership, at grant time**, from the member role's own `INHERIT` attribute — so
+`ALTER ROLE … NOINHERIT` afterwards changes nothing, which is a quiet way to
+believe you have fixed it. `GRANT … WITH INHERIT FALSE` is explicit but is PG16+
+syntax. Setting `NOINHERIT` **first** and then re-granting works on both:
+
+```
+UPDATE "AuditEvent" …          -- ERROR: permission denied  ✓
+SET ROLE splashtrack_owner …   -- permitted                 ✓
+inherit_option                 -- f
+```
+
+### 12.3 §5 overstates one thing, and the correction matters
+
+> "That job — retention — … gets the *second* username, the only one that may
+> delete, **and the web application never holds it**." — §5
+
+With **D-181**, upgrades apply migrations unattended, so the application
+container must hold a credential that can migrate — and migrating means owning
+the schema, which means being able to grant. The web application therefore
+*does* hold `DATABASE_MAINTENANCE_URL`.
+
+**What survives is the property the control was written for.** The actor named
+throughout this ADR is an external SQL primitive: an injection, a stolen
+`DATABASE_URL`, an exposed port. That actor gets the **runtime** role, and the
+runtime role cannot change or delete an audit row, cannot grant itself the
+ability, and cannot own or drop the table. Reading the container's environment
+is host access — FM-7's actor, whom §8 already states this does not reach.
+
+There is no arrangement that avoids this while keeping D-181. It is stated here
+rather than left for a reader to notice.
+
+### 12.4 Where role creation lives, and why (§7 left this open)
+
+| Step | Who runs it | Where |
+|---|---|---|
+| Create the three roles | the provisioning superuser, once per cluster | `infra/provision-roles.sql`, run **for** the operator by the Postgres image's `docker-entrypoint-initdb.d` hook on a fresh volume |
+| Apply the model to a database — ownership, schema access, default privileges, the audit exception | the maintenance credential, **after every migration** | `splashtrack db:apply-grants`, from `docker-entrypoint.sh` |
+
+**Not a migration**, for the three reasons `infra/audit-database-role.sql`
+already gave: role names belong to the operator, a migration would run as the
+role it is revoking from, and granting needs privileges the runtime role must
+not hold. **Not a README step either**, and that is the change of mind: OD-15
+fixes the audience at *"comfortable with `docker compose`"* and says explicitly
+that this is not thereby comfortable with PostgreSQL role grants. A README
+asking for four `CREATE ROLE` statements as a superuser is a step most installs
+skip, and an install that skips it runs the web application as a superuser —
+which via `COPY … FROM PROGRAM` is command execution. The reference compose file
+is documentation that executes, so it executes this.
+
+The second half must run **repeatedly**, not once, because `ALTER DEFAULT
+PRIVILEGES` hands the runtime role `DELETE` on any table a future migration
+creates — including a re-created `AuditEvent`. Unlike `audit:grants`, which is a
+report and never refuses a start, `db:apply-grants` is an action: it verifies
+what it wrote and exits non-zero, and the entrypoint refuses to serve on that
+failure.
+
+### 12.5 The D-037 analysis §8 promised, done against the rule
+
+**One new application-owned variable: `DATABASE_MAINTENANCE_URL`.** It cannot
+live in the database — it is how the database is reached — which is the
+justification D-037 accepts on its face.
+
+**It cannot be derived from `DATABASE_URL`.** It carries a different username
+*and* a different password; a scheme that derived one from the other would put
+the maintenance role one string manipulation away from the runtime role, which
+is the whole separation.
+
+**The migration connection *is* derived, and is therefore not a third
+variable** — `DATABASE_MAINTENANCE_URL` plus `options=-c role=<owner>`, computed
+in `src/lib/database/role-model.ts` and nowhere else. Verified: Prisma's schema
+engine honours it, and all 30 tables are owned by `splashtrack_owner` at birth
+rather than reassigned afterwards.
+
+**`SPLASHTRACK_APP_PASSWORD`, `SPLASHTRACK_RETENTION_PASSWORD` and
+`SPLASHTRACK_PROVISION_CREATEDB` are COMPOSE variables, not application ones**,
+exactly like `POSTGRES_PASSWORD` and `APP_PORT`: they are read by the Postgres
+image's init hook and never by SplashTrack. They are not part of D-037's
+surface. The duplication between a password and the same password inside a URL
+is unavoidable — the image needs a value, the application needs a URL — and is
+documented rather than hidden.
+
+### 12.6 §6's resolution, implemented
+
+`CREATEDB` sits on **`splashtrack_retention`**, in development and CI only
+(`SPLASHTRACK_PROVISION_CREATEDB=on`), and never on the runtime role. §6 says
+"the owner role carries `CREATEDB`", which is not available once the owner is
+`NOLOGIN`; the maintenance credential is the same trust zone and is what the
+harness actually connects as.
+
+Putting it there rather than on the runtime role is the stronger choice for §4's
+own reason: a checkout's runtime role is then shaped **exactly** like a
+production one, so a missing grant on a table a new migration created fails on a
+laptop instead of for the first time after a deploy. `npm test` needed no
+argument about privileges — it needed its `CREATE DATABASE`, `migrate deploy`
+and audit-trail `TRUNCATE` moved onto the credential that legitimately has them.
+
+### 12.7 A trap for the operator, found the hard way
+
+`.env.example` used to suggest `openssl rand -base64 24` for the database
+password. base64 output contains `/` and `+`, and a `/` in a password ends the
+authority section of a URL: `postgresql://user:a/b@host:5432/db` does not parse,
+and every command fails at once with `Invalid URL` — four words that name
+neither the password nor which of the two variables is at fault. The
+documentation now says `openssl rand -hex 24`, and the parse failure carries the
+fix. This bit the first run of this change.
