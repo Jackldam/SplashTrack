@@ -30,6 +30,7 @@ import { countLocalOrganizationAdmins } from "@/lib/auth/local-admin-invariant";
 import {
   completeSetupIfInvariantHolds,
   INSTALLATION_BOOTSTRAP_ID,
+  isSetupIncomplete,
   resetSetupModeLatch,
   resolveSetupStage,
 } from "@/lib/boot";
@@ -293,8 +294,20 @@ describe("setup is not complete while the only administrator is mfa_pending", ()
   });
 
   it("completes the instant a real code verifies the factor", async () => {
+    // ALSO THE "NO RESTART REQUIRED" PROOF (D-186). Every stage below is read
+    // in ONE process, and `resetSetupModeLatch()` is never called after the
+    // `beforeEach` hook — so the answers change because this module re-reads
+    // the database, not because anything restarted. That is exactly what
+    // `setup:init` and `admin:create` now promise the operator in their closing
+    // message, and it is the half of 2026-09-04's incident that turned out to
+    // be working: what went stale was the container's boot decision and its
+    // start-up log, never the page it served.
     const { cookie } = await createPendingAdministrator();
     const headers = new Headers({ cookie });
+
+    // The UNFINISHED answer is deliberately never cached — it is the one that
+    // changes — so it reads `true` here and `false` after verification below.
+    expect(await isSetupIncomplete()).toBe(true);
 
     const enrolment = (await auth.api.enableTwoFactor({
       body: { password: PASSWORD },
@@ -317,6 +330,8 @@ describe("setup is not complete while the only administrator is mfa_pending", ()
     expect(await countLocalOrganizationAdmins()).toBe(1);
     expect(await completeSetupIfInvariantHolds("test")).toBe(true);
     expect(await resolveSetupStage()).toBe("COMPLETE");
+    // Same process, no latch reset: the served answer moved on its own.
+    expect(await isSetupIncomplete()).toBe(false);
 
     const record = await prisma.installationBootstrap.findUniqueOrThrow({
       where: { id: INSTALLATION_BOOTSTRAP_ID },

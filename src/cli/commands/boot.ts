@@ -31,11 +31,18 @@ export async function bootState(ctx: CommandContext): Promise<number> {
  * Clears `TAMPERED` (D-099) by writing the bootstrap record the installation is
  * missing, after the operator has said out loud that they know why it was gone.
  *
- * IT DOES NOT DELETE ANYTHING. `TAMPERED` means "there is data here and no
- * record that setup ever completed" — the dangerous reading is that somebody
+ * IT DOES NOT DELETE ANYTHING. `TAMPERED` means "there is data here, and it is
+ * not an unfinished first-run setup" — the dangerous reading is that somebody
  * removed the record to reopen the unauthenticated setup surface. The safe
  * repair is therefore to CLOSE setup mode, never to wipe the data that made the
  * state fire.
+ *
+ * SINCE D-186 THIS IS NO LONGER PART OF A NORMAL INSTALL. It used to be the
+ * only way past the state an ordinary `admin:create` left behind, which meant
+ * the break-glass command with the loudest warning in the product was a routine
+ * first-run step. That state is now `PENDING_ENROLMENT` and serves. Anything
+ * still reaching here has a reason worth finding, which is what the prompt
+ * below asks for.
  */
 export async function bootstrapClearTampered(
   ctx: CommandContext,

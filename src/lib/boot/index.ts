@@ -14,6 +14,7 @@ export {
   completeSetupIfInvariantHolds,
   INSTALLATION_BOOTSTRAP_ID,
   isSetupIncomplete,
+  recordSetupStarted,
   resetSetupModeLatch,
   resolveSetupStage,
   type SetupStage,

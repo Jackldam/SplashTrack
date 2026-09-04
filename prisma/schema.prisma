@@ -1579,6 +1579,18 @@ model AuditCheckpoint {
 /// same missing record WITH data present is `TAMPERED`: refuse to serve, log
 /// loudly, break-glass CLI only.
 ///
+/// THE ROW NOW HAS TWO LIVES, AND ITS EXISTENCE IS THE FIRST OF THEM (D-186).
+/// `setup:init` and `admin:create` create it with `completedAt` NULL, before
+/// they write anything else, so a row with no `completedAt` means "first-run
+/// setup is under way" — the D-185 window between `admin:create` and the
+/// browser enrolment that finishes it. That is what lets predicate 4 tell an
+/// unfinished install apart from a deleted record WITHOUT weakening D-099: no
+/// row at all with data present is still `TAMPERED`, and so is a row whose
+/// `completedAt` was cleared on an installation holding more than setup itself
+/// creates. There is deliberately no `startedAt` column — `createdAt` already
+/// answers when, and a second copy of it on the one table the boot state
+/// machine reads on every start is a copy free to drift.
+///
 /// `appVersion` records the version that completed setup. It is diagnostic, not
 /// a gate: the version comparison that refuses to start is `AHEAD`, and that is
 /// decided from `_prisma_migrations` against the image's own migrations

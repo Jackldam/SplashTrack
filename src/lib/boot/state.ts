@@ -19,7 +19,8 @@
  *   3. any row stuck mid-flight — `finished_at IS NULL` AND
  *      `rolled_back_at IS NULL` (see the note in the code)      → FAILED
  *   4. no `InstallationBootstrap` row with `completedAt`        → PARTIAL
- *      …with any `UserAccount` / `Person` / `RoleAssignment`    → TAMPERED
+ *      …with data, and setup demonstrably still running         → PENDING_ENROLMENT
+ *      …with data otherwise                                     → TAMPERED
  *   5. an image migration missing from `_prisma_migrations`     → EXISTING
  *   6. otherwise                                                → CURRENT
  *
@@ -57,12 +58,23 @@ export interface BootStateReader {
   $queryRawUnsafe: typeof prisma.$queryRawUnsafe;
 }
 
-/** The six states of D-098, plus D-099's `TAMPERED`. */
+/**
+ * The six states of D-098, plus D-099's `TAMPERED` and D-186's
+ * `PENDING_ENROLMENT`.
+ *
+ * `PENDING_ENROLMENT` is `PARTIAL` with the administrator already created — the
+ * window D-185 opened on purpose, between `admin:create` and the browser
+ * enrolment that completes setup. It is its own state rather than a shade of
+ * `PARTIAL` because the two have different remedies and the entrypoint prints
+ * one of them: telling an operator to run `admin:create` when they have already
+ * run it is how tonight's hour was spent.
+ */
 export type BootState =
   | "EMPTY"
   | "AHEAD"
   | "FAILED"
   | "PARTIAL"
+  | "PENDING_ENROLMENT"
   | "TAMPERED"
   | "EXISTING"
   | "CURRENT";
@@ -91,6 +103,7 @@ export interface BootDecision {
 export const ACTION_BY_STATE: Readonly<Record<BootState, BootAction>> = {
   EMPTY: "SETUP_MODE",
   PARTIAL: "SETUP_MODE",
+  PENDING_ENROLMENT: "SETUP_MODE",
   AHEAD: "REFUSE",
   FAILED: "REFUSE",
   TAMPERED: "REFUSE",
@@ -172,27 +185,60 @@ async function tableCount(db: BootStateReader): Promise<number> {
 }
 
 /**
- * D-099's four conditions for setup mode, as counts. A single missing row is
- * NOT enough: any primitive that deletes one row — an injection, a compromised
- * low-privilege credential, a botched restore, a bug in an erasure — would
- * otherwise put a populated production database holding children's records into
- * unauthenticated setup mode (F-98).
+ * What predicate 4 needs to know about a database that has NOT completed setup.
  *
- * Each count is guarded by a table-existence check, because predicate 4 is
- * reachable on a database that has `_prisma_migrations` and a partial schema.
+ * D-099 asked three of these questions — is there an account, a person, a role
+ * assignment — and treated any "yes" as tampering. D-186 keeps that rule and
+ * adds the three that tell the two situations apart; see {@link detectBootState}
+ * for the argument.
  */
-async function countInstallationData(db: BootStateReader): Promise<{
+interface InstallationShape {
   userAccounts: number;
   people: number;
   roleAssignments: number;
-}> {
-  async function countOf(table: string): Promise<number> {
-    if (!(await tableExists(db, table))) return 0;
-    const rows = await db.$queryRawUnsafe<{ count: bigint }[]>(
-      // The table name is one of three literals in this file, never input.
-      `SELECT COUNT(*) AS count FROM "${table}"`,
-    );
+  /**
+   * MFA factors that are not definitively unverified. `TwoFactor.verified` is
+   * nullable in the schema with a default of `true`, so a NULL is counted as
+   * enrolled: the direction that errs is the direction that refuses to serve.
+   */
+  enrolledFactors: number;
+  /** `Person` rows that are not the person of a `UserAccount`. */
+  peopleWithoutAccount: number;
+  /** `RoleAssignment` rows whose subject holds no `UserAccount`. */
+  roleAssignmentsWithoutAccount: number;
+}
+
+/**
+ * Reads {@link InstallationShape} with raw SQL, every query guarded by a
+ * table-existence check — predicate 4 is reachable on a database that has
+ * `_prisma_migrations` and a partial schema.
+ *
+ * WHERE A TABLE IS MISSING THE ANSWER IS THE PESSIMISTIC ONE. `Person` present
+ * without `UserAccount` means every person is unaccounted for, not that none is:
+ * a half-built schema is not evidence of a tidy installation.
+ */
+async function inspectInstallation(
+  db: BootStateReader,
+): Promise<InstallationShape> {
+  const tables = new Map<string, boolean>();
+  for (const table of [
+    "UserAccount",
+    "Person",
+    "RoleAssignment",
+    "TwoFactor",
+  ]) {
+    tables.set(table, await tableExists(db, table));
+  }
+
+  async function scalar(query: string): Promise<number> {
+    // Every query below is a literal in this file; nothing here is input.
+    const rows = await db.$queryRawUnsafe<{ count: bigint }[]>(query);
     return Number(rows[0]?.count ?? 0);
+  }
+
+  async function countOf(table: string): Promise<number> {
+    if (!tables.get(table)) return 0;
+    return scalar(`SELECT COUNT(*) AS count FROM "${table}"`);
   }
 
   const [userAccounts, people, roleAssignments] = await Promise.all([
@@ -200,7 +246,74 @@ async function countInstallationData(db: BootStateReader): Promise<{
     countOf("Person"),
     countOf("RoleAssignment"),
   ]);
-  return { userAccounts, people, roleAssignments };
+
+  const enrolledFactors = tables.get("TwoFactor")
+    ? await scalar(
+        `SELECT COUNT(*) AS count FROM "TwoFactor"
+          WHERE verified IS DISTINCT FROM false`,
+      )
+    : 0;
+
+  const peopleWithoutAccount = !tables.get("Person")
+    ? 0
+    : tables.get("UserAccount")
+      ? await scalar(
+          `SELECT COUNT(*) AS count FROM "Person" p
+            WHERE NOT EXISTS (
+              SELECT 1 FROM "UserAccount" u WHERE u."personId" = p.id
+            )`,
+        )
+      : people;
+
+  const roleAssignmentsWithoutAccount = !tables.get("RoleAssignment")
+    ? 0
+    : tables.get("UserAccount")
+      ? await scalar(
+          `SELECT COUNT(*) AS count FROM "RoleAssignment" ra
+            WHERE NOT EXISTS (
+              SELECT 1 FROM "UserAccount" u WHERE u."personId" = ra."personId"
+            )`,
+        )
+      : roleAssignments;
+
+  return {
+    userAccounts,
+    people,
+    roleAssignments,
+    enrolledFactors,
+    peopleWithoutAccount,
+    roleAssignmentsWithoutAccount,
+  };
+}
+
+/**
+ * Why a populated, un-completed installation is NOT the D-185 window — empty
+ * when it is.
+ *
+ * Each entry is a fact an operator can check against their own installation,
+ * because "this looks wrong" is not something anybody can act on at 23:00.
+ */
+function tamperingEvidence(shape: InstallationShape): string[] {
+  const evidence: string[] = [];
+  if (shape.enrolledFactors > 0) {
+    evidence.push(
+      `${shape.enrolledFactors} account(s) hold an MFA factor, so somebody ` +
+        "has already finished enrolling — setup cannot still be running",
+    );
+  }
+  if (shape.peopleWithoutAccount > 0) {
+    evidence.push(
+      `${shape.peopleWithoutAccount} person row(s) belong to nobody with an ` +
+        "account, and first-run setup creates none of those",
+    );
+  }
+  if (shape.roleAssignmentsWithoutAccount > 0) {
+    evidence.push(
+      `${shape.roleAssignmentsWithoutAccount} role assignment(s) name a ` +
+        "person who has no account, and first-run setup creates none of those",
+    );
+  }
+  return evidence;
 }
 
 /**
@@ -348,37 +461,92 @@ export async function detectBootState(
     );
   }
 
-  const completed = bootstrapExists
-    ? await db.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(*) AS count FROM "InstallationBootstrap"
-         WHERE "completedAt" IS NOT NULL
+  const bootstrapRows = bootstrapExists
+    ? await db.$queryRaw<{ started: bigint; completed: bigint }[]>`
+        SELECT COUNT(*) AS started,
+               COUNT(*) FILTER (WHERE "completedAt" IS NOT NULL) AS completed
+          FROM "InstallationBootstrap"
       `
-    : [{ count: BigInt(0) }];
+    : [{ started: BigInt(0), completed: BigInt(0) }];
+  const started = Number(bootstrapRows[0]?.started ?? 0);
+  const completed = Number(bootstrapRows[0]?.completed ?? 0);
 
-  if (Number(completed[0]?.count ?? 0) === 0) {
-    const data = await countInstallationData(db);
+  if (completed === 0) {
+    // ── D-186 — THE CORRECTION D-099'S PREDICATE NEEDED ──────────────────────
+    //
+    // D-099 is right and is not weakened here: setup mode is an
+    // UNAUTHENTICATED administrative surface and must never open on a populated
+    // database (F-98). Its PREDICATE was wrong, because since D-185 there is a
+    // legitimate state in which data exists and setup has not completed —
+    // `admin:create` has run, the administrator has not yet enrolled a second
+    // factor, and the browser enrolment that writes the record is the very page
+    // the operator needs. D-099 refused to serve it, which locked the owner out
+    // of the one screen that could finish the install.
+    //
+    // The two situations are told apart by TWO independent facts, and setup
+    // mode opens only when BOTH hold. Either one failing is TAMPERED.
+    //
+    //   1. THE INSTALLATION SAYS SETUP STARTED. `setup:init` and
+    //      `admin:create` write the `InstallationBootstrap` row with
+    //      `completedAt` NULL before they create anything (see
+    //      `recordSetupStarted` in ./setup-mode.ts), so the row's EXISTENCE is
+    //      the record that first-run setup is under way. "Data present with no
+    //      row at all" therefore stays exactly as suspicious as D-099 made it:
+    //      deleting the row — the primitive F-98 is about — still fires
+    //      TAMPERED, on a pending installation as much as on a finished one.
+    //
+    //   2. THE DATA IS ONLY WHAT SETUP ITSELF CREATES. Every person has an
+    //      account, every role assignment names one of those people, and NO
+    //      account holds an MFA factor. That is exactly what `admin:create`
+    //      leaves behind and it is nothing like a running installation, where
+    //      D-141 requires a verified factor at all times and where the person
+    //      rows are mostly children who will never have an account.
+    //
+    // Condition 2 is what keeps this from being weaker than a single deletable
+    // row. An attacker who can UPDATE — a strictly stronger primitive than the
+    // DELETE F-98 describes — cannot reopen setup mode by clearing
+    // `completedAt` on a real installation: the factors and the unaccounted
+    // people are still there, and they are not one statement to remove.
+    const shape = await inspectInstallation(db);
     const populated =
-      data.userAccounts > 0 || data.people > 0 || data.roleAssignments > 0;
+      shape.userAccounts > 0 || shape.people > 0 || shape.roleAssignments > 0;
 
-    if (populated) {
+    if (!populated) {
       return decide(
-        "TAMPERED",
-        "There is no completed InstallationBootstrap record, but the " +
-          `installation holds data (${data.people} person row(s), ` +
-          `${data.userAccounts} account(s), ${data.roleAssignments} role ` +
-          "assignment(s)). Setup mode is an UNAUTHENTICATED administrative " +
-          "surface and must never open on a populated database (D-099), so " +
-          "this refuses to serve. Clear it deliberately from the host with " +
-          "`splashtrack bootstrap:clear-tampered` once you know why the " +
-          "record is missing.",
+        "PARTIAL",
+        "The schema exists but first-run setup has not completed, and the " +
+          "installation holds no person, account or role data. Setup mode; " +
+          "nothing is migrated silently.",
+      );
+    }
+
+    const evidence = tamperingEvidence(shape);
+
+    if (started > 0 && evidence.length === 0) {
+      return decide(
+        "PENDING_ENROLMENT",
+        `First-run setup is still running: ${shape.userAccounts} ` +
+          "administrator account(s) exist, none has enrolled a second factor, " +
+          "and the installation holds nothing else. Setup completes in the " +
+          "browser the moment one of them verifies an authenticator (D-185), " +
+          "so this serves. Nothing is migrated.",
       );
     }
 
     return decide(
-      "PARTIAL",
-      "The schema exists but first-run setup has not completed, and the " +
-        "installation holds no person, account or role data. Setup mode; " +
-        "nothing is migrated silently.",
+      "TAMPERED",
+      "There is no completed InstallationBootstrap record, but the " +
+        `installation holds data (${shape.people} person row(s), ` +
+        `${shape.userAccounts} account(s), ${shape.roleAssignments} role ` +
+        "assignment(s)), and this is NOT an unfinished first-run setup: " +
+        (started === 0
+          ? "there is no InstallationBootstrap row at all, so nothing " +
+            "recorded that setup ever started here"
+          : evidence.join("; ")) +
+        ". Setup mode is an UNAUTHENTICATED administrative surface and must " +
+        "never open on a populated database (D-099), so this refuses to " +
+        "serve. Clear it deliberately from the host with `splashtrack " +
+        "bootstrap:clear-tampered` once you know why the record is missing.",
     );
   }
 

@@ -67,13 +67,14 @@ import {
   SELF_ROLE_KEY,
   seedInstallation,
 } from "@/lib/boot/seed";
+import { recordSetupStarted } from "@/lib/boot/setup-mode";
 import { detectBootState } from "@/lib/boot/state";
 import { prisma } from "@/lib/database";
 
 import { recordBreakGlassInvocation } from "../break-glass";
 import { resolveSecret, readSecretLine } from "../prompt";
 import type { CommandContext } from "../context";
-import { migrateAndApplyRoleModel } from "./setup";
+import { migrateAndApplyRoleModel, reportResultingBootState } from "./setup";
 
 /** `admin:grant-admin` is a RECOVERY grant, not provisioning (`13-…` §7). */
 const GRANT_ADMIN_HOURS = 24;
@@ -171,6 +172,13 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
       (seeded.organizationCreated ? ", organisation singleton created" : ""),
   );
 
+  // BEFORE the first Person row exists (D-186). `setup:init` has normally
+  // written this already and the call is idempotent, but this command is
+  // documented as runnable on its own — and an installation that acquires a
+  // person before it has recorded that setup started is, by predicate 4's
+  // reading, an installation somebody tampered with.
+  await recordSetupStarted();
+
   // The record comes BEFORE the privileged change (see ../break-glass).
   const { auditEventId } = await recordBreakGlassInvocation("admin:create", {
     detail: { role: INSTANCE_ADMINISTRATOR_ROLE_KEY, scope: "ORGANIZATION" },
@@ -215,12 +223,14 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
   await prisma.session.deleteMany({ where: { userId: account.id } });
 
   // --- what has NOT happened, deliberately ---------------------------------
-  // No MFA factor, so no bootstrap record either: setup is not complete while
-  // the only administrator is `mfa_pending`, and `completeSetupIfInvariantHolds`
-  // in `@/lib/boot` writes that record from the enrolment flow at the instant
-  // D-141's invariant first holds. `assertLocalAdminInvariantHolds` is likewise
-  // NOT called here — it cannot hold yet, by construction, and asserting it
-  // would make this command fail on success.
+  // No MFA factor, so setup is NOT COMPLETE: the bootstrap record written above
+  // carries `completedAt` NULL, and `completeSetupIfInvariantHolds` in
+  // `@/lib/boot` is what fills it in — from the enrolment flow, at the instant
+  // D-141's invariant first holds. Starting and completing are separate events
+  // on purpose (D-186); one of them serves the enrolment page, the other closes
+  // setup mode forever. `assertLocalAdminInvariantHolds` is likewise NOT called
+  // here — it cannot hold yet, by construction, and asserting it would make
+  // this command fail on success.
   ctx.log("");
   ctx.log(`Administrator created: ${email}`);
   ctx.log(`  role       ${INSTANCE_ADMINISTRATOR_ROLE_KEY} @ ORGANIZATION`);
@@ -249,6 +259,8 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
     "The TOTP secret is shown in that browser page and nowhere else: not " +
       "here, not in a file, not in a log (D-185).",
   );
+  ctx.log("");
+  await reportResultingBootState(ctx);
   return 0;
 }
 

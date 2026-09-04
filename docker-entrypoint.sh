@@ -14,7 +14,10 @@
 #
 #   EMPTY     → setup mode. NO migrations. Serve the setup notice.
 #   PARTIAL   → setup was interrupted. Resume setup mode. Still no migrations.
-#   TAMPERED  → data present with no bootstrap record. REFUSE (D-099).
+#   PENDING_ENROLMENT
+#             → the administrator exists and has not enrolled a second factor.
+#               Setup mode, and the notice sends them to /sign-in (D-185/D-186).
+#   TAMPERED  → data present, and it is not an unfinished setup. REFUSE (D-099).
 #   FAILED    → a migration is recorded unfinished/rolled back. REFUSE.
 #   AHEAD     → the schema is newer than this image. REFUSE (D-043).
 #   EXISTING  → pre-migration backup, then `migrate deploy`, then serve (D-044).
@@ -24,6 +27,12 @@
 # stdout and its explanation on stderr, and this script branches on the ACTION —
 # so there is exactly one implementation of the predicates, in code that is
 # covered by `tests/integration/boot-state-matrix.test.ts`.
+#
+# THE ACTION DECIDES WHAT HAPPENS; THE STATE DECIDES WHAT IS SAID. Two states
+# reach SETUP_MODE with different remedies, and printing the wrong one is not a
+# cosmetic failure — an operator who has already run `admin:create` and is told
+# to run `admin:create` concludes their instance is broken. So the SETUP_MODE
+# branch below reads ${STATE} to choose its message, and nothing else does.
 
 set -eu
 
@@ -164,24 +173,55 @@ case "${ACTION}" in
     log ""
     log "SETUP MODE (${STATE}). No migrations have been run."
     log ""
-    log "  This installation has no administrator yet. Public self-registration"
-    log "  is closed by design, so the first account is created from the host —"
-    log "  host access is the proof of ownership every privileged operation"
-    log "  here rests on:"
-    log ""
-    log "      docker compose exec app splashtrack admin:create \\"
-    log "          --email you@example.org --name 'Your Name'"
-    log ""
-    log "  That command creates the account and stops. SETUP IS NOT COMPLETE"
-    log "  until its second factor exists (D-185): sign in at"
-    log "  ${BETTER_AUTH_URL}/sign-in with the password you chose, and you are"
-    log "  taken straight to a page showing a QR code for your authenticator."
-    log "  The TOTP secret is shown there and nowhere else — not in this log,"
-    log "  not in a file, not on a terminal."
-    log ""
-    log "  Until then every page serves the setup notice, and the account may"
-    log "  do exactly two things: sign in, and enrol."
-    log ""
+
+    if [ "${STATE}" = "PENDING_ENROLMENT" ]; then
+      # `admin:create` has already run. The ONLY remaining step is in a
+      # browser, and repeating the host command here would send the operator
+      # back round a loop they have finished.
+      log "  The administrator account already exists and has NOT yet enrolled"
+      log "  a second factor. There is nothing left to run on this host."
+      log ""
+      log "  Finish setup in a browser:"
+      log ""
+      log "      ${BETTER_AUTH_URL}/sign-in"
+      log ""
+      log "  Sign in with the password you chose when you created the account."
+      log "  You are taken straight to a page showing a QR code for your"
+      log "  authenticator; scan it, enter the six digits it shows, and this"
+      log "  installation is set up. The TOTP secret is shown there and nowhere"
+      log "  else — not in this log, not in a file, not on a terminal."
+      log ""
+      log "  Until then every page serves the setup notice, and the account may"
+      log "  do exactly two things: sign in, and enrol."
+      log ""
+      log "  If you have lost that password, create another administrator:"
+      log "  admin:create is allowed and audited until setup completes."
+      log ""
+    else
+      log "  This installation has no administrator yet. Public self-registration"
+      log "  is closed by design, so the first account is created from the host —"
+      log "  host access is the proof of ownership every privileged operation"
+      log "  here rests on:"
+      log ""
+      log "      docker compose exec app splashtrack admin:create \\"
+      log "          --email you@example.org --name 'Your Name'"
+      log ""
+      log "  That command creates the account and stops. SETUP IS NOT COMPLETE"
+      log "  until its second factor exists (D-185): sign in at"
+      log "  ${BETTER_AUTH_URL}/sign-in with the password you chose, and you are"
+      log "  taken straight to a page showing a QR code for your authenticator."
+      log "  The TOTP secret is shown there and nowhere else — not in this log,"
+      log "  not in a file, not on a terminal."
+      log ""
+      log "  Until then every page serves the setup notice, and the account may"
+      log "  do exactly two things: sign in, and enrol."
+      log ""
+      log "  RUNNING THAT COMMAND DOES NOT REQUIRE A RESTART, and the log you"
+      log "  are reading now will be out of date the moment it finishes. That"
+      log "  is expected: the application re-reads how far setup has got on"
+      log "  every request. The command prints the resulting state itself."
+      log ""
+    fi
     ;;
 
   MIGRATE_THEN_SERVE)

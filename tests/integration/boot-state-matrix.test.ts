@@ -177,7 +177,7 @@ function insertMigration(
       ('${id}', 'checksum', '${name}', ${finished}, ${rolledBack}, clock_timestamp())`;
 }
 
-/** The two tables predicate 4 needs, minimal but real. */
+/** The tables predicate 4 needs, minimal but real. */
 const CREATE_BOOTSTRAP_TABLE = `
   CREATE TABLE "InstallationBootstrap" (
     id TEXT PRIMARY KEY DEFAULT 'installation',
@@ -189,6 +189,45 @@ const CREATE_BOOTSTRAP_TABLE = `
   )`;
 
 const CREATE_PERSON_TABLE = `CREATE TABLE "Person" (id TEXT PRIMARY KEY)`;
+
+/**
+ * The rest of what predicate 4 reads since D-186. Minimal but real: the column
+ * names are the ones the predicate joins on, so a query naming the wrong one
+ * fails here rather than in production.
+ */
+const CREATE_ACCOUNT_TABLES = [
+  `CREATE TABLE "UserAccount" (id TEXT PRIMARY KEY, "personId" TEXT NOT NULL)`,
+  `CREATE TABLE "RoleAssignment" (id TEXT PRIMARY KEY, "personId" TEXT NOT NULL)`,
+  `CREATE TABLE "TwoFactor" (id TEXT PRIMARY KEY, "userId" TEXT NOT NULL, verified BOOLEAN)`,
+];
+
+/**
+ * Exactly what a first run leaves behind between `admin:create` and browser
+ * enrolment: the started record, one person, that person's account, that
+ * person's two grants, and NO factor.
+ *
+ * `withStartedRecord` is the ONLY thing the two halves of D-186's proof differ
+ * by, so the TAMPERED case cannot be passing for some other reason.
+ */
+function firstRunInProgress(withStartedRecord: boolean): string[] {
+  return [
+    CREATE_MIGRATIONS_TABLE,
+    ...IMAGE_MIGRATIONS.map((name) => insertMigration(name)),
+    CREATE_BOOTSTRAP_TABLE,
+    CREATE_PERSON_TABLE,
+    ...CREATE_ACCOUNT_TABLES,
+    ...(withStartedRecord
+      ? [`INSERT INTO "InstallationBootstrap" (id) VALUES ('installation')`]
+      : []),
+    `INSERT INTO "Person" (id) VALUES ('the-first-administrator')`,
+    `INSERT INTO "UserAccount" (id, "personId")
+       VALUES ('account-1', 'the-first-administrator')`,
+    `INSERT INTO "RoleAssignment" (id, "personId")
+       VALUES ('grant-org', 'the-first-administrator')`,
+    `INSERT INTO "RoleAssignment" (id, "personId")
+       VALUES ('grant-self', 'the-first-administrator')`,
+  ];
+}
 
 afterAll(async () => {
   for (const database of created) {
@@ -358,6 +397,119 @@ describe("boot state matrix (D-055, D-098, D-099)", () => {
     expect(decision.state).toBe("TAMPERED");
     expect(decision.action).toBe("REFUSE");
     expect(decision.detail).toContain("bootstrap:clear-tampered");
+  });
+
+  // ── D-186: the pending administrator, and the tampering it used to look like
+  //
+  // These four cases are one argument. The first is the state that locked the
+  // owner out of his own instance; the three after it are what stops the fix
+  // from being a hole, and they are written as the SAME database with one thing
+  // changed, so none of them can pass for an unrelated reason.
+
+  it("PENDING_ENROLMENT — the administrator exists and has not enrolled", async () => {
+    // THE DEFECT THIS PINS. `admin:create` leaves exactly this: one person, one
+    // account, two grants, no factor, and a bootstrap record with `completedAt`
+    // still NULL. D-099's predicate called it TAMPERED and refused to serve —
+    // so the installation would not show the one page (`/sign-in` →
+    // `/mfa-enrolment`) that could finish the setup. The account is created and
+    // the product is unreachable.
+    const database = await createDatabase("pending_enrolment");
+    await sql(database, firstRunInProgress(true));
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("PENDING_ENROLMENT");
+    expect(decision.action).toBe("SETUP_MODE");
+    // Said explicitly rather than implied by the state name: this is what
+    // regressed, and a future predicate change must fail on this line.
+    expect(decision.state).not.toBe("TAMPERED");
+    expect(decision.action).not.toBe("REFUSE");
+    // And it points at the browser, not back at the host command.
+    expect(decision.detail).toContain("browser");
+  });
+
+  it("TAMPERED — the same installation with the started record DELETED", async () => {
+    // THE NON-VACUOUS HALF. Identical to the case above in every row except
+    // one: the `InstallationBootstrap` row is gone. That is precisely F-98's
+    // primitive — one deleted row, reopening an unauthenticated administrative
+    // surface — and it must still go red, on a pending installation exactly as
+    // on a finished one. If this ever passes as PENDING_ENROLMENT, D-186 has
+    // become the hole D-099 exists to close.
+    const database = await createDatabase("pending_record_deleted");
+    await sql(database, firstRunInProgress(false));
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("TAMPERED");
+    expect(decision.action).toBe("REFUSE");
+    expect(decision.detail).toContain(
+      "nothing recorded that setup ever started",
+    );
+    expect(decision.detail).toContain("bootstrap:clear-tampered");
+  });
+
+  it("TAMPERED — a verified factor exists, so setup is not still running", async () => {
+    // The UPDATE case: an attacker who can clear `completedAt` — a strictly
+    // stronger primitive than the DELETE F-98 describes — must not thereby
+    // reopen setup mode on a real installation. Somebody has enrolled here, so
+    // setup demonstrably finished once, whatever the record now says.
+    const database = await createDatabase("pending_but_enrolled");
+    await sql(database, [
+      ...firstRunInProgress(true),
+      `INSERT INTO "TwoFactor" (id, "userId", verified)
+         VALUES ('factor-1', 'account-1', true)`,
+    ]);
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("TAMPERED");
+    expect(decision.action).toBe("REFUSE");
+    expect(decision.detail).toContain("already finished enrolling");
+  });
+
+  it("TAMPERED — a person nobody's account belongs to (a real register)", async () => {
+    // The shape of a LIVE installation: children have `Person` rows and will
+    // never have an account. First-run setup creates none of those, so their
+    // presence with no completed record is not an unfinished setup — it is a
+    // populated database with its bootstrap record missing, which is the exact
+    // thing D-099 refuses to open setup mode on.
+    const database = await createDatabase("pending_but_populated");
+    await sql(database, [
+      ...firstRunInProgress(true),
+      `INSERT INTO "Person" (id) VALUES ('a-child-whose-record-is-here')`,
+    ]);
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("TAMPERED");
+    expect(decision.action).toBe("REFUSE");
+    expect(decision.detail).toContain("belong to nobody with an account");
+  });
+
+  it("TAMPERED — a grant held by somebody with no account", async () => {
+    // The third independent condition, on its own: grants outlive nothing that
+    // first-run setup creates, so one naming a person without an account means
+    // the authorization model has been used, not merely seeded.
+    const database = await createDatabase("pending_but_granted");
+    await sql(database, [
+      ...firstRunInProgress(true),
+      `INSERT INTO "Person" (id) VALUES ('an-instructor')`,
+      `INSERT INTO "UserAccount" (id, "personId")
+         VALUES ('account-2', 'an-instructor')`,
+      // The instructor has an account, so the person check passes; the grant
+      // below names somebody who has none, so this case isolates the third
+      // condition rather than re-testing the second.
+      `DELETE FROM "UserAccount" WHERE id = 'account-2'`,
+      `DELETE FROM "Person" WHERE id = 'an-instructor'`,
+      `INSERT INTO "RoleAssignment" (id, "personId")
+         VALUES ('grant-orphan', 'a-person-who-is-gone')`,
+    ]);
+
+    const decision = await detectAgainst(database);
+
+    expect(decision.state).toBe("TAMPERED");
+    expect(decision.action).toBe("REFUSE");
+    expect(decision.detail).toContain("name a person who has no account");
   });
 
   it("TAMPERED — tables with no _prisma_migrations at all", async () => {

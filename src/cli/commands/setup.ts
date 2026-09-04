@@ -34,6 +34,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { seedInstallation } from "@/lib/boot/seed";
+import { recordSetupStarted } from "@/lib/boot/setup-mode";
 import { detectBootState } from "@/lib/boot/state";
 
 import type { CommandContext } from "../context";
@@ -56,6 +57,13 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
   ctx.log(`Boot state ${decision.state}: applying migrations…`);
   await migrateAndApplyRoleModel(ctx);
 
+  // BEFORE the seed, and before anything else can write a row: the record that
+  // says first-run setup is under way (D-186). Without it, the next command to
+  // create a Person would leave an installation that holds data and has no
+  // record setup ever started — which is what TAMPERED means.
+  await recordSetupStarted();
+  ctx.log("First-run setup recorded as started.");
+
   ctx.log("Seeding the permission catalogue and the system roles…");
   const seeded = await seedInstallation();
   ctx.log(
@@ -71,7 +79,45 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
   ctx.log("");
   ctx.log("    splashtrack admin:create --email you@example.org");
   ctx.log("");
+  await reportResultingBootState(ctx);
   return 0;
+}
+
+/**
+ * What the running container will see now — printed by every command that
+ * changes the database out from under it.
+ *
+ * THE DEFECT THIS CLOSES. `13-…` §7 tells the operator to run these commands as
+ * `docker compose exec app splashtrack …`, which by definition runs BESIDE a
+ * container that has already taken its boot decision. That decision is taken
+ * once, at start, and after this command it is out of date: the log the
+ * operator is looking at says `EMPTY — no migrations have been run`, and the
+ * database it describes no longer exists. Nothing told them, so the natural
+ * next move was to restart and find out — and finding out used to mean an
+ * instance that refused to serve at all.
+ *
+ * Re-detecting and printing costs one short-lived connection and replaces a
+ * guess with a fact. The serving side genuinely does re-read per request
+ * (`resolveSetupStage` in `@/lib/boot/setup-mode.ts` — the completed answer is
+ * latched, the unfinished one never is), so the honest message is that no
+ * restart is needed AND that restarting is safe. Both halves matter: the first
+ * stops a pointless restart, the second stops the fear of one.
+ */
+export async function reportResultingBootState(
+  ctx: CommandContext,
+): Promise<void> {
+  const after = await detectBootState();
+  ctx.log(`Boot state is now ${after.state} (${after.action}).`);
+  ctx.log(`  ${after.detail}`);
+  ctx.log("");
+  ctx.log(
+    "The running container does NOT need restarting: it re-reads how far " +
+      "setup has got on every request, so the page it serves is already the " +
+      "one above. Its START-UP LOG is now out of date — that is expected, and " +
+      "it is not evidence of a problem. Restarting is safe and lands in the " +
+      "same state.",
+  );
+  ctx.log("");
 }
 
 /**

@@ -118,6 +118,39 @@ export async function resolveSetupStage(): Promise<SetupStage> {
 }
 
 /**
+ * Records that first-run setup has STARTED (D-186). Idempotent, and it never
+ * touches `completedAt` — starting and finishing are different events and this
+ * one must not be able to close setup mode.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY AN EMPTY ROW IS WORTH WRITING
+ *
+ * Before this, `InstallationBootstrap` held exactly one kind of row: a
+ * completed one. So "setup is under way" and "somebody deleted the record to
+ * reopen the unauthenticated setup surface" were the same observation — no row,
+ * and data present — and D-099's predicate could only pick one reading. It
+ * picked the safe one, and that is what refused to serve the enrolment page to
+ * an administrator who had just been created.
+ *
+ * The row's EXISTENCE is the marker; `createdAt` is when. There is deliberately
+ * no `startedAt` column: it would be a second copy of `createdAt`, free to
+ * drift, on the one table the boot state machine reads on every start.
+ *
+ * WRITTEN BEFORE THE FIRST PERSON ROW, always. Both callers do it before they
+ * create anything, so there is no window in which an installation holds data
+ * without the record — which is the window that would look like tampering.
+ */
+export async function recordSetupStarted(): Promise<void> {
+  await prisma.installationBootstrap.upsert({
+    where: { id: INSTALLATION_BOOTSTRAP_ID },
+    // An installation that already has a record — started or completed — is
+    // left exactly as it is. Re-running `setup:init` must not restate anything.
+    update: {},
+    create: { id: INSTALLATION_BOOTSTRAP_ID },
+  });
+}
+
+/**
  * Writes the bootstrap record — but only once the installation really is set
  * up, which since D-185 means D-141's invariant is satisfiable and satisfied.
  *

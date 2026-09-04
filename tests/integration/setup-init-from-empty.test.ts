@@ -106,6 +106,26 @@ async function createEmptyDatabase(suffix: string): Promise<string> {
  * is only visible if both streams are captured.
  */
 function runCli(database: string, ...args: string[]): string {
+  const result = runCliRaw(database, ...args);
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  if (result.status !== 0) {
+    throw new Error(
+      `splashtrack ${args.join(" ")} exited ${result.status}:\n${output}`,
+    );
+  }
+  return output;
+}
+
+/**
+ * The same CLI invocation, WITHOUT the non-zero-exit throw — for the cases that
+ * are about the exit code. `boot:state` returns 1 on a REFUSE state precisely so
+ * a caller that forgets to branch still fails, and a test that could only ever
+ * see 0 could not tell serving from refusing.
+ */
+function runCliRaw(
+  database: string,
+  ...args: string[]
+): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(
     process.execPath,
     [
@@ -122,13 +142,17 @@ function runCli(database: string, ...args: string[]): string {
       encoding: "utf8",
     },
   );
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  if (result.status !== 0) {
-    throw new Error(
-      `splashtrack ${args.join(" ")} exited ${result.status}:\n${output}`,
-    );
-  }
-  return output;
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+/** `boot:state`'s machine line — `<STATE> <ACTION>` — and its exit code. */
+function bootState(database: string): { line: string; status: number | null } {
+  const result = runCliRaw(database, "boot:state");
+  return { line: result.stdout.trim(), status: result.status };
 }
 
 /** `prisma migrate deploy` alone — the half `setup:init` used to run unaided. */
@@ -353,6 +377,111 @@ describe("admin:create on a migrated, seeded database", () => {
             WHERE "eventType" = 'security.break_glass.admin_create'`,
         );
         expect(audit.rowCount).toBe(1);
+      });
+    },
+  );
+});
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE WHOLE FIRST-RUN PATH, AS AN OPERATOR WALKS IT (D-186)
+ *
+ * The three cases above each prove one command. This one proves the SEQUENCE,
+ * which is where it broke: every command succeeded, and the installation was
+ * unusable anyway, because after the last of them the container refused to
+ * start.
+ *
+ * The property asserted is the one that failed on 2026-09-04: at EVERY point in
+ * the path, `boot:state` exits 0 and names an action that serves. No step needs
+ * `bootstrap:clear-tampered`, and no step needs a human who already knows the
+ * answer.
+ */
+describe("the first-run path, end to end", () => {
+  it(
+    "never leaves the installation in a state that refuses to start",
+    { timeout: 180_000 },
+    async () => {
+      const database = await createEmptyDatabase("firstrun");
+
+      // ── docker compose up, on a genuinely empty database ──────────────────
+      expect(bootState(database)).toEqual({
+        line: "EMPTY SETUP_MODE",
+        status: 0,
+      });
+
+      // ── setup:init ────────────────────────────────────────────────────────
+      const init = runCli(database, "setup:init");
+      expect(init).toContain("First-run setup recorded as started.");
+      // It tells the operator what the running container now sees, because the
+      // start-up log they are looking at describes a database that is gone.
+      expect(init).toContain("Boot state is now PARTIAL (SETUP_MODE)");
+      expect(init).toContain("does NOT need restarting");
+
+      expect(bootState(database)).toEqual({
+        line: "PARTIAL SETUP_MODE",
+        status: 0,
+      });
+
+      // The started record exists and is NOT a completed one. Both halves
+      // matter: the first is what predicate 4 reads, the second is what keeps
+      // setup mode from closing over an installation with no administrator.
+      await asRuntime(database, async (client) => {
+        const rows = await client.query<{ completedAt: Date | null }>(
+          'SELECT "completedAt" FROM "InstallationBootstrap"',
+        );
+        expect(rows.rows).toEqual([{ completedAt: null }]);
+      });
+
+      // ── admin:create ──────────────────────────────────────────────────────
+      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
+      const passwordFile = path.join(workDirectory, "password");
+      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
+        mode: 0o600,
+      });
+
+      const create = runCli(
+        database,
+        "admin:create",
+        "--email",
+        "beheerder@example.org",
+        "--password-file",
+        passwordFile,
+      );
+      expect(create).toContain("Boot state is now PENDING_ENROLMENT");
+
+      // THE REGRESSION, IN ONE ASSERTION. This is the exact point at which the
+      // container refused to start: one person, one account, two grants, no
+      // completed bootstrap record. It now serves, and `boot:state` exits 0 so
+      // the entrypoint proceeds.
+      expect(bootState(database)).toEqual({
+        line: "PENDING_ENROLMENT SETUP_MODE",
+        status: 0,
+      });
+
+      // ── and TAMPERED is still real on this very database ──────────────────
+      //
+      // Not a separate fixture: the same installation, one row removed. If the
+      // fix had merely widened the predicate, this would still serve.
+      await asRuntime(database, (client) =>
+        client.query('DELETE FROM "InstallationBootstrap"'),
+      );
+      const tampered = runCliRaw(database, "boot:state");
+      expect(tampered.stdout.trim()).toBe("TAMPERED REFUSE");
+      expect(tampered.status).toBe(1);
+      expect(tampered.stderr).toContain(
+        "nothing recorded that setup ever started",
+      );
+
+      // Put it back, so the last word of this case is the path working.
+      await asRuntime(database, (client) =>
+        client.query(
+          `INSERT INTO "InstallationBootstrap" (id, "createdAt", "updatedAt")
+             VALUES ('installation', now(), now())`,
+        ),
+      );
+      expect(bootState(database)).toEqual({
+        line: "PENDING_ENROLMENT SETUP_MODE",
+        status: 0,
       });
     },
   );
