@@ -30,6 +30,14 @@ migration without asking.**
 | instructeur / leraar | `Instructor` (role) | fixed | A role, never a membership requirement (D-060). |
 | invaller | — | proposed | Substitute instructor. Reach follows session participation, not group membership. |
 | aanwezigheid | `AttendanceEvent` | fixed | Append-only. A correction writes a superseding event; the original row is never touched (D-061). |
+| lidnummer | `memberNumber` | fixed | The club's own member number, on `Membership`. **One per person, for life, unchanged across a gap** (§3.1) — which is why leaving and returning may not create a second `Membership`. A STRING, not an integer: `0042` and `42` are one integer and two member numbers. |
+| leerlingnummer | `studentNumber` | fixed | The pupil number, on `StudentProfile`. A SEPARATE numbering space from `memberNumber` — D-053's "different numbering", so a person who is both carries two. |
+| lidmaatschapsperiode | `MembershipPeriod` | fixed | One interval of belonging. Belonging is a set of intervals and never a status flag (D-059); at most one may be open at a time. |
+| in- en uitschrijfgeschiedenis | `StudentLifecycleEvent` | fixed | The pupil's append-only history — `JOINED`, `PAUSED`, `LEFT`, `RETURNED`, `TRIAL_ATTENDED`. Current status is DERIVED from it. A group move is **not** here: that is `GroupMove`, owned by `groups` (D-134 gives the fact one home), and moving a child DOWN a level must read as ordinarily there as moving up. |
+| pauze | `PAUSED` (lifecycle) | fixed | A pupil taking a break — a broken arm, a term abroad. **Not a departure**: the person is still held under D-066, and treating a pause as an ending would start a retention clock on a child who returns in September. |
+| gezag / toestemmingsbevoegdheid | `PersonRelationship.authority` | fixed | That a relationship CLAIMS the right to consent on the subject's behalf. Evidence of a claim, never a legal determination (D-063), and never an authorization scope — `RELATED` was removed from `ScopeType` and must not return (OD-5, D-161). |
+| onderbouwing | `PersonRelationship.evidence` | fixed | HOW the authority claim was established. Mandatory wherever authority is claimed, encrypted under the D-096/D-167 envelope, and disclosed only through an audited read. |
+| leeftijd digitale toestemming | `ageOfDigitalConsentYears` | fixed | The age at which a person consents for themselves, and therefore at which guardian authority lapses by operation of law (D-151). A `bounded` setting (13–18, default 16 — Art. 8(1)'s own range), evaluated at READ TIME. Nothing marks a row on a birthday. |
 
 ## Assessment and awards
 
