@@ -57,21 +57,83 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # The bootstrap secret is NOT among them: it is a FILE (D-112), mounted as a
-# Docker secret below. Generate it once —
+# Docker secret below. Generate it once, BEFORE the first `up` —
 #
-#     docker compose run --rm app splashtrack secret:init --out /app/secrets/secret_key
+#     docker compose run --rm secret-init
 #
 # — and keep a copy with your backups. The backup archive alone cannot recover
 # an instance without it (D-166).
+#
+# THAT COMMAND USED TO NAME THE `app` SERVICE, AND COULD NEVER HAVE WORKED.
+# `secrets.splashtrack_secret_key.file` at the bottom of this file points at
+# `./secrets/secret_key`, and Docker refuses to CREATE a container whose
+# bind-mount source is missing:
+#
+#     invalid mount config for type "bind": bind source path does not exist
+#
+# So the documented way to generate the key required the key to already exist,
+# and the first thing a new self-hoster met was a mount error with no
+# instruction attached. `secret-init` below is a separate service that does not
+# mount the secret, which is what lets it be the thing that creates it.
 #
 # FIRST ADMINISTRATOR. There is no public self-registration and the setup wizard
 # is not built yet, so the first account is created from the host, which is the
 # proof of ownership every privileged operation here rests on:
 #
 #     docker compose exec app splashtrack admin:create --email you@example.org
+#
+# That command creates the account and STOPS. Setup is not complete until a
+# second factor exists (D-185), which happens in a browser: sign in at
+# BETTER_AUTH_URL/sign-in and you are taken straight to the QR code. Until then
+# the instance serves the setup notice and stays in PENDING_ENROLMENT (D-186) —
+# a state it restarts into safely, as often as you like.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+  # ── secret-init — the one-shot that makes the first `up` possible ──────────
+  #
+  # It exists because the `app` service cannot generate the bootstrap secret:
+  # the secret is bind-mounted into it, and a missing bind source is a container
+  # that Docker will not create. See the header.
+  #
+  # `profiles` keeps it out of `docker compose up` entirely. `docker compose run
+  # secret-init` activates the profile on its own, so there is nothing extra to
+  # type and nothing extra running afterwards.
+  #
+  # IT RUNS AS ROOT, AND ONLY THIS ONE DOES. `./secrets` is created by Docker as
+  # root when it does not exist, and the container's runtime user (uid 10001)
+  # cannot write into a root-owned directory — which is the SECOND thing that
+  # stopped a fresh install, after the mount error. Rather than ask an operator
+  # to chown a directory to a uid they have never heard of, this service fixes
+  # the ownership itself and hands both the directory and the key to 10001,
+  # which is exactly the ownership `secrets:` needs to mount them readably.
+  #
+  # Nothing of the application runs here: the entrypoint is replaced by a shell,
+  # and `secret:init` imports `node:crypto` and `node:fs` and nothing else (see
+  # src/cli/commands/secret.ts). It refuses to overwrite an existing key, so
+  # running it twice is safe.
+  secret-init:
+    build:
+      context: .
+    image: splashtrack:local
+    profiles: ['setup']
+    user: '0:0'
+    volumes:
+      - ./secrets:/app/secrets
+    entrypoint: ['/bin/sh', '-euc']
+    command:
+      - |
+        splashtrack secret:init --out /app/secrets/secret_key
+        chown 10001:10001 /app/secrets /app/secrets/secret_key
+        chmod 0700 /app/secrets
+        chmod 0600 /app/secrets/secret_key
+        echo ''
+        echo 'Keep a copy of ./secrets/secret_key with your backups. A backup'
+        echo 'archive cannot be restored without it (D-166), and nothing can'
+        echo 'regenerate it — every encrypted value derives from this key.'
+        echo ''
+        echo 'Next: docker compose up -d'
+
   app:
     build:
       context: .

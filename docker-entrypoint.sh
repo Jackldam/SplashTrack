@@ -132,9 +132,13 @@ else
 
   Generate one, once, and keep it with your backups:
 
-      docker compose run --rm app splashtrack secret:init --out /app/secrets/secret_key
+      docker compose run --rm secret-init
 
-  then set SECRET_KEY_FILE to where you mounted it."
+  then set SECRET_KEY_FILE to where you mounted it. That command names the
+  `secret-init` service and NOT `app`, deliberately: the reference compose file
+  bind-mounts this key into `app`, and Docker will not create a container whose
+  bind-mount source does not exist — so `app` cannot be the service that
+  creates it."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
