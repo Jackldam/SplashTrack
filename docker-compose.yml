@@ -108,7 +108,12 @@ services:
       # surface — the application never reads it — and it exists because a host
       # that already has something on 3000 should not need this file edited.
       # Whatever you choose here must match BETTER_AUTH_URL.
-      - '${APP_PORT:-3000}:3000'
+      # BOUND TO LOOPBACK. A published port bypasses the host firewall entirely:
+      # Docker DNATs it through nat/FORWARD, which ufw's INPUT rules never see.
+      # That is exactly how Postgres sat open to the internet for 22 hours on
+      # 2026-09-03 (docs/build/incident-2026-09-03-exposed-postgres.md). Put a
+      # reverse proxy in front; do not expose this directly.
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
 
   postgres:
     image: postgres:16-alpine

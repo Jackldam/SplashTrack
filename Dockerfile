@@ -148,6 +148,12 @@ COPY --from=build     --chown=root:root /app/dist         ./dist
 COPY --chown=root:root messages       ./messages
 COPY --chown=root:root prisma         ./prisma
 COPY --chown=root:root next.config.ts prisma.config.ts package.json ./
+# prisma.config.ts imports the role model, so migrations run as the schema
+# owner rather than as DATABASE_URL's role (ADR-0002 §3, D-116). Without
+# this file `setup:init` fails inside the container with "Cannot find
+# module ./src/lib/database/role-model" — found by running it, not reading
+# it. It is dependency-free by design; keep it that way or this breaks.
+COPY --chown=root:root src/lib/database/role-model.ts ./src/lib/database/role-model.ts
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # The whole of `infra/`, not one file. `provision-roles.sql` is what an operator
 # on an EXISTING volume or a managed database runs by hand (ADR-0002 §7), so
