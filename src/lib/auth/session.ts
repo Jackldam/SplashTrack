@@ -37,6 +37,7 @@ import {
   SESSION_TIMEOUT_MINUTES,
 } from "@/lib/settings";
 import { auth } from "./auth";
+import { hasVerifiedMfaFactor, MFA_ENROLMENT_PATH } from "./mfa-enrolment";
 
 /**
  * Absolute session cap: a session may not be renewed beyond this age regardless
@@ -98,6 +99,25 @@ export interface CurrentSession {
    * `undefined`. Treat `undefined` the same as `null` at every call site.
    */
   mfaEvidence?: SessionMfaEvidence | null;
+
+  /**
+   * `true` while this account holds NO verified MFA factor — the `mfa_pending`
+   * state D-185 opens between `admin:create` and browser enrolment. See
+   * `./mfa-enrolment.ts`.
+   *
+   * IT IS REPORTED HERE AND ENFORCED IN `requireEnrolledSession` BELOW, not
+   * inside this function, because the enrolment page is a legitimate caller
+   * that needs the session precisely while this is true. Do not "simplify" this
+   * by returning null for a pending account: the enrolment page would then have
+   * no way to learn who is enrolling, and the only remaining implementation
+   * would be one that re-derives identity from the cookie by hand.
+   *
+   * OPTIONAL on the type for the same reason as `mfaEvidence`: a hand-built
+   * test fixture need not set it. Every real session this module returns sets
+   * it to a boolean. Treat `undefined` as `false` — a fixture that does not
+   * mention MFA is describing an ordinary enrolled session.
+   */
+  mfaPending?: boolean;
 }
 
 /**
@@ -319,6 +339,7 @@ export async function getCurrentSession(): Promise<CurrentSession | null> {
     },
     person: account.person,
     mfaEvidence: sessionRow.mfaEvidence,
+    mfaPending: !(await hasVerifiedMfaFactor(account.id)),
   };
 }
 
@@ -331,6 +352,65 @@ export async function requireCurrentSession(): Promise<CurrentSession> {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   return session;
+}
+
+/**
+ * THE GUARD EVERY PROTECTED PAGE AND SERVER ACTION USES. Signed in, and past
+ * the D-185 enrolment window.
+ *
+ * Two refusals, both server-side, both before anything renders:
+ *
+ *   no session          → `/sign-in`
+ *   `mfa_pending`       → `/mfa-enrolment`
+ *
+ * WHY THE SECOND IS A REDIRECT AND NOT A RENDERED PANEL, when `people/access.tsx`
+ * argues the opposite for an authorization denial. The two answers are different
+ * answers. "You do not have this permission" is terminal for the caller — the
+ * remedy is somebody else's grant, so a panel naming the permission is the most
+ * useful thing that can be said, and bouncing them elsewhere would look broken.
+ * "You have not finished enrolling" has a remedy the caller can act on RIGHT
+ * NOW, in one place, and requirement 3 of this phase is that they are FORCED to
+ * it. A redirect to the page that fixes it is the honest denial here — and it is
+ * a denial: HTTP 307 with a Location, never a 200 with an empty table.
+ *
+ * There is deliberately no `allowPending` escape hatch. The enrolment page uses
+ * {@link getCurrentSession} directly and is the ONLY caller permitted to; every
+ * other surface calls this. A flag would make "which pages may a half-enrolled
+ * administrator reach" a question answered at each call site.
+ * `tests/unit/route-guard-coverage.test.ts` holds that line at the source level.
+ */
+export async function requireEnrolledSession(): Promise<CurrentSession> {
+  const session = await getCurrentSession();
+  const decision = decideRouteAccess(session);
+  if (!decision.allow) redirect(decision.redirectTo);
+  return session as CurrentSession;
+}
+
+/** What {@link requireEnrolledSession} does about a session, as a value. */
+export type RouteAccessDecision =
+  { allow: true } | { allow: false; redirectTo: string };
+
+/**
+ * The decision {@link requireEnrolledSession} acts on, separated from the
+ * acting so it can be asserted directly.
+ *
+ * `redirect()` reads Next's request-scoped async storage, which does not exist
+ * in the test process; this function does not, so the three answers are pinned
+ * by an ordinary assertion rather than by a mock of the framework. The wrapper
+ * above is then two lines with nothing left to get wrong.
+ *
+ * ORDER MATTERS: no session is answered BEFORE pending. A caller with no
+ * session has no account to enrol, and sending them to the enrolment page would
+ * bounce them straight back to sign-in.
+ */
+export function decideRouteAccess(
+  session: CurrentSession | null,
+): RouteAccessDecision {
+  if (!session) return { allow: false, redirectTo: "/sign-in" };
+  if (session.mfaPending) {
+    return { allow: false, redirectTo: MFA_ENROLMENT_PATH };
+  }
+  return { allow: true };
 }
 
 /**

@@ -63,6 +63,10 @@ import {
 } from "@/lib/rate-limit";
 import { SESSION_TIMEOUT_MINUTES } from "@/lib/settings";
 import { recordAuditEventSafe } from "@/modules/audit";
+import {
+  MFA_PENDING_ALLOWED_AUTH_PATHS,
+  mfaStateForSessionToken,
+} from "./mfa-enrolment";
 import { PASSWORD_POLICY } from "./password-policy";
 
 /** The application name shown in TOTP authenticator apps and passkey prompts. */
@@ -463,6 +467,86 @@ const enforceServerSideSignUpOnly = {
   },
 };
 
+/**
+ * Bounds what a session belonging to an `mfa_pending` account can reach on the
+ * Better Auth HTTP surface: sign in, sign out, read its own session, enrol,
+ * verify. See `./mfa-enrolment.ts` for the state itself and for why each path
+ * on the allowlist is on it.
+ *
+ * THIS IS NOT DUPLICATION OF THE PAGE GUARD. `/api/auth/[...all]` mounts Better
+ * Auth's FULL endpoint surface, so a pending account's session cookie reaches
+ * `/api/auth/update-user`, `/api/auth/change-email` and passkey registration by
+ * a direct POST with no application page involved — `requireEnrolledSession()`
+ * guards Server Components and Server Actions and can never see those requests.
+ * The two guards cover disjoint surfaces; neither is redundant.
+ *
+ * The session is resolved from the SIGNED COOKIE rather than by asking the auth
+ * instance, because calling `auth.api.getSession()` from inside one of this
+ * instance's own `before` hooks re-enters the pipeline this hook is guarding.
+ *
+ * FAILS CLOSED on an unreadable database, the same direction as
+ * `enforceServerSideSignUpOnly` and for the same reason: refusing an operation
+ * to an account that has not finished enrolling cannot lock anybody out, since
+ * the enrolment paths are themselves exempt and are reached with this hook
+ * having already returned.
+ */
+const enforceMfaEnrolmentBeforeUse = {
+  id: "enforce-mfa-enrolment-before-use",
+  hooks: {
+    before: [
+      {
+        matcher: (context: { path?: string }) =>
+          !MFA_PENDING_ALLOWED_AUTH_PATHS.has(context.path ?? ""),
+        handler: createAuthMiddleware(async (ctx) => {
+          const token = await ctx.getSignedCookie(
+            ctx.context.authCookies.sessionToken.name,
+            ctx.context.secret,
+          );
+          // No session cookie ⇒ nothing for this gate to decide. An anonymous
+          // request is governed by whatever the endpoint itself requires.
+          if (!token) return;
+
+          let state: Awaited<ReturnType<typeof mfaStateForSessionToken>>;
+          try {
+            state = await mfaStateForSessionToken(token);
+          } catch (error) {
+            logger.error(
+              { event: "auth.mfa_gate.unreadable", err: error },
+              "could not determine whether this session's account has a " +
+                "verified MFA factor; refusing the request",
+            );
+            throw new APIError("FORBIDDEN", {
+              message: "This account cannot perform this action.",
+            });
+          }
+
+          if (!state || !state.pending) return;
+
+          // Unbounded in principle, bounded in fact: reaching here needs a
+          // valid session cookie for a pending account, so the only party who
+          // can write these rows is the one account inside its own enrolment
+          // window. Unlike the passkey-failure branch below there is no
+          // anonymous flood to rate-limit against.
+          await recordAuditEventSafe({
+            eventType: "security.mfa_enrolment_required",
+            outcome: "DENIED",
+            actorPersonId: null,
+            actorAuthMethod: "session",
+            targetType: "user_account",
+            targetId: state.userAccountId,
+            changedFields: { path: ctx.path },
+          });
+
+          throw new APIError("FORBIDDEN", {
+            message:
+              "Finish setting up your authenticator before using this account.",
+          });
+        }),
+      },
+    ],
+  },
+};
+
 export const auth = betterAuth({
   // Signs session tokens and encrypts TOTP secrets. Never logged.
   //
@@ -770,6 +854,10 @@ export const auth = betterAuth({
     // unauthenticated POST to /api/auth/sign-up/email creates an ACTIVE account
     // and returns a session token, which it did when probed.
     enforceServerSideSignUpOnly,
+    // Closes the D-185 enrolment window on the HTTP surface: a session whose
+    // account has no verified factor reaches sign-out, get-session and the two
+    // enrolment endpoints, and nothing else. See its definition above.
+    enforceMfaEnrolmentBeforeUse,
     // Two-factor (TOTP). This makes MFA technically AVAILABLE per account
     // (enable/verify/disable endpoints and the `twoFactorEnabled` flag). It
     // intentionally does NOT enforce "this permission requires MFA": that is an

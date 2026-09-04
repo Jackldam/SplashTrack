@@ -29,7 +29,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentSession } from "@/lib/auth/session";
+import { requireEnrolledSession } from "@/lib/auth/session";
 import { PermissionDeniedError } from "@/lib/authorization";
 import { ApiError } from "@/lib/errors";
 import { logger } from "@/lib/logging";
@@ -49,10 +49,16 @@ import {
 
 const actionLogger = logger.child({ component: "people.actions" });
 
-/** The actor, from the SESSION — never from a form field. */
+/**
+ * The actor, from the SESSION — never from a form field.
+ *
+ * `requireEnrolledSession` and not a bare "is there a session" check: a Server
+ * Action is reachable by POST without the page that renders it, so an account
+ * still inside the D-185 enrolment window would otherwise write person records
+ * behind one password. The guard refuses here, before the service is called.
+ */
 async function actor(): Promise<ActorContext> {
-  const session = await getCurrentSession();
-  if (!session) redirect("/sign-in");
+  const session = await requireEnrolledSession();
   return { principal: { personId: session.person.id }, at: new Date() };
 }
 

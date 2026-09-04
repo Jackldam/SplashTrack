@@ -23,6 +23,11 @@ import { dismissBreakGlassAlert } from "./break-glass-actions";
 export async function BreakGlassBanner() {
   const session = await getCurrentSession();
   if (!session) return null;
+  // An account still inside the D-185 enrolment window cannot dismiss (the
+  // action refuses), so rendering the banner for it would offer a control that
+  // cannot work. This is a UI decision layered on top of the server-side
+  // refusal in `./break-glass-actions.ts`, never a substitute for it.
+  if (session.mfaPending) return null;
 
   try {
     await requirePermission(

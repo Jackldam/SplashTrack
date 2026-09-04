@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
-
-import { getCurrentSession, type CurrentSession } from "@/lib/auth/session";
+import {
+  requireEnrolledSession,
+  type CurrentSession,
+} from "@/lib/auth/session";
 import { PermissionDeniedError } from "@/lib/authorization";
 
 /**
@@ -31,11 +32,17 @@ import { PermissionDeniedError } from "@/lib/authorization";
  * primitive.
  */
 
-/** The signed-in session, or a redirect to sign in. Never returns null. */
+/**
+ * The signed-in, fully-enrolled session, or a redirect. Never returns null.
+ *
+ * A thin re-export of `requireEnrolledSession` (`@/lib/auth/session`), which
+ * owns both refusals — no session, and the `mfa_pending` window D-185 opens.
+ * Kept as a named function in this file because it is what every screen in this
+ * area already calls, and because the shape of the guard belongs beside the
+ * denial-panel reasoning below.
+ */
 export async function requireSignedIn(): Promise<CurrentSession> {
-  const session = await getCurrentSession();
-  if (!session) redirect("/sign-in");
-  return session;
+  return requireEnrolledSession();
 }
 
 /**

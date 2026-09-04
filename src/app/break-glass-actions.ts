@@ -11,7 +11,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getCurrentSession } from "@/lib/auth/session";
+import { requireEnrolledSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 import { recordAuditEvent } from "@/modules/audit";
@@ -20,8 +20,11 @@ export async function dismissBreakGlassAlert(
   formData: FormData,
 ): Promise<void> {
   const alertId = String(formData.get("alertId") ?? "");
-  const session = await getCurrentSession();
-  if (!session) throw new Error("Not signed in.");
+  // Refuses an unauthenticated caller AND one still inside the D-185 enrolment
+  // window: acknowledging the break-glass warning is precisely the act an
+  // account created by that break-glass command must not be able to perform for
+  // itself before its second factor exists.
+  const session = await requireEnrolledSession();
 
   // Resource-referenced, never a bare permission check (D-030).
   await requirePermission(

@@ -23,12 +23,21 @@ export {
 export {
   getCurrentSession,
   requireCurrentSession,
+  requireEnrolledSession,
   revokeAllSessionsForUser,
   SESSION_ABSOLUTE_TIMEOUT_SECONDS,
   type CurrentSession,
   type CurrentUserAccount,
   type CurrentPerson,
 } from "./session";
+
+export {
+  hasVerifiedMfaFactor,
+  mfaStateForSessionToken,
+  MfaEnrolmentRequiredError,
+  MFA_ENROLMENT_PATH,
+  MFA_PENDING_ALLOWED_AUTH_PATHS,
+} from "./mfa-enrolment";
 
 export {
   listMySessions,
