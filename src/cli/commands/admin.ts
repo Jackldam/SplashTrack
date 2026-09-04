@@ -520,7 +520,9 @@ async function rollbackAccount(
   await prisma.userAccount
     .delete({ where: { id: userAccountId } })
     .catch(() => undefined);
-  await prisma.person.delete({ where: { id: personId } }).catch(() => undefined);
+  await prisma.person
+    .delete({ where: { id: personId } })
+    .catch(() => undefined);
 }
 
 /** Creates a standing grant of a seeded role, idempotently. */

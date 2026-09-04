@@ -35,8 +35,7 @@ function readVersion(): string {
   try {
     const require = createRequire(import.meta.url);
     const pkg = require(
-      process.env.SPLASHTRACK_PACKAGE_JSON ??
-        `${process.cwd()}/package.json`,
+      process.env.SPLASHTRACK_PACKAGE_JSON ?? `${process.cwd()}/package.json`,
     ) as { version?: string };
     return pkg.version ?? "unknown";
   } catch {

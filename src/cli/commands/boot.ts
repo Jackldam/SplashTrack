@@ -7,10 +7,7 @@
  * stderr, so the shell can branch on the first without losing the second.
  */
 
-import {
-  detectBootState,
-  type BootDecision,
-} from "@/lib/boot/state";
+import { detectBootState, type BootDecision } from "@/lib/boot/state";
 import { INSTALLATION_BOOTSTRAP_ID } from "@/lib/boot/setup-mode";
 import { prisma } from "@/lib/database";
 
