@@ -249,6 +249,27 @@ case "${ACTION}" in
 
   SERVE)
     log "Schema is current. Serving."
+
+    # Re-assert the role model even when nothing migrated.
+    #
+    # The MIGRATE branch above is not the only way a schema gets here. On a new
+    # installation the tables are created by `splashtrack setup:init`, run from
+    # the host inside this container while the server is already up in SETUP
+    # MODE — and an instance built by an image whose `setup:init` did not yet
+    # apply the grants reaches this branch on its next start with the runtime
+    # role still holding DELETE on `AuditEvent`. Applying the model on every
+    # serving start is idempotent, costs one short-lived connection, and means
+    # "we ran that once" is never the only evidence.
+    #
+    # It refuses the start on failure for the same reason the MIGRATE branch
+    # does: serving while the web process can delete audit rows is the outcome
+    # D-149 part 2 exists to prevent.
+    log "Asserting the ADR-0002 role model over the current schema…"
+    splashtrack db:apply-grants || fail \
+"The ADR-0002 role model is not in force on this database. The reason is above.
+
+  Refusing to serve: the runtime role may currently hold UPDATE or DELETE on
+  AuditEvent, which is exactly the state D-149 part 2 exists to prevent."
     ;;
 
   *)

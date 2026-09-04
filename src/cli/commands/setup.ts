@@ -37,6 +37,7 @@ import { seedInstallation } from "@/lib/boot/seed";
 import { detectBootState } from "@/lib/boot/state";
 
 import type { CommandContext } from "../context";
+import { applyRoleModelOrThrow } from "./database";
 
 export async function setupInit(ctx: CommandContext): Promise<number> {
   const decision = await detectBootState();
@@ -53,7 +54,7 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
   }
 
   ctx.log(`Boot state ${decision.state}: applying migrations…`);
-  applyMigrations(ctx);
+  await migrateAndApplyRoleModel(ctx);
 
   ctx.log("Seeding the permission catalogue and the system roles…");
   const seeded = await seedInstallation();
@@ -74,7 +75,30 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
 }
 
 /**
- * Runs `prisma migrate deploy` in this process's environment.
+ * Migrates, then puts the ADR-0002 role model in force over what the migration
+ * just created. NEVER one without the other.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THE TWO ARE WELDED TOGETHER
+ *
+ * The migration runs as `splashtrack_owner` (prisma.config.ts derives that
+ * connection), so every table it creates is owned by the owner role and carries
+ * NO privileges for the runtime role at all. The runtime role only ever obtains
+ * them from `ALTER DEFAULT PRIVILEGES` and the explicit grants in
+ * `applyRoleModel`. Until those are applied the schema exists and the
+ * application cannot read a byte of it.
+ *
+ * `setup:init` then seeds — as the RUNTIME role, which is what `@/lib/database`
+ * connects as. Measured on a genuinely empty database, not reasoned about:
+ * without this step the seed died on its first statement with
+ *
+ *     permission denied for table Organization
+ *
+ * and the operator's only way forward was to know that `db:apply-grants` had to
+ * be run by hand between two steps of a command that presents itself as one
+ * step. `docker-entrypoint.sh` already re-applies the model after every
+ * migration it runs itself, for exactly this reason; this is the same rule for
+ * the migrations the CLI runs, in the one place both callers pass through.
  *
  * `migrate deploy` and not `migrate dev`: it applies pending migrations and
  * never generates, resets or prompts, which are all things that must not happen
@@ -84,12 +108,17 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
  * migration failure is the moment to see everything, and Prisma's messages name
  * the migration and the SQL statement that failed.
  */
-export function applyMigrations(ctx: CommandContext): void {
+export async function migrateAndApplyRoleModel(
+  ctx: CommandContext,
+): Promise<void> {
   execFileSync(process.execPath, [prismaCliPath(), "migrate", "deploy"], {
     stdio: ["ignore", "inherit", "inherit"],
     env: process.env,
   });
   ctx.log("Migrations applied.");
+
+  ctx.log("Re-applying the ADR-0002 role model over the new schema…");
+  await applyRoleModelOrThrow(ctx);
 }
 
 /**

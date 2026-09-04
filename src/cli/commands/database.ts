@@ -57,8 +57,12 @@ import type { CommandContext } from "../context";
  * owner cannot be read the same way — it is the one role that never appears in
  * a connection string, which is the whole point of it — so it defaults to the
  * name the reference provisioning creates and `--owner` overrides it.
+ *
+ * Exported because `setup:init` applies the same model to the same database
+ * immediately after it migrates, and resolving the names a second way there is
+ * how the two commands drift apart.
  */
-function resolveNames(ctx: CommandContext): {
+export function resolveRoleModelNames(ctx: CommandContext): {
   names: RoleModelNames;
   maintenanceUrl: string;
 } {
@@ -88,29 +92,31 @@ function resolveNames(ctx: CommandContext): {
   };
 }
 
-export async function databaseApplyGrants(
+/**
+ * Applies the role model and THROWS on any failure.
+ *
+ * This is the form `setup:init` needs. `databaseApplyGrants` below reports a
+ * failure as a non-zero exit code because it is a top-level command; a caller
+ * that has just migrated a database and is about to write rows into it needs
+ * the failure to abort its own sequence, not to be handed a number it might
+ * forget to look at.
+ */
+export async function applyRoleModelOrThrow(
   ctx: CommandContext,
-): Promise<number> {
-  const { names, maintenanceUrl } = resolveNames(ctx);
+): Promise<void> {
+  const { names, maintenanceUrl } = resolveRoleModelNames(ctx);
 
   ctx.log("Applying the ADR-0002 role model:");
   ctx.log(`  owner     ${names.owner}   (non-connecting)`);
   ctx.log(`  runtime   ${names.app}`);
   ctx.log(`  retention ${names.retention}`);
-  ctx.log("");
 
-  let outcome;
-  try {
-    outcome = await applyRoleModel(maintenanceUrl, names);
-  } catch (error) {
-    ctx.error((error as Error).message);
-    return 1;
-  }
-
+  const outcome = await applyRoleModel(maintenanceUrl, names);
   if (outcome.failures.length > 0) {
-    ctx.error("The role model did NOT come into force:");
-    for (const failure of outcome.failures) ctx.error(`  \u2717 ${failure}`);
-    return 1;
+    throw new Error(
+      "The ADR-0002 role model did NOT come into force:\n" +
+        outcome.failures.map((failure) => `  \u2717 ${failure}`).join("\n"),
+    );
   }
 
   ctx.log(`Applied as ${outcome.acting} (session ${outcome.session}).`);
@@ -118,5 +124,16 @@ export async function databaseApplyGrants(
     `D-149 part 2 is in force: ${names.app} holds SELECT and INSERT on ` +
       "AuditEvent, owns nothing, and cannot grant itself more.",
   );
+}
+
+export async function databaseApplyGrants(
+  ctx: CommandContext,
+): Promise<number> {
+  try {
+    await applyRoleModelOrThrow(ctx);
+  } catch (error) {
+    ctx.error((error as Error).message);
+    return 1;
+  }
   return 0;
 }

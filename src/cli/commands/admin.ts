@@ -63,7 +63,7 @@ import { prisma } from "@/lib/database";
 import { recordBreakGlassInvocation } from "../break-glass";
 import { resolveSecret, readSecretLine } from "../prompt";
 import { APP_VERSION, type CommandContext } from "../context";
-import { applyMigrations } from "./setup";
+import { migrateAndApplyRoleModel } from "./setup";
 
 /** `admin:grant-admin` is a RECOVERY grant, not provisioning (`13-…` §7). */
 const GRANT_ADMIN_HOURS = 24;
@@ -95,7 +95,7 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
   if (state.state === "EMPTY" || state.state === "PARTIAL") {
     if (state.state === "EMPTY" || state.pendingMigrations.length > 0) {
       ctx.log(`Boot state ${state.state}: applying migrations…`);
-      applyMigrations(ctx);
+      await migrateAndApplyRoleModel(ctx);
     }
   } else if (state.state !== "CURRENT" && state.state !== "EXISTING") {
     ctx.error(`This installation is ${state.state}; refusing.`);
