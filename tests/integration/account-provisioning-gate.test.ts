@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
   accountProvisioningMarker,
@@ -6,6 +6,14 @@ import {
   personCreationTracker,
 } from "@/lib/auth";
 import { prisma } from "@/lib/database";
+
+import { disconnectRoleClients, ownerClient } from "../support/database-roles";
+
+const owner = ownerClient();
+
+afterAll(async () => {
+  await disconnectRoleClients();
+});
 
 /**
  * Account creation is DENIED BY DEFAULT, and only server-side provisioning may
@@ -52,7 +60,9 @@ async function deleteProbeAccount(): Promise<void> {
 
 afterEach(async () => {
   await deleteProbeAccount();
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "AuditEvent"');
+  // The OWNER truncates: no application role holds TRUNCATE on `AuditEvent`
+  // since ADR-0002, which is D-149 part 2 being real rather than documented.
+  await owner.$executeRawUnsafe('TRUNCATE TABLE "AuditEvent"');
 });
 
 describe("account creation is denied by default", () => {

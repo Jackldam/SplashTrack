@@ -20,9 +20,41 @@
 # Put the values in a `.env` file beside this one — Compose reads it
 # automatically, and it is gitignored:
 #
-#     DATABASE_URL=postgresql://splashtrack:<password>@postgres:5432/splashtrack
+#     DATABASE_URL=postgresql://splashtrack_app:<app-password>@postgres:5432/splashtrack
+#     DATABASE_MAINTENANCE_URL=postgresql://splashtrack_retention:<retention-password>@postgres:5432/splashtrack
 #     BETTER_AUTH_URL=http://your-host:3000
-#     POSTGRES_PASSWORD=<the same password>
+#     POSTGRES_PASSWORD=<the superuser password, used only to provision>
+#     SPLASHTRACK_APP_PASSWORD=<app-password, same as in DATABASE_URL>
+#     SPLASHTRACK_RETENTION_PASSWORD=<retention-password, same as above>
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# TWO CONNECTION STRINGS, AND WHY (D-182, ADR-0002)
+#
+# A connection to PostgreSQL carries a username, and that username decides what
+# the connection may do. One username for everything means every part of the
+# application can do everything — including the parts an attacker reaches first.
+#
+# SplashTrack keeps an audit trail: an append-only log of who looked at which
+# child's medical note, who changed an exam result, who exported the member
+# list. After a breach it is what answers "what happened, to whom, and when",
+# and its value depends entirely on being unfalsifiable. If the web application
+# and the audit trail share a username, anything that hijacks the web
+# application inherits the ability to erase the record of doing so — the log
+# guarded by the same key as the door it watches.
+#
+# So `DATABASE_URL` names a role that may ADD audit rows and never change or
+# remove them, and `DATABASE_MAINTENANCE_URL` names the one that may delete them
+# — used by retention, which runs on a schedule and writes a signed checkpoint
+# accounting for what it removed, and by `prisma migrate deploy`.
+#
+# `POSTGRES_USER` below is now the PROVISIONING SUPERUSER and appears in neither.
+# That is the fix: it is created by the Postgres image as a superuser, and a
+# superuser is not "read the data" — via `COPY … FROM PROGRAM` it is command
+# execution in the database container.
+#
+# The three roles are created for you when the volume is first initialised (see
+# the `postgres` service). Nothing to run by hand on a fresh install.
+# ─────────────────────────────────────────────────────────────────────────────
 #
 # The bootstrap secret is NOT among them: it is a FILE (D-112), mounted as a
 # Docker secret below. Generate it once —
@@ -49,11 +81,16 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # The three application-owned variables D-037 permits, and nothing else.
-      # Neither of the two set here has a default — see the header.
+      # The four application-owned variables D-037 permits, and nothing else.
+      # None of the three set here has a default — see the header.
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env; there is deliberately no default}
+      # The second credential (D-182). The container needs it because D-181
+      # makes upgrades apply migrations unattended, and because the audit
+      # exception has to be re-applied after each one. Its ADR is
+      # docs/adr/0002-database-roles-and-least-privilege.md §8.
+      DATABASE_MAINTENANCE_URL: ${DATABASE_MAINTENANCE_URL:?set DATABASE_MAINTENANCE_URL in .env; see ADR-0002 — it is the retention role, and migrations run through it}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env to this instance's public origin}
-      # The third: a path to a mounted file, never the secret itself.
+      # The fourth: a path to a mounted file, never the secret itself.
       SECRET_KEY_FILE: /run/secrets/splashtrack_secret_key
     secrets:
       - splashtrack_secret_key
@@ -78,9 +115,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: splashtrack
+      # THE PROVISIONING SUPERUSER, and nothing else (D-182). The Postgres image
+      # creates this role as a superuser; what changed in ADR-0002 is that
+      # `DATABASE_URL` no longer points at it. It exists to run
+      # `infra/provision-roles.sql` once, below, and is then unused — the
+      # application connects as `splashtrack_app` and `splashtrack_retention`.
       POSTGRES_USER: splashtrack
-      # A DEVELOPMENT default, and the only one left in this file. It exists
-      # because `docker compose up postgres` is also what a developer runs to
       # NO DEFAULT, for the same reason DATABASE_URL has none. The previous
       # `${POSTGRES_PASSWORD:-splashtrack}` was described here as "safe on a
       # laptop and only there" — and it was not, because the line below
@@ -96,6 +136,50 @@ services:
       # password lives in the volume. `ALTER ROLE splashtrack PASSWORD …` is
       # what changes it on an existing one.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env; there is deliberately no default}
+
+      # ── The two role passwords the init hook below needs ──────────────────
+      #
+      # COMPOSE variables, not application ones: they are read by the Postgres
+      # image's init hook and never by SplashTrack, exactly like
+      # POSTGRES_PASSWORD and APP_PORT. They are not part of D-037's surface.
+      #
+      # They must match the passwords inside DATABASE_URL and
+      # DATABASE_MAINTENANCE_URL. That duplication is unavoidable and is stated
+      # rather than hidden: the image needs the password as a value to create
+      # the role with, and the application needs it inside a URL to connect
+      # with, and no default would be safe for either.
+      SPLASHTRACK_APP_PASSWORD: ${SPLASHTRACK_APP_PASSWORD:?set SPLASHTRACK_APP_PASSWORD in .env; it must match the password in DATABASE_URL}
+      SPLASHTRACK_RETENTION_PASSWORD: ${SPLASHTRACK_RETENTION_PASSWORD:?set SPLASHTRACK_RETENTION_PASSWORD in .env; it must match the password in DATABASE_MAINTENANCE_URL}
+
+      # CREATEDB on the retention role. `off` for any real deployment: nothing
+      # in production ever creates a database — the entrypoint runs
+      # `migrate deploy`, never `CREATE DATABASE`. It exists because a CHECKOUT
+      # runs `npm test`, and the harness builds its own `_test` and throwaway
+      # databases (ADR-0002 §6). CREATEDB is not SUPERUSER, and the distinction
+      # is the whole of §6.
+      SPLASHTRACK_PROVISION_CREATEDB: ${SPLASHTRACK_PROVISION_CREATEDB:-off}
+    volumes:
+      # ── Role provisioning, run for the operator ───────────────────────────
+      #
+      # OD-15 fixes the supported operator at "comfortable with `docker compose`
+      # on a host they control", and says plainly that this is NOT thereby
+      # comfortable with PostgreSQL role grants. A README asking for four
+      # `CREATE ROLE` statements as a superuser is a step most installs skip,
+      # and an install that skips it runs the web application as a superuser.
+      # So the compose file does it: this is what "documentation that executes"
+      # means.
+      #
+      # The image runs everything in /docker-entrypoint-initdb.d as the
+      # superuser, once, before the server accepts its first outside
+      # connection. The .sql is mounted OUTSIDE that directory on purpose — the
+      # image would otherwise run it a second time without the psql variables
+      # it needs, and fail.
+      #
+      # FRESH VOLUMES ONLY. An existing instance keeps its superuser until an
+      # operator runs the same SQL by hand; the command is in the file's header.
+      - ./infra/postgres-init:/docker-entrypoint-initdb.d:ro
+      - ./infra/provision-roles.sql:/opt/splashtrack/provision-roles.sql:ro
+      - splashtrack-postgres-data:/var/lib/postgresql/data
     ports:
       # LOOPBACK ONLY, and deliberately not a variable.
       #
@@ -111,8 +195,6 @@ services:
       # the decision knowingly. Leaving it a variable makes re-exposing it a
       # typo away, which is how it happened the first time.
       - '127.0.0.1:5432:5432'
-    volumes:
-      - splashtrack-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U splashtrack -d splashtrack']
       interval: 5s

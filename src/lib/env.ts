@@ -14,8 +14,27 @@
  */
 
 const REQUIRED_ENV_VARS = [
-  /** Where persistent state lives. No default — see `@/lib/database/client`. */
+  /**
+   * Where persistent state lives, as the RUNTIME role — which owns nothing and
+   * holds neither UPDATE nor DELETE on `AuditEvent` (D-116, D-149 part 2). No
+   * default — see `@/lib/database/client`.
+   */
   "DATABASE_URL",
+  /**
+   * The second credential D-182 requires: the retention role, which holds the
+   * only `DELETE` on `AuditEvent`, and through which migrations run as the
+   * non-connecting schema owner.
+   *
+   * REQUIRED AT BOOT, not merely when retention runs. D-181 makes upgrades
+   * apply migrations unattended, so an instance missing this variable would
+   * start fine, serve fine, and then fail at the moment recovery is hardest —
+   * the next upgrade, against a schema the image has already moved past. A
+   * missing credential should be a refusal to start, which is one line in a
+   * `.env` to fix.
+   *
+   * ADR-0002 §8 is the ADR D-037 requires for it.
+   */
+  "DATABASE_MAINTENANCE_URL",
   /** Cookie/redirect origin and the WebAuthn relying-party id (D-132). */
   "BETTER_AUTH_URL",
 ] as const;

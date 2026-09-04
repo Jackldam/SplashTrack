@@ -43,7 +43,7 @@ esac
 if [ "${1:-}" = "secret:init" ]; then exec splashtrack "$@"; fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. The three environment variables, checked before anything is attempted.
+# 1. The four environment variables, checked before anything is attempted.
 #
 # D-037 permits an application-owned variable only when the value must be known
 # before the database can be read, or when it selects where state lives. These
@@ -51,6 +51,8 @@ if [ "${1:-}" = "secret:init" ]; then exec splashtrack "$@"; fi
 # DATABASE_URL would let a misconfigured instance quietly reach the wrong
 # database, which for a system holding children's records must never be a quiet
 # outcome.
+#
+# The fourth is DATABASE_MAINTENANCE_URL, added by D-182 and ADR-0002 §8.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [ -n "${DATABASE_URL:-}" ] || fail \
@@ -58,7 +60,27 @@ if [ "${1:-}" = "secret:init" ]; then exec splashtrack "$@"; fi
 
   It is where this instance's data lives and it has no default, deliberately:
   a default would let a misconfigured container connect somewhere unintended
-  without saying so. Set it in your compose file or environment."
+  without saying so. Set it in your compose file or environment.
+
+  It names the RUNTIME role, which owns nothing and can neither change nor
+  delete an audit row (ADR-0002)."
+
+[ -n "${DATABASE_MAINTENANCE_URL:-}" ] || fail \
+"DATABASE_MAINTENANCE_URL is not set.
+
+  It is the second of the two credentials D-182 requires, and this container
+  cannot start without it. Migrations run through it, because the runtime role
+  is deliberately NOT the schema owner — an owner re-grants itself in one
+  statement, which is what made D-149 part 2 decorative. So does the audit
+  exception, which has to be re-applied after every migration.
+
+  It carries the retention role, which holds the only DELETE on AuditEvent.
+
+      DATABASE_MAINTENANCE_URL=postgresql://splashtrack_retention:<password>@postgres:5432/splashtrack
+
+  On a FRESH volume the reference compose file creates the three roles for you.
+  On an EXISTING one, run infra/provision-roles.sql once — its header carries
+  the exact command. See docs/adr/0002-database-roles-and-least-privilege.md."
 
 [ -n "${BETTER_AUTH_URL:-}" ] || fail \
 "BETTER_AUTH_URL is not set.
@@ -194,7 +216,30 @@ case "${ACTION}" in
     log "Pre-migration acknowledgement found; consuming it."
     rm -f "${MARKER}"
 
+    # Runs as DATABASE_MAINTENANCE_URL acting as splashtrack_owner —
+    # prisma.config.ts derives that connection, so it is not spelled here and
+    # no credential passes through this shell. Every table the migration
+    # creates is therefore owned by a role that cannot log in.
     node /app/node_modules/prisma/build/index.js migrate deploy
+
+    # Re-assert the role model over what the migration just created. NOT
+    # optional and NOT once-per-install: `ALTER DEFAULT PRIVILEGES` hands the
+    # runtime role ordinary DML on every new table — which is what keeps a
+    # table added next month from being invisible to it — and that includes a
+    # re-created `AuditEvent`. So the audit exception is taken back out here,
+    # after each migration.
+    #
+    # This one DOES refuse the start on failure, unlike the report below it: a
+    # migration that half-applied the grants leaves an instance whose audit
+    # trail is deletable by the web process, and serving in that state is the
+    # outcome D-149 exists to prevent.
+    log "Re-applying the ADR-0002 role model over the new schema…"
+    splashtrack db:apply-grants || fail \
+"The database migrated, but the ADR-0002 role model could not be put back in
+  force over the new schema. The reason is above.
+
+  Refusing to serve: the runtime role may currently hold UPDATE or DELETE on
+  AuditEvent, which is exactly the state D-149 part 2 exists to prevent."
 
     log "Migrations applied. Verifying the resulting state…"
     VERIFY="$(splashtrack boot:state)" || fail \

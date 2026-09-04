@@ -20,6 +20,7 @@
  */
 
 import type { DatabaseClient } from "@/lib/database";
+import { maintenanceClient } from "@/lib/database/maintenance-client";
 import { logger } from "@/lib/logging";
 
 import { verifyCheckpointMac } from "../domain/audit-checkpoint";
@@ -301,22 +302,42 @@ export async function pruneAuditTrail(
   cutoff: Date,
   reason: string,
 ): Promise<AuditPruneOutcome> {
-  const outcome = await pruneAuditEventPrefix(cutoff);
+  // THE RETENTION ROLE, not the runtime one (ADR-0002 §7.4). The runtime role
+  // holds no DELETE on `AuditEvent` — that is D-149 part 2 — so this is the
+  // only connection on which a prune can succeed at all.
+  const client = maintenanceClient();
+  const outcome = await pruneAuditEventPrefix(cutoff, client);
 
   if (outcome.prunedCount > 0) {
-    await recordAuditEvent({
-      eventType: "audit.retention_pruned",
-      outcome: "SUCCESS",
-      targetType: "audit_checkpoint",
-      targetId: outcome.checkpointId,
-      reason,
-      changedFields: {
-        prunedCount: outcome.prunedCount,
-        prunedFromSequence: outcome.prunedFromSequence ?? null,
-        prunedToSequence: outcome.prunedToSequence ?? null,
-        cutoff: cutoff.toISOString(),
-      },
-    });
+    // Through the SAME client, which is why the retention role is granted
+    // INSERT on `AuditEvent` as well as DELETE. A retention run that could
+    // delete rows but not record having done so would be exactly the
+    // unaccounted gap this design exists to make impossible. ADR-0002 §7.4
+    // omits that INSERT; `infra/audit-database-role.sql` says why it is
+    // granted anyway.
+    //
+    // `$transaction` rather than passing the bare client: `appendAuditEvent`
+    // takes a transaction-scoped advisory lock, and a client passed straight in
+    // would run it in autocommit where the lock is released before the insert
+    // it is meant to serialize.
+    await client.$transaction((tx) =>
+      recordAuditEvent(
+        {
+          eventType: "audit.retention_pruned",
+          outcome: "SUCCESS",
+          targetType: "audit_checkpoint",
+          targetId: outcome.checkpointId,
+          reason,
+          changedFields: {
+            prunedCount: outcome.prunedCount,
+            prunedFromSequence: outcome.prunedFromSequence ?? null,
+            prunedToSequence: outcome.prunedToSequence ?? null,
+            cutoff: cutoff.toISOString(),
+          },
+        },
+        tx,
+      ),
+    );
   }
 
   return outcome;

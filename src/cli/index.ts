@@ -68,6 +68,8 @@ const USAGE = `splashtrack <command> [flags]
   bootstrap:clear-tampered [--yes]  Clear D-099's TAMPERED state
   audit:verify [--prune-before <d>] [--reason <r>]
   audit:grants                    Report the D-149 grants that actually exist
+  db:apply-grants [--owner <r>]   Put the ADR-0002 role model in force on this
+                                  database. Runs after every migration
   secret:init --out <path>        Generate the one bootstrap secret (D-112)
 
 Every command that changes anything writes an audit event with a system:cli
@@ -92,6 +94,8 @@ async function resolve(name: string): Promise<Command | null> {
       return (await import("./commands/audit")).auditVerify;
     case "audit:grants":
       return (await import("./commands/audit")).auditGrants;
+    case "db:apply-grants":
+      return (await import("./commands/database")).databaseApplyGrants;
     case "secret:init":
       return secretInit;
     default:

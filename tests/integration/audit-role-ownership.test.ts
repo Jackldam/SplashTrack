@@ -1,57 +1,52 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { auditGrants } from "@/cli/commands/audit";
 import { prisma } from "@/lib/database";
 
+import { disconnectRoleClients, ownerClient } from "../support/database-roles";
+
 /**
- * The precondition D-149 part 2 depends on and never stated: the application
- * role must not OWN the audit tables (ADR-0002).
+ * The PostgreSQL behaviour ADR-0002 §3's argument rests on, pinned so it stays a
+ * fact the suite re-checks rather than a paragraph somebody believed.
  *
- * `infra/audit-database-role.sql` §3 revokes `UPDATE`/`DELETE` on `AuditEvent`
- * from the application role, and `audit:grants` reported the resulting empty
- * grant list as "IN FORCE". Both are correct only if the role is not the
- * table's owner, because an owner holds its privileges by OWNERSHIP rather
- * than by grant and re-grants them to itself at will.
+ * The argument: `infra/audit-database-role.sql` revokes `UPDATE`/`DELETE` on
+ * `AuditEvent` from the application role, and `audit:grants` reported the
+ * resulting empty grant list as "IN FORCE". Both are only true if that role is
+ * not the table's OWNER, because an owner holds its privileges by ownership
+ * rather than by grant and re-grants them to itself at will. The actor the
+ * control names is an external SQL primitive — an injection, a stolen
+ * `DATABASE_URL` — and a primitive that can issue `DELETE` can generally issue
+ * `GRANT`.
  *
- * The actor the control names is an external SQL primitive — an injection, a
- * stolen `DATABASE_URL`. A primitive that can issue `DELETE` can generally
- * issue `GRANT`, so against that actor a revoke against the owner buys one
- * statement of delay while reading as though it buys the property.
- *
- * The first test pins that Postgres behaviour so the claim is a fact the suite
- * re-checks rather than a paragraph in an ADR. The second pins the reporting
- * consequence: with the application role owning the table — which is the state
- * of every instance today, because `prisma migrate deploy` runs as the role in
- * `DATABASE_URL` — the report must NOT say the separation is in force.
+ * WHAT CHANGED IN THIS FILE WHEN THE ROLE MODEL LANDED, which is itself the
+ * result. The first test used to create its probe table through the RUNTIME
+ * client and assert that the runtime role therefore owned it — "which is
+ * exactly what `prisma migrate deploy` does with every real table today". That
+ * setup can no longer run: the runtime role has no `CREATE` on schema `public`
+ * and cannot make a table to own. So the probe is created by the owner, and the
+ * two halves of §3 are now asserted against the two different roles they are
+ * about.
  */
 
 const PROBE = "audit_ownership_probe";
 
+const owner = ownerClient();
+
 afterEach(async () => {
-  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "${PROBE}"`);
+  await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS "${PROBE}"`);
 });
 
-function capture(): {
-  lines: string[];
-  ctx: Parameters<typeof auditGrants>[0];
-} {
-  const lines: string[] = [];
-  return {
-    lines,
-    ctx: {
-      flags: {},
-      positionals: [],
-      log: (line: string) => void lines.push(line),
-      error: (line: string) => void lines.push(line),
-      emit: (line: string) => void lines.push(line),
-    },
-  };
-}
+afterAll(async () => {
+  await disconnectRoleClients();
+});
 
 describe("audit table ownership (ADR-0002)", () => {
-  it("cannot be held by a REVOKE while the app role is a superuser or the owner", async () => {
-    await prisma.$executeRawUnsafe(`CREATE TABLE "${PROBE}" (id int)`);
-    await prisma.$executeRawUnsafe(`INSERT INTO "${PROBE}" VALUES (1)`);
+  it("gives the runtime role no way to become an owner", async () => {
+    // The premise of the whole defect, gone: there is no longer a path by which
+    // the role in `DATABASE_URL` comes to own anything, because it cannot
+    // create anything. Every assertion below depends on this one.
+    await expect(
+      prisma.$executeRawUnsafe(`CREATE TABLE "${PROBE}" (id int)`),
+    ).rejects.toThrow(/permission denied for schema public/i);
 
     const [{ role, superuser }] = await prisma.$queryRaw<
       { role: string; superuser: boolean }[]
@@ -60,68 +55,72 @@ describe("audit table ownership (ADR-0002)", () => {
              (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
                AS superuser
     `;
-    const [{ owner }] = await prisma.$queryRaw<{ owner: string }[]>`
-      SELECT tableowner AS owner FROM pg_tables
-       WHERE schemaname = current_schema() AND tablename = ${PROBE}
+
+    // A superuser bypasses privilege checks outright, so every assertion in
+    // this file — and every grant in the model — would be vacuous against one.
+    // D-116, checked rather than assumed.
+    expect(superuser).toBe(false);
+
+    const owned = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT count(*) AS count FROM pg_tables
+       WHERE schemaname = current_schema() AND tableowner = ${role}
     `;
-    // The premise: the connection that created the table owns it — which is
-    // exactly what `prisma migrate deploy` does with every real table today.
-    expect(owner).toBe(role);
-
-    await prisma.$executeRawUnsafe(
-      `REVOKE DELETE ON "${PROBE}" FROM "${role}"`,
-    );
-
-    if (superuser) {
-      // The WORSE of the two failures, and the state the reference compose
-      // produces today: `POSTGRES_USER` is created by the Postgres image as a
-      // SUPERUSER, and a superuser bypasses privilege checks outright. The
-      // revoke is not weak here — it is inert. `audit:grants` must never call
-      // this "in force".
-      const deleted = await prisma.$executeRawUnsafe(`DELETE FROM "${PROBE}"`);
-      expect(deleted).toBe(1);
-    } else {
-      // A non-superuser OWNER. The revoke bites a bare DELETE — this half of
-      // the control is real…
-      await expect(
-        prisma.$executeRawUnsafe(`DELETE FROM "${PROBE}"`),
-      ).rejects.toThrow(/permission denied/i);
-
-      // …and the owner undoes it in one statement, which is the half that is
-      // not. An injection that can DELETE can generally GRANT.
-      await prisma.$executeRawUnsafe(`GRANT DELETE ON "${PROBE}" TO "${role}"`);
-      const deleted = await prisma.$executeRawUnsafe(`DELETE FROM "${PROBE}"`);
-      expect(deleted).toBe(1);
-    }
+    expect(Number(owned[0].count)).toBe(0);
   });
 
-  it("does not report D-149 part 2 as in force while the app role owns the audit tables", async () => {
-    const { lines, ctx } = capture();
-    const code = await auditGrants(ctx);
-    const output = lines.join("\n");
-
-    expect(code).toBe(0);
-
-    // The owner is part of the report, not a detail: the grant list alone
-    // cannot distinguish "revoked" from "revoked and re-grantable".
-    expect(output).toContain("Owner of the audit tables:");
-    expect(output).toMatch(/AuditEvent\s+\w+/);
+  it("stops a non-owner from re-granting itself a revoked privilege", async () => {
+    await owner.$executeRawUnsafe(`CREATE TABLE "${PROBE}" (id int)`);
+    await owner.$executeRawUnsafe(`INSERT INTO "${PROBE}" VALUES (1)`);
 
     const [{ role }] = await prisma.$queryRaw<{ role: string }[]>`
       SELECT current_user AS role
     `;
-    const owners = await prisma.$queryRaw<{ owner: string }[]>`
-      SELECT tableowner AS owner FROM pg_tables
-       WHERE schemaname = current_schema() AND tablename = 'AuditEvent'
+    const [{ tableowner }] = await prisma.$queryRaw<{ tableowner: string }[]>`
+      SELECT tableowner FROM pg_tables
+       WHERE schemaname = current_schema() AND tablename = ${PROBE}
+    `;
+    expect(tableowner).not.toBe(role);
+
+    // Granted, then revoked — the exact shape of §3 of the provisioning SQL.
+    await owner.$executeRawUnsafe(`GRANT DELETE ON "${PROBE}" TO "${role}"`);
+    await owner.$executeRawUnsafe(`REVOKE DELETE ON "${PROBE}" FROM "${role}"`);
+
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM "${PROBE}"`),
+    ).rejects.toThrow(/permission denied/i);
+
+    // The half that used to fail. A non-owner's `GRANT` is not an error — it is
+    // a WARNING and a no-op, which is worse than an error for anyone reading a
+    // log — so the assertion is on the DELETE that follows it, not on the GRANT.
+    await prisma
+      .$executeRawUnsafe(`GRANT DELETE ON "${PROBE}" TO "${role}"`)
+      .catch(() => undefined);
+
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM "${PROBE}"`),
+    ).rejects.toThrow(/permission denied/i);
+
+    // And it cannot take the table instead of the privilege.
+    await expect(
+      prisma.$executeRawUnsafe(`ALTER TABLE "${PROBE}" OWNER TO "${role}"`),
+    ).rejects.toThrow(/must be owner of (table|relation)/i);
+  });
+
+  it("still lets an OWNER re-grant itself, which is why ownership had to move", async () => {
+    // The measurement ADR-0002 §3 quotes, re-run rather than cited. It is the
+    // reason the whole change exists: with ownership where it used to be, the
+    // revoke buys exactly one statement of delay.
+    await owner.$executeRawUnsafe(`CREATE TABLE "${PROBE}" (id int)`);
+    await owner.$executeRawUnsafe(`INSERT INTO "${PROBE}" VALUES (1)`);
+
+    const [{ role }] = await owner.$queryRaw<{ role: string }[]>`
+      SELECT current_user AS role
     `;
 
-    if (owners[0]?.owner === role) {
-      expect(output).toContain("NOT in force");
-      expect(output).not.toContain("is IN FORCE");
-    } else {
-      // A deployment that already followed ADR-0002. The report may legitimately
-      // say the separation holds — but only because ownership is elsewhere.
-      expect(output).not.toContain("OWNS");
-    }
+    await owner.$executeRawUnsafe(`REVOKE DELETE ON "${PROBE}" FROM "${role}"`);
+    await owner.$executeRawUnsafe(`GRANT DELETE ON "${PROBE}" TO "${role}"`);
+
+    const deleted = await owner.$executeRawUnsafe(`DELETE FROM "${PROBE}"`);
+    expect(deleted).toBe(1);
   });
 });

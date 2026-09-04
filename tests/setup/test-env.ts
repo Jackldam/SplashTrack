@@ -19,10 +19,21 @@ import path from "node:path";
 
 import { config as loadEnv } from "dotenv";
 
-import { resolveTestDatabaseUrl } from "./test-db-url";
+import {
+  resolveTestDatabaseUrl,
+  resolveTestMaintenanceUrl,
+} from "./test-db-url";
 
 // Populate process.env from .env (non-overriding, mirroring app/runtime).
 loadEnv({ path: path.resolve(process.cwd(), ".env") });
 
 // Force the suite onto the isolated test database (throws on any non-test URL).
 process.env.DATABASE_URL = resolveTestDatabaseUrl();
+
+// BOTH connections, with the same guard and for a sharper reason. Since
+// ADR-0002 the retention path runs on DATABASE_MAINTENANCE_URL, and that is the
+// connection holding DELETE on `AuditEvent` — so leaving it unpinned would let
+// a retention test delete rows from the DEVELOPMENT audit trail. The
+// `_test`-suffix guard has to cover the more dangerous of the two credentials,
+// not only the safer one.
+process.env.DATABASE_MAINTENANCE_URL = resolveTestMaintenanceUrl();

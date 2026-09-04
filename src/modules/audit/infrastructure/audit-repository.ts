@@ -304,11 +304,20 @@ export interface AuditPruneOutcome {
  * Returns `{ prunedCount: 0 }` and writes NOTHING when there is nothing to
  * prune — a no-op checkpoint would break the strict monotonicity of `sequence`
  * and add a row that accounts for no gap.
+ *
+ * IT TAKES A CLIENT, AND THE DEFAULT IS THE WRONG ONE ON PURPOSE. Since
+ * ADR-0002 the runtime role holds no `DELETE` on `AuditEvent`, so calling this
+ * with the default client fails with `permission denied for table AuditEvent`
+ * — which is the control working, not a bug. `pruneAuditTrail` supplies
+ * `maintenanceClient()`. The default is kept so the signature does not force
+ * every caller to think about connections, and so that a future caller which
+ * forgets is refused by the DATABASE rather than by a code review.
  */
 export async function pruneAuditEventPrefix(
   cutoff: Date,
+  client: typeof prisma = prisma,
 ): Promise<AuditPruneOutcome> {
-  return prisma.$transaction(async (tx) => {
+  return client.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_APPEND_LOCK_KEY})`;
 
     const anchor = await tx.auditCheckpoint.findFirst({

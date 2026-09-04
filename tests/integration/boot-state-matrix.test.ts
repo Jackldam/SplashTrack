@@ -16,6 +16,17 @@
  * Database names all end in `_test`, matching the guard in
  * `tests/setup/test-db-url.ts`: there is no path by which this suite can act on
  * the development database.
+ *
+ * IT RUNS ON THE MAINTENANCE CREDENTIAL, NOT THE RUNTIME ONE (ADR-0002 §6).
+ * Creating and dropping a database needs CREATEDB, and since D-182 that
+ * attribute sits on the retention role and never on the runtime role — so a
+ * checkout's runtime role is shaped exactly like a production one. This file is
+ * one of the two reasons CREATEDB is needed at all, and the phase 1.0 report
+ * named it correctly while wrongly concluding that SUPERUSER was required:
+ * CREATEDB and SUPERUSER are different role attributes, and only the first is.
+ *
+ * The DETECTOR still reads through an ordinary client, because what it must
+ * work against is a runtime connection.
  */
 
 import { randomUUID } from "node:crypto";
@@ -31,22 +42,35 @@ import {
   imageMigrationNames,
   type BootStateReader,
 } from "@/lib/boot/state";
+import {
+  migrationUrlFrom,
+  REFERENCE_OWNER_ROLE,
+} from "@/lib/database/role-model";
 
 const IMAGE_MIGRATIONS = imageMigrationNames();
 
 /** Databases created by this file, torn down in `afterAll` whatever happens. */
 const created: string[] = [];
 
+/** The maintenance connection to the always-present `postgres` database. */
 function adminUrl(): string {
-  const url = new URL(process.env.DATABASE_URL as string);
+  const url = new URL(process.env.DATABASE_MAINTENANCE_URL as string);
   url.pathname = "/postgres";
   return url.toString();
 }
 
+/**
+ * A connection to one throwaway database, as the OWNER.
+ *
+ * These cases write `_prisma_migrations` rows and create tables by hand to put
+ * a database into a given state, which is owner work — the runtime role owns
+ * nothing and cannot create a table, which is D-116 holding rather than a
+ * limitation to work around.
+ */
 function urlFor(database: string): string {
-  const url = new URL(process.env.DATABASE_URL as string);
+  const url = new URL(process.env.DATABASE_MAINTENANCE_URL as string);
   url.pathname = `/${database}`;
-  return url.toString();
+  return migrationUrlFrom(url.toString(), REFERENCE_OWNER_ROLE);
 }
 
 async function withAdmin<T>(fn: (client: Client) => Promise<T>): Promise<T> {
@@ -67,7 +91,9 @@ async function createDatabase(name: string): Promise<string> {
   const database = `splashtrack_boot_${name}_test`;
   await withAdmin(async (client) => {
     await client.query(`DROP DATABASE IF EXISTS "${database}"`);
-    await client.query(`CREATE DATABASE "${database}"`);
+    await client.query(
+      `CREATE DATABASE "${database}" OWNER "${REFERENCE_OWNER_ROLE}"`,
+    );
   });
   created.push(database);
   return database;
@@ -397,7 +423,11 @@ describe("boot state matrix (D-055, D-098, D-099)", () => {
 });
 
 beforeAll(() => {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not set; the test env did not load.");
+  if (!process.env.DATABASE_MAINTENANCE_URL) {
+    throw new Error(
+      "DATABASE_MAINTENANCE_URL is not set; the test env did not load. This " +
+        "file creates and drops databases, which needs CREATEDB — an " +
+        "attribute the runtime role deliberately does not have (ADR-0002 §6).",
+    );
   }
 });

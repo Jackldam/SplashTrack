@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/database";
 import {
@@ -6,6 +6,8 @@ import {
   recordAuditEventSafe,
   verifyAuditChain,
 } from "@/modules/audit";
+
+import { disconnectRoleClients, ownerClient } from "../support/database-roles";
 
 /**
  * The audit chain against a REAL Postgres (D-149).
@@ -32,13 +34,23 @@ import {
  */
 
 async function truncateAuditTrail(): Promise<void> {
-  await prisma.$executeRawUnsafe(
+  // AS THE OWNER. Since ADR-0002 no application role holds TRUNCATE on
+  // `AuditEvent` — the runtime role is append-only and the retention role may
+  // only DELETE behind a checkpoint — so a test reset needs the one identity
+  // that owns the table. That this line had to change is the control arriving.
+  await owner.$executeRawUnsafe(
     'TRUNCATE TABLE "AuditEvent", "AuditCheckpoint"',
   );
 }
 
 afterEach(async () => {
   await truncateAuditTrail();
+});
+
+const owner = ownerClient();
+
+afterAll(async () => {
+  await disconnectRoleClients();
 });
 
 describe("audit chain (real database)", () => {
@@ -100,11 +112,15 @@ describe("audit chain (real database)", () => {
     await recordAuditEvent({ eventType: "test.c", outcome: "SUCCESS" });
 
     // Edit the MIDDLE row's audited content without touching its stored hash —
-    // exactly what someone quietly rewriting history would do. Only the
-    // application role is prevented from this today; D-149's insert-only
-    // database role is what makes it impossible rather than merely detectable,
-    // and it is a DEPLOYMENT step — see infra/audit-database-role.sql.
-    await prisma.auditEvent.update({
+    // exactly what someone quietly rewriting history would do.
+    //
+    // THROUGH THE OWNER, because the runtime role can no longer do this at all:
+    // D-149 part 2 is in force (ADR-0002), so an injection or a stolen
+    // `DATABASE_URL` is refused by PostgreSQL before it reaches this row. The
+    // hash chain is the layer BEHIND that one, and what this test asserts is
+    // that it still catches an attacker who got past the first — which is the
+    // only interesting question once the first layer exists.
+    await owner.auditEvent.update({
       where: { id: tampered.id },
       data: { reason: "rewritten" },
     });

@@ -143,7 +143,14 @@ COPY --chown=root:root messages       ./messages
 COPY --chown=root:root prisma         ./prisma
 COPY --chown=root:root next.config.ts prisma.config.ts package.json ./
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY --chown=root:root infra/audit-database-role.sql ./infra/audit-database-role.sql
+# The whole of `infra/`, not one file. `provision-roles.sql` is what an operator
+# on an EXISTING volume or a managed database runs by hand (ADR-0002 §7), so
+# `docker compose exec app cat infra/provision-roles.sql` has to work — telling
+# somebody to fetch a file from GitHub to fix their own instance is a step that
+# does not happen at 23:00. `audit-database-role.sql` is the same statements
+# `db:apply-grants` applies, written out for a reader who needs to SEE the
+# control rather than trust a command.
+COPY --chown=root:root infra         ./infra
 
 # `splashtrack` on the PATH, so every command in `13-…` §7 reads exactly as the
 # design writes it: `docker compose exec app splashtrack admin:create …`.

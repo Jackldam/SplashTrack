@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/database";
 import {
@@ -7,6 +7,7 @@ import {
   verifyAuditChain,
 } from "@/modules/audit";
 import { AUDIT_GENESIS_HASH } from "@/modules/audit/domain/audit-event";
+import { disconnectRoleClients, ownerClient } from "../support/database-roles";
 
 /**
  * Checkpointing across a retention boundary, against a REAL Postgres (D-168).
@@ -28,7 +29,11 @@ async function truncateAuditTrail(): Promise<void> {
   // Both tables together: a checkpoint anchoring a sequence in a trail that no
   // longer exists would make the NEXT test report tampering that never
   // happened.
-  await prisma.$executeRawUnsafe(
+  //
+  // AS THE OWNER (ADR-0002). No application role holds TRUNCATE on these
+  // tables: the runtime role is append-only, and the retention role may only
+  // DELETE behind a checkpoint, which is the whole of D-168 rule 1.
+  await owner.$executeRawUnsafe(
     'TRUNCATE TABLE "AuditEvent", "AuditCheckpoint"',
   );
 }
@@ -56,17 +61,26 @@ async function appendEvents(count: number) {
  * that is deliberate: it keeps "aged" and "still in the chain" independent.
  */
 async function backdate(sequences: number[], to: Date): Promise<void> {
-  await prisma.auditEvent.updateMany({
+  // The owner again: rewriting `occurredAt` is an UPDATE on `AuditEvent`, which
+  // no application role may perform. Ageing rows is test scaffolding, not
+  // something the product does.
+  await owner.auditEvent.updateMany({
     where: { sequence: { in: sequences } },
     data: { occurredAt: to },
   });
 }
+
+const owner = ownerClient();
 
 const LONG_AGO = new Date("2024-01-01T00:00:00.000Z");
 const CUTOFF = new Date("2025-01-01T00:00:00.000Z");
 
 afterEach(async () => {
   await truncateAuditTrail();
+});
+
+afterAll(async () => {
+  await disconnectRoleClients();
 });
 
 describe("audit checkpointing across a retention boundary (D-168)", () => {
@@ -231,7 +245,10 @@ describe("what verification still catches after a prune", () => {
     await pruneAuditTrail(CUTOFF, "scheduled_retention_run");
 
     const target = events[3];
-    await prisma.auditEvent.update({
+    // Through the OWNER: since ADR-0002 the runtime role cannot UPDATE an audit
+    // row at all. What this test asserts is the layer BEHIND that one — the
+    // chain still catches an attacker who got past the grants.
+    await owner.auditEvent.update({
       where: { id: target.id },
       data: { reason: "rewritten" },
     });
@@ -245,10 +262,12 @@ describe("what verification still catches after a prune", () => {
     await truncateAuditTrail();
 
     const events = await appendEvents(4);
-    // A compromised administrator deleting the rows that record what they did.
-    // There is no legitimate producer of a gap except the checkpointing path,
-    // so this must not be mistaken for retention.
-    await prisma.auditEvent.deleteMany({
+    // A compromised administrator deleting the rows that record what they did —
+    // FM-7's actor, who holds host access and is therefore explicitly outside
+    // what the role model reaches (D-168, ADR-0002 §8). The owner client is how
+    // that actor is modelled honestly. There is no legitimate producer of a gap
+    // except the checkpointing path, so this must not be mistaken for retention.
+    await owner.auditEvent.deleteMany({
       where: { sequence: { in: [events[1].sequence] } },
     });
 
@@ -267,7 +286,7 @@ describe("what verification still catches after a prune", () => {
     // An attacker with DATABASE WRITE ACCESS ONLY widening the checkpoint to
     // cover rows they deleted by hand. Without the key they cannot re-MAC it.
     const checkpoint = await prisma.auditCheckpoint.findFirstOrThrow();
-    await prisma.auditCheckpoint.update({
+    await owner.auditCheckpoint.update({
       where: { id: checkpoint.id },
       data: { prunedCount: checkpoint.prunedCount + 5 },
     });
@@ -295,7 +314,7 @@ describe("what verification still catches after a prune", () => {
     const checkpoints = await prisma.auditCheckpoint.findMany({
       orderBy: { sequence: "asc" },
     });
-    await prisma.auditCheckpoint.delete({ where: { id: checkpoints[0].id } });
+    await owner.auditCheckpoint.delete({ where: { id: checkpoints[0].id } });
 
     const result = await verifyAuditChain();
     expect(result.valid).toBe(false);

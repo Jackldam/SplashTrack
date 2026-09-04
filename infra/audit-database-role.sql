@@ -1,164 +1,122 @@
--- The insert-only database role for `AuditEvent` (D-149 part 2).
+-- D-149 part 2 — the audit exception, as SQL.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- WHY THIS IS A DEPLOYMENT STEP AND NOT A PRISMA MIGRATION
+-- YOU ALMOST CERTAINLY DO NOT NEED TO RUN THIS.
 --
--- Three reasons, none of them a preference:
+-- `splashtrack db:apply-grants` applies exactly these statements, after every
+-- migration, from `docker-entrypoint.sh`. They are written out here for the one
+-- reader who needs to SEE the control rather than trust a command — an operator
+-- on a managed database, an auditor, or whoever next has to answer "is the
+-- audit trail actually append-only on this instance?".
 --
---   1. **Role names are the operator's, not ours.** On a managed Postgres the
---      roles already exist and are named by the provider; a migration that
---      hardcoded `splashtrack_app` would fail there and only there.
---   2. **A migration runs AS the application role.** Having it revoke its own
---      UPDATE/DELETE on `AuditEvent` would break the next migration that has to
---      touch the table, and R-20 runs migrations unattended at container start
---      — an install stranded by its own grant is worse than the grant missing.
---   3. **Granting requires privileges the application role must not hold.**
---      D-116 says the application's role is not a superuser. If it could grant,
---      the separation would be decorative: a compromised application could
---      grant itself back.
+-- `tests/unit/audit-grant-sql-sync.test.ts` fails if this file and
+-- `src/lib/database/role-model.ts` ever disagree, so reading this is the same
+-- as reading what runs. That test is the only reason a second copy is safe.
 --
--- So: an operator runs this once, as a privileged role, at provisioning time.
+-- Substitute your own role names if they are not the reference ones; the
+-- command reads them from the two connection strings and never assumes them.
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- WHAT IT DOES AND DOES NOT DEFEND AGAINST, stated plainly because D-149's own
--- text is careful about this. The retention path holds DELETE on `AuditEvent`
--- and runs in the same process, in a code base where §3.1 permits `$executeRaw`
--- behind a reviewer sign-off. This role is therefore a control against an
--- EXTERNAL SQL primitive — an injection, a stolen `DATABASE_URL`, a careless
--- script — and NOT against the compromised administrator FM-7 names. The
--- control that reaches that actor is the checkpoint MAC (D-168), and its own
--- limit is that host access holds `SECRET_KEY`.
+-- WHAT THIS DEFENDS AGAINST, AND WHAT IT DOES NOT
+--
+-- The actor is an EXTERNAL SQL PRIMITIVE — an injection, a stolen
+-- `DATABASE_URL`, a careless script an operator pastes at 23:00. It is NOT the
+-- compromised administrator FM-7 names: they hold host access and therefore
+-- `SECRET_KEY`, and can forge a checkpoint. D-168 says so, and D-182 repeats it,
+-- because a control whose limits go unstated gets over-trusted.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- IT ONLY DEFENDS AGAINST THAT SQL PRIMITIVE IF THE APPLICATION ROLE DOES NOT
--- **OWN** THE TABLE. This is a precondition, not a detail, and it was missing.
+-- THE PRECONDITION, WHICH IS THE WHOLE POINT (ADR-0002 §3)
 --
--- A table's owner does not hold its privileges through a grant — it holds them
--- by ownership, and it may re-grant them to itself at any time. `REVOKE DELETE
--- … FROM <owner>` therefore bites exactly one statement deep. Measured on
--- postgres:16-alpine, as the owning role:
+-- These REVOKEs are INERT unless the runtime role does not OWN the tables. A
+-- table's owner holds its privileges by ownership rather than by grant, and may
+-- re-grant them to itself at any time. Measured on postgres:16-alpine, as the
+-- owning role:
 --
 --     REVOKE DELETE ON "AuditEvent" FROM app;
---     SET ROLE app; DELETE FROM "AuditEvent";  -- ERROR: permission denied  ✓
---     SET ROLE app; GRANT DELETE ON "AuditEvent" TO app;  -- GRANT
---                   DELETE FROM "AuditEvent";  -- DELETE 1                  ✗
+--     SET ROLE app; DELETE FROM "AuditEvent";            -- permission denied  ✓
+--     SET ROLE app; GRANT DELETE ON "AuditEvent" TO app;
+--                   DELETE FROM "AuditEvent";            -- DELETE 1           ✗
 --
--- An injection that can issue `DELETE` can generally issue `GRANT` on the same
--- primitive, so against the actor this file names the revoke buys nothing while
--- reading as though it does. With the table owned by a role the application
--- never connects as, the same attempt fails on every door:
+-- An injection that can issue DELETE can generally issue GRANT on the same
+-- primitive, so against the actor named above a revoke against the owner buys
+-- one statement of delay while reading as though it buys the property. And if
+-- the role is a SUPERUSER — which is what the Postgres image makes
+-- `POSTGRES_USER` — the revoke is not weak but entirely inert, because a
+-- superuser bypasses privilege checks outright.
 --
---     GRANT DELETE …    → WARNING: no privileges were granted
---     ALTER TABLE … OWNER TO app → ERROR: must be owner of table
---     DROP / TRUNCATE   → ERROR: must be owner / permission denied
+-- With ownership held by `splashtrack_owner`, which cannot log in, the same
+-- attempt fails on every door:
 --
--- So §3 below is conditional on a separate owner, and says so where it is
--- applied. `splashtrack audit:grants` now prints the table's owner beside the
--- grants for exactly this reason: the grant list alone cannot tell you whether
--- the separation is real.
--- ─────────────────────────────────────────────────────────────────────────────
+--     GRANT DELETE …                → WARNING: no privileges were granted
+--     ALTER TABLE … OWNER TO app    → ERROR: must be owner of table
+--     DROP / TRUNCATE               → ERROR: must be owner / permission denied
 --
--- ─────────────────────────────────────────────────────────────────────────────
--- WHO RUNS THIS, AND WHEN — decided in phase 1.0
---
--- THE OPERATOR RUNS IT, ONCE, AT PROVISIONING TIME, AS A PRIVILEGED ROLE. It is
--- deliberately NOT in the entrypoint, and the three reasons above are why: the
--- entrypoint runs AS the application role, which by D-116 is not a superuser and
--- therefore cannot GRANT — and if it could, the separation would be decorative,
--- because a compromised application could grant itself back.
---
--- What the entrypoint DOES do is report. Every container start runs
--- `splashtrack audit:grants`, which reads `information_schema.table_privileges`
--- through the application's own connection — reading privileges needs no
--- privilege — and prints, in words, whether the application role still holds
--- UPDATE or DELETE on `AuditEvent`. A grant nobody checks is a grant nobody has,
--- and "we ran that script once" is not evidence. The same line belongs on the
--- diagnostics page (`13-…` §8) when it exists.
---
--- The report is informational and never refuses a start: this is a deployment
--- step the operator owns, and an instance that will not boot because a SQL file
--- has not been run yet is a worse failure than the one it prevents.
--- ─────────────────────────────────────────────────────────────────────────────
+-- That is why `db:apply-grants` settles ownership BEFORE it grants anything and
+-- verifies it AFTER. It is also why `splashtrack audit:grants` prints the table
+-- owner beside the grant list: the grant list alone cannot tell you whether the
+-- separation is real, and a report that is wrong in the reassuring direction is
+-- worse than no report at all.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- STILL NOT WIRED INTO THE APPLICATION, AND WHAT IT WOULD TAKE
+-- WHY `REVOKE ALL` RATHER THAN `REVOKE UPDATE, DELETE`
 --
--- D-149 describes three paths with different grants: the ordinary application
--- role, an append-only writer for `AuditEvent`, and a narrowly-scoped retention
--- path holding DELETE. The application half of that is a SECOND and THIRD
--- connection, which means new environment variables — and D-037 permits one
--- only with an ADR stating why it cannot live in the database. A connection
--- string plainly cannot (it is how the database is reached), so the ADR is
--- writable, but adding two variables is a decision about the operator-facing
--- surface and is Jack's to make, not mine. Until it is made, `REVOKE` below is
--- commented out: applying it would break the retention path with no second
--- connection to run it on, which is a worse failure than the one it prevents.
+-- `ALL` also takes TRUNCATE and REFERENCES. TRUNCATE empties the table without
+-- issuing a single DELETE, so a revoke naming only UPDATE and DELETE closes the
+-- front door, leaves the side one open, and reads as complete.
 --
--- Substitute the real role names before running. `:app_role` is the role in
--- `DATABASE_URL`.
-
--- ── 1. The append-only writer ───────────────────────────────────────────────
--- Owns nothing; may only INSERT into the audit trail and read it back.
-
-CREATE ROLE splashtrack_audit_writer LOGIN PASSWORD :'audit_writer_password';
-
-GRANT CONNECT ON DATABASE :"database" TO splashtrack_audit_writer;
-GRANT USAGE ON SCHEMA public TO splashtrack_audit_writer;
-
-GRANT INSERT, SELECT ON TABLE "AuditEvent" TO splashtrack_audit_writer;
-REVOKE UPDATE, DELETE, TRUNCATE ON TABLE "AuditEvent"
-  FROM splashtrack_audit_writer;
-
--- `AuditEvent.sequence` is an identity/serial column, so the writer needs its
--- sequence. Without this the INSERT fails with a permission error that names
--- the sequence rather than the table, which is a confusing hour.
-GRANT USAGE, SELECT ON SEQUENCE "AuditEvent_sequence_seq"
-  TO splashtrack_audit_writer;
-
--- Checkpoints are written by the RETENTION path, not by the writer, and are
--- never deleted by anyone (D-168 rule 3).
-GRANT SELECT ON TABLE "AuditCheckpoint" TO splashtrack_audit_writer;
-
--- ── 2. The retention path ───────────────────────────────────────────────────
--- The only role that may delete audit events, and only together with the
--- checkpoint that accounts for them.
-
-CREATE ROLE splashtrack_audit_retention LOGIN PASSWORD :'audit_retention_password';
-
-GRANT CONNECT ON DATABASE :"database" TO splashtrack_audit_retention;
-GRANT USAGE ON SCHEMA public TO splashtrack_audit_retention;
-
-GRANT SELECT, DELETE ON TABLE "AuditEvent" TO splashtrack_audit_retention;
-REVOKE UPDATE ON TABLE "AuditEvent" FROM splashtrack_audit_retention;
-
-GRANT SELECT, INSERT ON TABLE "AuditCheckpoint" TO splashtrack_audit_retention;
-REVOKE UPDATE, DELETE, TRUNCATE ON TABLE "AuditCheckpoint"
-  FROM splashtrack_audit_retention;
-
--- ── 3. The ordinary application role ────────────────────────────────────────
--- COMMENTED OUT, now for TWO reasons rather than one.
+-- WHY THE RETENTION ROLE GETS `INSERT` ON `AuditEvent`, WHICH ADR-0002 §7.4
+-- DOES NOT LIST
 --
---   (a) Applying it today removes the audit trail from the only process that
---       writes it, because the application has no second connection to write on.
---   (b) IT IS INEFFECTIVE UNLESS `:app_role` IS NOT THE TABLE OWNER. See the
---       header: an owner re-grants itself in one statement. Today `prisma
---       migrate deploy` runs as the role in `DATABASE_URL`, so the application
---       role owns every table, and these three lines would produce a green
---       `audit:grants` report over a control that is not there.
+-- A retention run is itself an audited action: `pruneAuditTrail` appends an
+-- `audit.retention_pruned` event once its transaction commits. §7.4 lists
+-- `SELECT, DELETE` and omits the INSERT its own retention path needs, so the
+-- role it describes could delete audit rows and could not record having done
+-- so. Granting INSERT is the reading that makes D-168 coherent.
 --
--- The arrangement that makes them real is ADR-0002: a non-login owner role that
--- runs migrations, and an application role that owns nothing. Do not uncomment
--- these until that is in place — a decorative control is worse than an absent
--- one, because the absent one is still reported honestly.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Run as the OWNER (a member of it may `SET ROLE splashtrack_owner` first).
+-- Running these as a superuser also works, and is what a managed database's
+-- admin role will do.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- ── The runtime role: append-only on the trail, read-only on checkpoints ────
 --
--- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE "AuditEvent" FROM :"app_role";
--- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE "AuditCheckpoint" FROM :"app_role";
--- GRANT SELECT ON TABLE "AuditEvent", "AuditCheckpoint" TO :"app_role";
+-- `ALTER DEFAULT PRIVILEGES` gives this role ordinary DML on everything the
+-- owner creates, which is what keeps a table added by a future migration from
+-- being invisible to it. These five statements take the two audit tables back
+-- out of that blanket — which is why they are re-applied after EVERY migration
+-- rather than once at provisioning.
+
+REVOKE ALL ON TABLE "AuditEvent" FROM "splashtrack_app";
+GRANT SELECT, INSERT ON TABLE "AuditEvent" TO "splashtrack_app";
+GRANT USAGE, SELECT ON SEQUENCE "AuditEvent_sequence_seq" TO "splashtrack_app";
+REVOKE ALL ON TABLE "AuditCheckpoint" FROM "splashtrack_app";
+GRANT SELECT ON TABLE "AuditCheckpoint" TO "splashtrack_app";
+
+-- ── The retention role: the only DELETE on AuditEvent ───────────────────────
+--
+-- D-168 makes the checkpointed prefix prune the only legitimate deleter, and
+-- `AuditCheckpoint` is append-only for everybody: no role here holds UPDATE or
+-- DELETE on it, because a checkpoint that can be edited is a gap that can be
+-- explained away after the fact (D-168 rule 3).
+
+REVOKE ALL ON TABLE "AuditEvent" FROM "splashtrack_retention";
+GRANT SELECT, INSERT, DELETE ON TABLE "AuditEvent" TO "splashtrack_retention";
+GRANT USAGE, SELECT ON SEQUENCE "AuditEvent_sequence_seq" TO "splashtrack_retention";
+REVOKE ALL ON TABLE "AuditCheckpoint" FROM "splashtrack_retention";
+GRANT SELECT, INSERT ON TABLE "AuditCheckpoint" TO "splashtrack_retention";
 
 -- ── Verification ────────────────────────────────────────────────────────────
--- What an operator runs afterwards to see the grants rather than assume them.
+-- `splashtrack audit:grants` is these two queries plus the sentence that
+-- interprets them. By hand:
 --
---   SELECT grantee, privilege_type
+--   SELECT grantee, table_name, privilege_type
 --     FROM information_schema.table_privileges
 --    WHERE table_name IN ('AuditEvent', 'AuditCheckpoint')
---    ORDER BY grantee, privilege_type;
+--    ORDER BY table_name, grantee, privilege_type;
+--
+--   SELECT tablename, tableowner FROM pg_tables
+--    WHERE tablename IN ('AuditEvent', 'AuditCheckpoint');
+--
+-- The second query is not optional. See the precondition above.
