@@ -71,18 +71,32 @@ export interface RecordRelationshipInput {
 /**
  * Records one relationship.
  *
- * THE ROW IS CREATED, THEN ITS EVIDENCE IS SEALED AGAINST ITS OWN ID, INSIDE
- * ONE TRANSACTION. That two-step is not clumsiness: the primary key is
- * AUTHENTICATED DATA in the envelope's AAD (D-096) — it is what stops one
- * family's evidence being copied into another's row — so the id has to exist
- * before the value can be sealed. Generating an id here instead would put a
- * second id-minting convention beside the schema's `cuid(2)` default for no
- * gain. Both statements commit together, so a row with an authority claim never
- * exists without its evidence.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE WRITE ORDER IS THE RULE: **YOU CANNOT CLAIM AUTHORITY UNTIL THE BASIS FOR
+ * IT IS RECORDED.**
  *
- * The database still holds the line independently:
- * `PersonRelationship_evidence_required_check` refuses an authority claim with
- * no evidence, whichever code path attempts it.
+ * The row is created WITHOUT the authority claim, and the claim is then made in
+ * the same statement that stores the evidence — both inside one transaction, so
+ * nothing else ever observes either half.
+ *
+ * That order is forced by the envelope and then turns out to say the right
+ * thing. Forced: `evidence` is sealed with the ROW'S PRIMARY KEY in the AAD
+ * (D-096) — the binding that stops one family's evidence authenticating against
+ * another family's row — so the id must exist before the value can be sealed,
+ * and the id is assigned by the insert. Right: `PersonRelationship_evidence_
+ * required_check` is an IMMEDIATE constraint (Postgres has no deferrable CHECK,
+ * which this pass discovered by trying), so an insert that claimed authority
+ * with the evidence still to come would be refused — and it SHOULD be. D-063's
+ * whole point is that the claim without its basis is the thing that must not
+ * exist.
+ *
+ * The failure mode if a future refactor drops the second statement is the safe
+ * one: a relationship with NO authority claim, rather than a claim with no
+ * evidence.
+ *
+ * The database holds the line independently either way: the CHECK refuses an
+ * authority claim with no evidence, whichever code path attempts it, and
+ * `tests/integration/people-writes.test.ts` proves that against a direct write.
  */
 export async function recordRelationship(
   actor: ActorContext,
@@ -120,25 +134,31 @@ export async function recordRelationship(
   }
 
   return prisma.$transaction(async (tx) => {
+    // No authority yet — see the doc comment. The claim is made below, with its
+    // basis, or not at all.
     const created = await tx.personRelationship.create({
       data: {
         fromPersonId: input.relativePersonId,
         toPersonId: input.subjectPersonId,
         type,
-        authority,
+        authority: false,
         validFrom,
       },
       select: { id: true },
     });
 
-    if (evidence !== null) {
+    if (evidence !== null || authority) {
       await tx.personRelationship.update({
         where: { id: created.id },
-        // `sealEvidence` returns a `Sealed<...>` — a branded string with exactly
-        // one producer. Handing this column a plaintext is a COMPILE error, not
-        // a review miss, which is what "encrypting a field is the easy path and
-        // forgetting to is not" means in practice.
-        data: { evidence: sealEvidence(created.id, evidence) },
+        data: {
+          authority,
+          // `sealEvidence` returns a `Sealed<...>` — a branded string with
+          // exactly one producer. Handing this column a plaintext is a COMPILE
+          // error, not a review miss, which is what "encrypting a field is the
+          // easy path and forgetting to is not" means in practice.
+          evidence:
+            evidence === null ? null : sealEvidence(created.id, evidence),
+        },
       });
     }
 

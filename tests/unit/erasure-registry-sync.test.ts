@@ -112,4 +112,28 @@ describe("ERASURE_REGISTRY completeness (D-014, D-154)", () => {
     expect(ERASURE_REGISTRY.AuditEvent).toBeDefined();
     expect(ERASURE_REGISTRY.AuditEvent.kind).toBe("exempt");
   });
+
+  it("the phase 1.1 domain tables are classified, by name", () => {
+    // The completeness check above would catch these anyway. Naming them makes
+    // the assertion legible in a failure and pins the ANSWER as well as its
+    // presence: the pupil record and the guardian relationship are ERASED, not
+    // exempt. A retained diploma history is not a ground for keeping either
+    // (§5.2), and any ground for retaining an award is recorded against the
+    // award in the `exams` module rather than inferred here.
+    expect(ERASURE_REGISTRY.StudentProfile).toEqual({ kind: "erase" });
+    expect(ERASURE_REGISTRY.PersonRelationship).toEqual({ kind: "erase" });
+  });
+
+  it("MembershipPeriod and StudentLifecycleEvent are correctly ABSENT", () => {
+    // Neither references `Person` — they reference `Membership` and
+    // `StudentProfile`, which do — so the third assertion in this file forbids
+    // an entry for them, and they leave by CASCADE when the row they belong to
+    // is erased. Asserted rather than left implicit, because "no entry" and
+    // "forgotten" look identical from outside and this file's whole premise is
+    // that they must not.
+    expect(referencing.has("MembershipPeriod")).toBe(false);
+    expect(referencing.has("StudentLifecycleEvent")).toBe(false);
+    expect("MembershipPeriod" in ERASURE_REGISTRY).toBe(false);
+    expect("StudentLifecycleEvent" in ERASURE_REGISTRY).toBe(false);
+  });
 });
