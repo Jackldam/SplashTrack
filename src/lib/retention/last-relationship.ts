@@ -16,17 +16,14 @@
  * `01-domain-model.md` §5.1 lists the relationships that hold a person: an
  * active `MembershipPeriod`; an active `StudentProfile` enrolment; a role
  * assignment; a guardian relationship to a person still held; an unexpired
- * consent record; a legal retention ground on a record referencing them. Only
- * two of those have a table TODAY — `Membership` and `RoleAssignment`; the
- * rest (`MembershipPeriod`, `StudentProfile`, `PersonRelationship`, `Consent`)
- * belong to modules phase 0.4b does not build (`CLAUDE.md` §1: no domain
- * modules in this phase). A single hand-written query could not be correct
- * today and would need rewriting at every module boundary besides.
+ * consent record; a legal retention ground on a record referencing them.
  *
  * `RelationshipSource` makes each relationship kind a separate, independently
- * testable unit; `RELATIONSHIP_SOURCES` is the list `resolveLastRelationshipEnd`
- * actually consults, and it grows by one entry per future module — never by
- * rewriting the aggregation.
+ * testable unit, and the aggregation below has never had to change as they
+ * arrived. Phase 0.4b could supply only `RoleAssignment` and a period-less
+ * `Membership`; phase 1.1's `people` module registers `MembershipPeriod`,
+ * `StudentProfile` and `PersonRelationship` — dated, real, and owned by the
+ * module whose tables they read. `Consent` follows with its own module.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * "A GUARDIAN IS HELD ONLY WHILE THE CHILD THEY ARE GUARDIAN OF IS HELD —
@@ -67,27 +64,6 @@ export interface RelationshipSource {
 }
 
 /**
- * `Membership` carries no period/history today — one row per person, present
- * or absent (`MembershipPeriod`, D-059, is future `people`-module work that
- * will replace this with dated periods). So this source can say "still held"
- * but cannot date an ending it has no column for; a departed member is
- * `undefined` here; some OTHER source must account for them, or D-066's
- * relationship list is genuinely exhausted and the person enters `REVIEW`
- * with no known trigger date — which `resolveLastRelationshipEnd` reports as
- * `undefined`, honestly, rather than inventing one.
- */
-export const membershipSource: RelationshipSource = {
-  name: "Membership",
-  async resolve(personId) {
-    const row = await prisma.membership.findUnique({
-      where: { personId },
-      select: { personId: true },
-    });
-    return row ? { held: true } : undefined;
-  },
-};
-
-/**
  * `RoleAssignment` carries `validFrom`/`validUntil` (D-144, D-170) — a real
  * window, so this source can both say "still held" (any row standing, or
  * bounded but not yet expired) and date the ending (the LATEST `validUntil`
@@ -115,14 +91,53 @@ export const roleAssignmentSource: RelationshipSource = {
 };
 
 /**
- * Every relationship source `resolveLastRelationshipEnd` consults by default.
- * Add a source here — never inline a new query into the resolver — as each
- * module in §5.1's list is built.
+ * THE REGISTRY every relationship source is added to, and the list
+ * `resolveLastRelationshipEnd` consults by default.
+ *
+ * A REGISTRY RATHER THAN A CONST ARRAY, changed in phase 1.1 for the reason the
+ * original comment anticipated ("it grows by one entry per future module") and
+ * for one it could not: the sources now live in the MODULES THAT OWN THEIR
+ * TABLES. `MembershipPeriod`, `StudentProfile` and `PersonRelationship` belong
+ * to `people` (D-057, `CLAUDE.md` §4), so this file must not query them — and a
+ * const array naming them here would have imported the module that imports this
+ * one, which is a cycle.
+ *
+ * The mechanism is `configureScopeRelations`' twin, deliberately: modules
+ * REGISTER what they own, registration is explicit rather than an import-time
+ * side effect, and an unregistered source contributes nothing rather than
+ * silently answering "not held".
+ *
+ * `roleAssignmentSource` stays registered from here because `RoleAssignment` is
+ * an authorization table this module's sibling owns, with no domain module
+ * above it.
  */
-export const RELATIONSHIP_SOURCES: readonly RelationshipSource[] = [
-  membershipSource,
-  roleAssignmentSource,
-];
+const registeredSources = new Map<string, RelationshipSource>([
+  [roleAssignmentSource.name, roleAssignmentSource],
+]);
+
+/**
+ * Registers relationship sources, keyed by name so a module re-registering its
+ * own is idempotent rather than a duplicate that double-counts an ending.
+ */
+export function registerRelationshipSources(
+  sources: readonly RelationshipSource[],
+): void {
+  for (const source of sources) registeredSources.set(source.name, source);
+}
+
+/** The sources currently registered. */
+export function relationshipSources(): readonly RelationshipSource[] {
+  return [...registeredSources.values()];
+}
+
+/**
+ * Drops every source a module registered, leaving the built-in
+ * `roleAssignmentSource`. TEST SEAM ONLY.
+ */
+export function resetRelationshipSources(): void {
+  registeredSources.clear();
+  registeredSources.set(roleAssignmentSource.name, roleAssignmentSource);
+}
 
 /**
  * D-066's rule, applied: the person's retention clock starts at the end of
@@ -140,7 +155,7 @@ export const RELATIONSHIP_SOURCES: readonly RelationshipSource[] = [
  */
 export async function resolveLastRelationshipEnd(
   personId: string,
-  sources: readonly RelationshipSource[] = RELATIONSHIP_SOURCES,
+  sources: readonly RelationshipSource[] = relationshipSources(),
 ): Promise<RelationshipStatus | undefined> {
   const results = await Promise.all(
     sources.map((source) => source.resolve(personId)),
