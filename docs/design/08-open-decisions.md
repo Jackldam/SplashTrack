@@ -353,28 +353,24 @@ the hosting decision, and reversing hosting later is expensive.
 
 ---
 
-### OD-12 — Is cross-instance functionality ever required?
+### OD-12 — **(CLOSED 2026-09-04)** Is cross-instance functionality ever required?
 
-**Why it matters.** Single-tenancy makes some things impossible by design: a
-swimmer transferring from school A to school B carrying their diploma history;
-a national federation viewing results across affiliated schools; an examiner
-working across several schools with one login. If any of these is a real
-requirement, it needs a deliberate mechanism — most likely a signed, exportable
-**credential document** rather than a shared database.
-**Cost of delay.** Medium. Designing an export/import format is cheap now and
-awkward later.
-**My recommendation:** treat award records as portable signed artefacts from the
-start — they are already immutable, numbered records, revoked and reissued
-rather than edited (**D-062**, `01-domain-model.md` §3.5). That covers the
-transfer case without any cross-instance data path.
+**Answer, from Jack: "misschien."**
 
-**Citation corrected (2026-09-01).** This recommendation previously cited
-**D-007** for the immutability claim. D-007 was about *erasure* — "erasure
-severs identity; retained records survive pseudonymised" — it never said
-anything about award immutability, and it is **superseded by D-065**. So the
-whole of P-09's portable-certificates chain (`00-overview.md` §3.2 → this
-decision → the claim) was routing through a withdrawn decision to reach a true
-conclusion. It now routes through D-062, which actually states it.
+That is the honest answer and it is treated as one. See **D-183**: a maybe
+changes nothing in v1 and forbids exactly one thing — a decision that would make
+it impossible cheaply.
+
+- **Single-instance stays.** No tenant id returns, no control plane, no platform
+  role. Re-introducing tenancy "just in case" would undo D-056's entire removal
+  for a customer who does not exist.
+- **A portability floor is owed**, and is already owed anyway: a person's
+  diploma and assessment history must leave the instance as a self-contained,
+  documented artefact. D-169's logical export is that mechanism.
+- Nothing is reserved, stubbed or half-built.
+
+If this is ever answered with a firm yes, it is a new major version and a new
+decision — not a v1 obligation discharged early.
 
 ---
 
@@ -421,16 +417,24 @@ adoption cost was accepted deliberately in exchange for reciprocity.
 
 ---
 
-### OD-14 — Will there ever be a hosted "SplashTrack Cloud"?
+### OD-14 — **(CLOSED 2026-09-04)** Will there ever be a hosted "SplashTrack Cloud"?
 
-**Why it matters.** Not for v1, and the architecture supports it trivially — a
-hosted offering is just us being the operator of some instances. But it
-reintroduces the processor role, DPAs, fleet operations (F-13/F-14) and the
-per-customer cost floor (F-16), all of which we just deleted. Knowing whether
-it is on the roadmap affects the licence choice (OD-13) above all.
-**Cost of delay.** Low technically, high commercially.
-**My recommendation:** decide the licence as if the answer is yes, build as if
-the answer is no.
+**Answer, from Jack: "valt niet geheel uit te sluiten."**
+
+Handled identically to OD-12, and by the same decision (**D-183**). A hosted
+offering is us being the operator of some instances — which reintroduces the
+processor role, DPAs and fleet operations, all of which D-162 deliberately
+removed from v1.
+
+**What v1 owes it: nothing beyond the portability floor.** What v1 must not do
+is bake in assumptions that only the writing instance can ever read its own
+data. That constraint is already satisfied by the export.
+
+**A note for whoever picks this up.** The thing that makes a hosted offering
+expensive is not the software — it is becoming a **processor** for other
+people's children's health data, with the contracts, breach obligations and
+support expectations that follow. That cost is contractual, not technical, and
+no architecture decision reduces it.
 
 ---
 
@@ -577,29 +581,25 @@ direction, conflict resolution and staleness, and means the incumbent is
 
 ---
 
-### OD-19 — SportLink registration for competition and water-polo members
+### OD-19 — **(CLOSED 2026-09-04)** SportLink registration for competition and water-polo members
 
-**Raised 2026-09-02 by Jack, as context rather than as a request.**
+**Answer, from Jack: read in v2, push in v3.** Recorded as **D-184**.
 
-**The fact.** Members who swim competitively or play water polo must *also* be
-registered in **SportLink** to be allowed to compete. This is mandatory for
-those members and irrelevant for ordinary lesson pupils — the large majority.
+**The order is the valuable part.** Reading is idempotent and cannot corrupt a
+system SplashTrack does not own. Pushing makes this application a writer into
+someone else's system of record, which brings partial writes, retries,
+divergence, and the question of which system wins a conflict. Splitting them
+across two majors means the read path is in production and understood before
+anything writes.
 
-**Explicitly out of v1.** D-163 admits no external integration in v1, and this
-is one. It is recorded because it is a real obligation the club carries, and
-because knowing it exists changes one small thing now: a person may hold an
-**external registration in another system**, and a future integration should
-not have to invent where that identifier lives.
+**v1 builds nothing and reserves no column** (D-163). Members who swim
+competitively or play water polo must be registered in SportLink to compete;
+that stays a manual check for one more version, and it affects a minority of
+members and none of the lesson pupils.
 
-**What v1 does about it: nothing, deliberately.** No SportLink field, no
-external-id column, no stub. Adding an identifier column later is a migration;
-inventing a shape for an integration nobody has specified is a guess that will
-be wrong. `01-domain-model.md`'s `Person` is the obvious home when the time
-comes.
+**Still to decide when v2 starts**, and deliberately not now: whether
+competition membership is a distinct membership kind in the domain model, which
+today it is not.
 
-**What v2 must decide.** Whether SplashTrack pushes to SportLink, reads from
-it, or merely records that a member is registered there — three quite different
-commitments. Also whether competition membership is a distinct membership kind
-in the domain model at all, which today it is not.
+---
 
-**Cost of delay.** Low. Nothing in v1 becomes harder by not answering it.
