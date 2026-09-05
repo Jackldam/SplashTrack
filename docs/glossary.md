@@ -47,10 +47,10 @@ migration without asking.**
 | afzwemmen | `Exam` / `ExamSession` | fixed | The exam itself, at which the diploma is earned. In practice the formality: the decision was made at the aftest. |
 | proefzwemmen | `TrialLesson` | fixed | **A trial lesson for a prospective pupil.** Confirmed 2026-08-31: this is an enrolment concept, *not* a rehearsal before the exam. An earlier draft had it backwards. |
 | inhaalles | — (a `ScheduledSession` with a guest) | fixed | **Not its own entity.** An ordinary lesson that a student enrolled elsewhere attends once (D-179). The receiving instructor's reach over that child comes from participation in the session, never from group membership. |
-| vaardigheid | `Skill` / `Criterion` | fixed | An assessable requirement. Authored by an administrator in the application, never seeded from source (D-164). |
+| vaardigheid | `Criterion` | fixed | An assessable requirement, belonging to exactly one `CriterionSet` version. **Not `Skill`** — D-084 collapsed `Skill` and `SkillRequirement` into this one catalogue, so the second spelling must not return. Authored by an administrator in the application, never seeded from source (D-164). |
 | diploma | `AwardType` (kind: `DIPLOMA`) | fixed | Zwem-ABC diplomas. |
 | certificaat | `AwardType` (kind: `CERTIFICATE`) | fixed | Same machinery, relaxed thresholds — data, not a special case. |
-| eisen / eisenpakket | `CriterionSet` | fixed | Versioned. An assessment from 2026 stays readable against the criteria that applied in 2026 (D-160). |
+| eisen / eisenpakket | `CriterionSet` | fixed | Versioned. An assessment from 2026 stays readable against the criteria that applied in 2026 (D-160). **Not `AssessmentScheme`**: chapters 01 and 15 used that spelling with `SchemeCriterion` until D-189 settled it here, where D-159 puts the authority. |
 | cijfer / beoordeling | `GradeValue` | fixed | The five-value ordinal scale: *onvoldoende, matig, voldoende, goed, zeer goed*. Pass is "at least *voldoende*" unless the `CriterionSet` sets a lower threshold (D-160). |
 | opmerking | `AssessmentRemark` | fixed | Pedagogical, about the pupil — e.g. *"vertoont een schaarslag"*: not itself a fail if stuwing is sufficient, but a thing to work on. Protected free text (D-148). |
 

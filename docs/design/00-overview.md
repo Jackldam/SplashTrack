@@ -55,9 +55,11 @@ in `review/staging/`. Consolidating them into `09-decision-register.md` and
 twice**, to unrelated decisions in the assessment/fees chapter and the
 platform/backup chapters, and both sides had already been written into their
 live chapters under the same numbers. This is now fixed — see
-`08-open-decisions.md`, *Register integrity* — and the register (D-001–D-138,
-with documented gaps) and findings (F-01–F-108, with documented gaps) are
-current as of this revision. The domain input in `15-assessment-and-fees.md`
+`08-open-decisions.md`, *Register integrity*. **The register and findings are
+the live record and this sentence does not restate their extent** — a range
+written into prose is stale the next time either grows, and this one was: it
+said D-001–D-138 and F-01–F-108 while the register had reached D-189 and the
+findings F-145. Count them where they live (D-134). The domain input in `15-assessment-and-fees.md`
 (aftesten, examengeld, contributie, wachtlijst, proeflessen, inhaallessen,
 group moves, NRZ export, poolside/papieren fallback) is fully incorporated;
 the two questions from that input that were still open at the time — the NRZ

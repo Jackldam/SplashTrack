@@ -365,12 +365,12 @@ participation reach (D-068), replacing the `EXAM_SESSION` scope of D-054.
 
 ### F-42 — Two criterion catalogues were being specified for the same concept
 **Severity: medium.** `Skill`/`SkillRequirement` (`01-domain-model.md` §3.3)
-is "criteria per level, assessed per student"; `SchemeCriterion` is the same
+is "criteria per level, assessed per student"; `Criterion` is the same
 thing with an ordinal grade instead of a four-state enum. Shipping both
 guarantees divergence — not by anyone's decision, but because a criterion gets
 added to whichever catalogue the current screen writes — after which "what
 does Diploma A require?" has two answers and two seed catalogues to maintain.
-**Response.** D-084 collapses them: `SchemeCriterion` is the single catalogue,
+**Response.** D-084 collapses them: `Criterion` is the single catalogue,
 `SkillProgress` is the informal per-lesson log referencing a criterion, and
 `AssessmentCriterionResult` is the formal graded observation. This **reduces**
 the `skills` module rather than doubling it.
@@ -392,7 +392,7 @@ the sessions that produced this design.
 **Response.** No catalogue may be seeded until the criteria are confirmed with
 the domain expert. A seed containing invented swimming requirements would be
 worse than an empty one, because it would look authoritative and would be
-assessed against. `AssessmentScheme.source` and D-083's fork rule exist so
+assessed against. `CriterionSet.source` and D-083's fork rule exist so
 that the provenance of whatever is eventually seeded stays visible.
 **Status 2026-09-05: how the catalogue is authored is now settled too — D-188.** Two surfaces over one model: a form editor for a single correction, and a JSON document for the bulk load, a scheme change and review. Same validation, same versioned `CriterionSet`, and round-tripping is required so the two cannot drift. Jack's reasoning: typing a full catalogue into a form is an evening nobody repeats, and a half-filled catalogue is assessed against for years.
 
@@ -409,7 +409,7 @@ This is the better answer and it removes the blocker outright:
   no swimming requirements in its source. The finding's original fear — invented
   requirements that look authoritative and get assessed against — cannot occur,
   because the project never asserts any.
-- **`AssessmentScheme.source` gains its real meaning.** Provenance is
+- **`CriterionSet.source` gains its real meaning.** Provenance is
   "authored by this organisation" rather than "shipped by us and possibly
   forked" (D-083).
 - **It generalises the product for free.** A club following a different scheme,

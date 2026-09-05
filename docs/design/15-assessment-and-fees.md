@@ -35,18 +35,18 @@ the kind that erode by accident.
 AwardType            code, name, kind ∈ {DIPLOMA, CERTIFICATE},
                      issuingBody ∈ {NRZ, ORG}
 
-AssessmentScheme     awardTypeId, version, source, status ∈ {DRAFT, ACTIVE, RETIRED},
+CriterionSet         awardTypeId, version, source, status ∈ {DRAFT, ACTIVE, RETIRED},
                      effectiveFrom, effectiveTo?, passFloorGradeId
 
-SchemeCriterion      schemeId, code, name, sequence,
-                     minimumGradeId?      ← NULL = use the scheme's pass floor;
+Criterion            criterionSetId, code, name, sequence,
+                     minimumGradeId?      ← NULL = use the set's pass floor;
                                             set = a per-criterion override
 
 GradeScale           code, name                                (ordinal, org-owned)
 GradeValue           scaleId, code, rank, label
                      ONVOLDOENDE=1 · MATIG=2 · VOLDOENDE=3 · GOED=4 · ZEER_GOED=5
 
-Assessment           type ∈ {AFTEST, EXAM}, schemeId,
+Assessment           kind ∈ {PRE_EXAM, EXAM}, criterionSetId,
                      studentProfileId, assessorPersonId, assessedAt,
                      scheduledSessionId?, examSessionId?,
                      outcome ∈ {PASS, FAIL}, outcomeComputedAt,
@@ -77,22 +77,22 @@ supersedes. One derivation pattern across the product, not four.
 
 ### 2.2 The pass rule is data, not code
 
-**Decision D-080 — There is one pass function, evaluated over scheme data. No
-award type is branched on anywhere in the codebase.**
+**Decision D-080 — There is one pass function, evaluated over criterion-set
+data. No award type is branched on anywhere in the codebase.**
 
 ```text
 pass(assessment) :=
-  ∀ c ∈ criteria(assessment.schemeId) :
-      ∃ r ∈ results(assessment, c) with rank(r.grade) ≥ rank(c.minimumGrade ?? scheme.passFloor)
+  ∀ c ∈ criteria(assessment.criterionSetId) :
+      ∃ r ∈ results(assessment, c) with rank(r.grade) ≥ rank(c.minimumGrade ?? criterionSet.passFloor)
       ∨ ∃ w ∈ waivers(assessment, c)
 ```
 
 Both of the domain expert's statements about thresholds are satisfied by rows:
 
-- *"Alles moet minimaal voldoende zijn"* → `scheme.passFloorGradeId = VOLDOENDE`,
-  every `SchemeCriterion.minimumGradeId` NULL.
+- *"Alles moet minimaal voldoende zijn"* → `criterionSet.passFloorGradeId = VOLDOENDE`,
+  every `Criterion.minimumGradeId` NULL.
 - *"Certificaten hebben afgezwakte eisen"* → the certificate is a **different
-  `AwardType`, with its own `AssessmentScheme`**, whose criteria carry lower
+  `AwardType`, with its own `CriterionSet`**, whose criteria carry lower
   `minimumGradeId` overrides, or fewer criteria, or waivable ones.
 
 `if (kind === CERTIFICATE)` therefore never gets written.
@@ -106,33 +106,34 @@ combination nobody anticipated. Putting the weakening in rows costs one nullable
 column and makes the third variant an afternoon of data entry.
 
 **Trade-off.** The rule is no longer readable from the code alone; answering
-"why did this child pass?" means reading the scheme as well as the function. The
+"why did this child pass?" means reading the criterion set as well as the
+function. The
 assessment screen therefore renders the effective threshold next to each
 criterion, which is what an assessor needs to see anyway.
 
 ### 2.3 Versioning: pin the foreign key, never look up by date
 
-**Decision D-081 — `Assessment.schemeId` references a specific, immutable scheme
-version. The scheme is never resolved from the assessment date.**
+**Decision D-081 — `Assessment.criterionSetId` references a specific, immutable
+`CriterionSet` version. The set is never resolved from the assessment date.**
 
-An `ACTIVE` scheme is never edited. Editing produces version *n+1* in `DRAFT`,
+An `ACTIVE` set is never edited. Editing produces version *n+1* in `DRAFT`,
 and activating it stamps `effectiveTo` on version *n* and retires it. Rendering a
 2026 assessment joins through the pinned id and gets 2026's criteria, 2026's
 labels and 2026's thresholds — permanently, and without a temporal query.
 
-Explicitly rejected: resolving the scheme with
+Explicitly rejected: resolving the criterion set with
 `assessedAt BETWEEN effectiveFrom AND effectiveTo`.
 
 **Reason.** The date lookup is the version of this pattern everyone writes first,
 and it has two failure modes that both occur. It breaks on **backdated entries** —
 an assessment typed in on Monday for the Saturday before an activation reads the
-wrong scheme. And it breaks whenever **the NRZ revision date and the school's
+wrong set. And it breaks whenever **the NRZ revision date and the school's
 adoption date differ**, which they always do, because a school finishes the
 running block under the old requirements and adopts the new ones with the next
-intake. `effectiveFrom`/`effectiveTo` stay on the scheme as documentation of when
+intake. `effectiveFrom`/`effectiveTo` stay on the set as documentation of when
 it was in use; nothing joins through them.
 
-**Trade-off.** One more foreign key, and a scheme version can never be corrected
+**Trade-off.** One more foreign key, and a version can never be corrected
 in place — a typo in a criterion name requires a new version. Accepted: that is
 the same property that makes the record reconstructable, and a criterion name is
 not worth a mutable catalogue.
@@ -160,57 +161,77 @@ whose history the product exists to preserve.
 term and the interface keeps saying *diploma* and *certificaat*, correctly, for
 the two `AwardType.kind` values.
 
-### 2.5 Where the scheme comes from
+### 2.5 Where the catalogue comes from: an administrator, never a seeder
 
 `Skill` is documented as *"Defined by this organisation"* (`01-domain-model.md`
-§3.3). The NRZ requirements are not the organisation's to author.
+§3.3). The NRZ requirements are not the organisation's to author — **and they are
+not ours to ship either.**
 
-**Decision D-083 — NRZ-derived schemes ship seeded and source-labelled
-(`source = NRZ`). They are org-editable, but editing one produces an org-owned
-fork rather than an in-place change.**
+**Decision D-164 — The assessment catalogue is authored in the application by an
+administrator, never seeded from source. v1 ships an *empty* catalogue plus the
+surface to build one: create an `AwardType`, define its `CriterionSet`, set each
+criterion's minimum grade, publish a version.**
 
-The fork is a new `AssessmentScheme` with `source = ORG`, carrying a reference to
-the NRZ version it was derived from. The NRZ-sourced version stays intact and
-retired.
+**Reason.** F-44 asked which NRZ criteria, codes and thresholds to seed, and the
+answer dissolved the question: the NRZ requirements are **reference material,
+not content to ship**. An administrator building the list in-app keeps the
+product generic, means the project never asserts a swimming requirement it
+cannot stand behind, and makes a 2028 scheme revision a data-entry afternoon
+rather than a release from us.
 
-**Reason.** Without the fork, a well-meaning administrator lowering one threshold
-quietly weakens a national diploma requirement, and nothing in the database
-records that the school is no longer assessing to the NRZ standard. With the
-fork, the divergence is a visible object with an owner.
+**Trade-off, and it is the expensive one.** v1 gains a screen and a workflow on
+the **critical path** — nothing can be assessed before a catalogue exists. It
+replaces the seeding task rather than adding to it, but it is larger than
+seeding was. §2.7 specifies the two surfaces that make it survivable.
 
-**Trade-off.** More scheme rows, and a school that legitimately wants to track a
-minor NRZ correction has to adopt a new version rather than patch one. That is
-the correct direction of friction.
+**`source` survives D-083; the seeding does not.** `CriterionSet.source` stays as
+the **provenance label for what an administrator entered or imported**:
+`source = NRZ` means *"this is our transcription of the national requirements"*,
+`source = ORG` means *"this is ours"*. The fork rule survives with it — a new
+version that changes a threshold on an `NRZ`-labelled set is stamped `ORG` and
+carries a reference to the version it came from, rather than silently keeping
+the `NRZ` label.
+
+**Reason for keeping the fork rule.** Without it, a well-meaning administrator
+lowering one threshold quietly weakens a national diploma requirement, and
+nothing in the database records that the school is no longer assessing to the
+NRZ standard. With it, the divergence is a visible object with an owner. That
+argument never depended on where the first version came from, which is why it
+outlives the seeding it was written beside.
+
+**Superseded: D-083 — *"NRZ-derived schemes ship seeded and source-labelled"*.**
+Retained here as history because the reasoning above is what is left of it.
+D-083 assumed the project would ship a catalogue; D-164 decided it never will.
+An implementer reading the superseded rule builds a seeder that D-164 deleted.
 
 **(Resolved) F-44 — dissolved rather than answered.** The concrete NRZ
 criteria, their codes and their thresholds were never confirmed, and now never
-need to be: Jack's answer was that the NRZ requirements are reference
-material, not content to ship, and that an administrator authors the
-catalogue inside the application instead (D-164), through a form editor and an
-equivalent JSON document over the same model (D-188). No catalogue is ever
-seeded, so the fear this item raised — invented requirements that look
-authoritative — cannot occur. See `10-findings.md` F-44.
+need to be: the catalogue is authored inside the application instead (D-164),
+through a form editor and an equivalent JSON document over the same model
+(D-188, §2.7). No catalogue is ever seeded, so the fear this item raised —
+invented requirements that look authoritative — cannot occur. See
+`10-findings.md` F-44.
 
 ### 2.6 One criterion catalogue, not two
 
 `SkillRequirement` (`01-domain-model.md` §3.3) already is *"criteria per level,
-assessed per student"*. `SchemeCriterion` is the same thing with an ordinal grade
+assessed per student"*. `Criterion` is the same thing with an ordinal grade
 instead of a four-state enum. Shipping both guarantees divergence and two seed
 catalogues to maintain.
 
-**Decision D-084 — `SchemeCriterion` is the single criterion catalogue.
+**Decision D-084 — `Criterion` is the single criterion catalogue.
 `SkillRequirement` is collapsed into it and removed.**
 
 What survives, and how the three now relate:
 
 | Concept | Entity | Nature |
 |---|---|---|
-| The catalogue of what is required | `SchemeCriterion` | Versioned, source-labelled (D-081, D-083) |
+| The catalogue of what is required | `Criterion`, grouped into a versioned `CriterionSet` | Versioned, source-labelled (D-081, §2.5) |
 | The informal teaching log | `SkillProgress` | Per-lesson, append-only, references a criterion. Unchanged in behaviour |
 | The formal graded observation | `AssessmentCriterionResult` | Belongs to an `Assessment`, carries a `GradeValue` |
 
 `Skill` and `SkillCatalogue` are absorbed: a criterion *is* the skill, and the
-scheme *is* the catalogue. `CourseLevel` keeps its sequence and gains an optional
+`CriterionSet` *is* the catalogue. `CourseLevel` keeps its sequence and gains an optional
 `awardTypeId` so a level can point at what it prepares for.
 
 **Reason.** Two catalogues covering the same domain concept diverge — not
@@ -218,12 +239,63 @@ because anyone decides to diverge, but because a criterion gets added to the one
 the current screen writes. Then "what does Diploma A require?" has two answers.
 
 **This reduces scope rather than adding it.** The `skills` module shrinks: one
-catalogue to seed, one to import and export, one to render. The assessment work
-in this chapter is partly paid for by the deletion.
+catalogue to **author** (D-164 — nothing is seeded), one to import and export,
+one to render. The assessment work in this chapter is partly paid for by the
+deletion.
 
 **Trade-off.** `SkillProgress` rows now reference a versioned criterion, so an
-informal progress note taken under scheme version 3 renders against version 3's
+informal progress note taken under `CriterionSet` version 3 renders against
+version 3's
 criterion name. That is correct and it is the same pin as D-081.
+
+### 2.7 How the catalogue is authored: two surfaces, one model
+
+D-164 put a catalogue-authoring surface on the critical path and specified
+nothing about its shape. This section is that specification.
+
+**Decision D-188 — The assessment catalogue is authored through two
+interchangeable surfaces over one model: a form-based editor and a JSON
+document.** The JSON is the same catalogue in text — an administrator uploads it
+to create or update award types, their criteria and the requirement thresholds
+in bulk, and can export the current catalogue back out in the same shape.
+
+Four constraints, and they are what make two write paths safe rather than
+merely convenient:
+
+1. **One aggregate.** The unit of both surfaces is the `AwardType` with its
+   `CriterionSet` version and that version's criteria. Not an award-type
+   endpoint and a criterion endpoint that a caller composes — the aggregate is
+   what gets validated, and it is what gets versioned under D-081.
+2. **Neither surface may express anything the other cannot.** The JSON is a
+   **serialisation of the same aggregate**, not a separate importer with its own
+   rules. A field that exists in one and not the other is the drift this
+   constraint exists to prevent.
+3. **Same validator, and whole-or-nothing.** Both paths write through the same
+   validation code. **An upload that would produce an invalid catalogue is
+   rejected whole, never partially applied** — no "23 of 30 criteria imported,
+   see the log", which is how a half-filled catalogue gets assessed against for
+   years.
+4. **Round-tripping is a requirement, not a nicety.** Export, re-import, and get
+   the same catalogue. This is the cheapest test that the two surfaces have not
+   drifted, and it is a test, not a promise: it belongs in the suite.
+
+Publishing follows D-081 unchanged — an upload edits a `DRAFT` version or
+creates the next one; it never mutates an `ACTIVE` set. `source` is set per
+§2.5.
+
+**Reason.** Jack, 2026-09-05: *"mijn voorkeur via zowel een .json bestand als via
+de gui met velden — de json is vooral om snel makkelijk meerdere diploma's en
+bijbehorende vaardigheden en eisen te kunnen uploaden."* Typing a full Zwem-ABC
+catalogue into a form is an evening of clicking that nobody will do twice, and
+that is exactly the tedium that produces a half-filled catalogue. **The form is
+right for one correction; the document is right for the initial load, for a
+scheme change, and for review** — a diff of a JSON file is readable, a diff of
+thirty form submissions is not.
+
+**Trade-off.** Two write paths into one model is a duplication risk, and the
+usual outcome is two validators that agree on the day they are written. The
+shape of the constraint above is the answer to that, and constraint 4 is how we
+find out when it stops holding.
 
 ---
 
@@ -237,8 +309,8 @@ independent *aftest*.**
 
 Formally, `CONFIRMED` requires a non-superseded `Assessment` where:
 
-- `type = AFTEST`;
-- `schemeId` = the active scheme of the target `AwardType`;
+- `kind = PRE_EXAM`;
+- `criterionSetId` = the active `CriterionSet` of the target `AwardType`;
 - `outcome = PASS`;
 - `assessorPersonId` holds a `PersonQualification` valid at `assessedAt`; **and**
 - `assessorPersonId` is **not** among the `InstructorAssignment` holders for that

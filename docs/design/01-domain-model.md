@@ -53,7 +53,7 @@ courses             Course/programme definitions, levels, enrolment
 skills              Criterion catalogue and the informal per-lesson progress log
 sessions            ScheduledSession — the shared scheduling primitive
 attendance          Attendance events against a session  ← flagship
-assessment          Award types, versioned schemes, grades, aftesten, waivers
+assessment          Award types, versioned criterion sets, grades, aftesten, waivers
 exams               Exam sessions, candidates, assessors, results, awards
 fees                Fee types, charges, payments, balances  ← tracking only
 planning            Schedule construction, locations, resources, assignment
@@ -218,9 +218,9 @@ Organization
   ├──< Group ──< GroupMembership >── StudentProfile
   │       ├──< GroupMove >── StudentProfile     (up or down, reason-carrying)
   │       └── instructor: Person (assignment, time-bounded)
-  ├──< AwardType ──< AssessmentScheme ──< SchemeCriterion
+  ├──< AwardType ──< CriterionSet ──< Criterion
   │                                          └──< SkillProgress >── StudentProfile
-  ├──< Assessment ──< AssessmentCriterionResult >── SchemeCriterion
+  ├──< Assessment ──< AssessmentCriterionResult >── Criterion
   │       └──< CriterionWaiver
   ├──< ScheduledSession ──< AttendanceEvent >── StudentProfile
   ├──< ExamSession ──< ExamCandidate >── StudentProfile
@@ -378,7 +378,7 @@ not evidence.
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `Course` | name, description, active | N `CourseLevel`, N `Enrolment` | What is taught |
-| `CourseLevel` | name, sequence, awardTypeId? | 0..1 `AwardType` | E.g. Diploma A → B → C. `awardTypeId` says what the level prepares for; the requirements themselves live on that award's scheme (`15-…` §2.6) |
+| `CourseLevel` | name, sequence, awardTypeId? | 0..1 `AwardType` | E.g. Diploma A → B → C. `awardTypeId` says what the level prepares for; the requirements themselves live on that award's `CriterionSet` (`15-…` §2.6) |
 | `Enrolment` | studentProfileId, courseId, status (incl. `TRIAL`), startedAt, endedAt? | Student ↔ Course | Status is a lifecycle, not a payment state (P-03 and D-093). `TRIAL` marks a *proefzwemmer* — a prospective pupil attending once |
 | `Group` | name, courseLevelId?, capacity?, active | N `GroupMembership`, N `ScheduledSession` | Who is taught together |
 | `GroupMembership` | studentProfileId, groupId, fromDate, toDate? | | **Time-bounded** — moving groups is a new row, not an update |
@@ -437,16 +437,19 @@ opens.
 
 **The criterion catalogue lives in `15-assessment-and-fees.md` §2, not here.**
 An earlier draft carried `Skill` and `SkillRequirement` — "criteria per level,
-assessed per student" — alongside the versioned `SchemeCriterion` that the
+assessed per student" — alongside the versioned `Criterion` that the
 assessment model needs. They are the same concept with a different result type,
-and D-084 collapses them into one: `SchemeCriterion` is the single catalogue.
-This *removes* a table and a seed catalogue rather than adding one.
+and D-084 collapses them into one: `Criterion` is the single catalogue.
+This *removes* a table rather than adding one — and D-164 removes the seed
+catalogue as well: v1 ships an empty one and an authoring surface (`15-…` §2.5,
+§2.7).
 
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
-| `SchemeCriterion` | schemeId, code, name, sequence, minimumGradeId? | 1 `AssessmentScheme` | The single criterion catalogue. Versioned and source-labelled — `15-…` §2.1, D-081, D-083 |
-| `SkillProgress` | studentProfileId, criterionId, state, assessedByPersonId, assessedAt, sessionId?, note? | 1 `SchemeCriterion` | **Append-only**, and **informal**: the per-lesson teaching log. `state` ∈ {INTRODUCED, PRACTISING, ACHIEVED, REVOKED} |
-| `AssessmentCriterionResult` | assessmentId, criterionId, gradeValueId, remark? | 1 `Assessment`, 1 `SchemeCriterion` | The **formal** graded observation, made during an *aftest* or an exam. `15-…` §2.1 |
+| `CriterionSet` | awardTypeId, version, source, status, effectiveFrom, effectiveTo?, passFloorGradeId | 1 `AwardType`, N `Criterion` | The versioned *eisenpakket* — `docs/glossary.md`, D-160. **Authored in the application, never seeded** (D-164); `source` is the provenance label an administrator sets (`15-…` §2.5) |
+| `Criterion` | criterionSetId, code, name, sequence, minimumGradeId? | 1 `CriterionSet` | The single criterion catalogue. Versioned and source-labelled — `15-…` §2.1, D-081, D-164 |
+| `SkillProgress` | studentProfileId, criterionId, state, assessedByPersonId, assessedAt, sessionId?, note? | 1 `Criterion` | **Append-only**, and **informal**: the per-lesson teaching log. `state` ∈ {INTRODUCED, PRACTISING, ACHIEVED, REVOKED} |
+| `AssessmentCriterionResult` | assessmentId, criterionId, gradeValueId, remark? | 1 `Assessment`, 1 `Criterion` | The **formal** graded observation, made during an *aftest* or an exam. `15-…` §2.1 |
 
 `SkillProgress` is what an instructor writes at the poolside; it decides nothing.
 `AssessmentCriterionResult` is what a qualified assessor writes during an
