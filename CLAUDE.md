@@ -16,9 +16,18 @@ operating SplashTrack — is v2. The licence (AGPL-3.0) and the public repositor
 are unchanged; what is deferred is the obligation to be *deployable by
 strangers*.
 
-Practical consequence: do not build setup wizards, one-click installers,
-operator documentation, release provenance or multi-IdP registries in v1. Do
-build the thing that runs a Tuesday evening at the poolside.
+Practical consequence: do not build one-click installers, operator
+documentation, release provenance or multi-IdP registries in v1. Do build the
+thing that runs a Tuesday evening at the poolside.
+
+**This line used to begin "do not build setup wizards", and the design set
+overruled it (D-187).** `13-configuration-and-setup.md` §6.3 has specified one
+since the design phase (D-039), and the reason it got built is not third-party
+deployability: the author locked himself out of his own instance because the
+first administrator was created by a terminal prompt with no confirmation field.
+`/setup` is something the single v1 operator needs on his own machine. Judge a
+v2-flavoured feature by that test — *does the one operator need it to run this
+instance?* — rather than by which chapter it appears in.
 
 **The competitor is pen and paper.** Attendance registration must be faster than
 a clipboard, on a tablet, with wet hands, and must degrade honestly when the

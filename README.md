@@ -71,45 +71,64 @@ docker compose logs -f app
 ```
 
 On an empty database nothing is migrated. The container detects that the
-database has no purpose yet, enters **setup mode**, serves a notice at
-`BETTER_AUTH_URL`, and tells you what to run next. That refusal to migrate a
-database it does not understand is deliberate: an empty database is either a
-fresh install or the first minute of a restore, and only you know which.
+database has no purpose yet, enters **setup mode**, and prints the address of
+the setup wizard along with the path of the one-time token that opens it. That
+refusal to migrate a database it does not understand is deliberate: an empty
+database is either a fresh install or the first minute of a restore, and only
+you know which — and the wizard is where you answer.
 
-### 4. The first administrator
+### 4. The one-time setup token
 
 ```sh
-docker compose exec app splashtrack admin:create \
-    --email you@example.org --name 'Your Name'
+docker compose exec app cat /app/data/setup-token
 ```
 
-It asks for a password twice, without echoing it, and creates the account. There
-is no public self-registration — host access is the proof of ownership every
-privileged operation here rests on.
+The wizard is the only unauthenticated page this application ever serves, so it
+is gated: whoever can read that file owns this machine, and whoever cannot,
+cannot begin. It is single-use and expires in an hour;
+`splashtrack setup:token --new` issues another.
 
-`setup:init` (migrations and seed, without an account) exists if you would rather
-look at the database first, but it is optional: `admin:create` does that work
-itself when it has not been done.
+**That file is a credential and it is deliberately not in the container log.**
+Self-hosters paste `docker compose logs` into public issues, this repository is
+public, and whoever holds this token becomes the administrator of an instance
+about to hold children's records. Do not paste it either.
 
-**The running container does not need restarting.** It re-reads how far setup
+### 5. The wizard
+
+Open `BETTER_AUTH_URL/setup`. Three steps:
+
+1. the token you just read;
+2. your organisation's name, and the first administrator — name, email and a
+   password **typed twice**, so a mistyped password is caught here rather than
+   discovered at the next sign-in;
+3. a QR code for your authenticator. Scan it, enter the six digits.
+
+**Setup is not complete until that second factor is verified**, and that is
+enforced rather than displayed: until then the account may do exactly two
+things, sign in and enrol, and every other page, route and action refuses it.
+The TOTP secret is shown on that page and nowhere else — not in a log, not in a
+file, not on a terminal.
+
+When it is verified, `/setup` closes permanently and you land on a working
+instance, signed in, with the people register at `/people`.
+
+**No restart is needed at any point.** The application re-reads how far setup
 has got on every request, so the page it serves changes on its own. Its start-up
-log is now out of date, which is expected. The command prints the resulting boot
-state so you never have to guess — and restarting is safe at every point.
+log goes out of date, which is expected — and restarting is safe at every point.
 
-### 5. Finish in a browser
+### If the wizard cannot be used
 
-Open `BETTER_AUTH_URL/sign-in` and sign in with the password you just chose. You
-land straight on a page showing a QR code for your authenticator; scan it, enter
-the six digits, and the installation is set up.
+There is a host path, and it is break-glass rather than the front door — for a
+password forgotten between step 2 and step 3, or a machine with no browser:
 
-Setup is not complete until then, and that is enforced rather than displayed:
-until a second factor is verified the account may do exactly two things, sign in
-and enrol, and every other page, route and action refuses it. The TOTP secret is
-shown on that page and nowhere else — not in a log, not in a file, not on a
-terminal.
+```sh
+docker compose exec app splashtrack admin:create --email you@example.org
+```
 
-You are then signed in, on a working instance, with the people register at
-`/people`.
+It asks for a password twice, without echoing it, and stops. Enrolment still
+happens in a browser at `BETTER_AUTH_URL/sign-in`. There is no `--password-file`
+and there will not be one: a password written to disk is what the wizard exists
+to avoid.
 
 ### If something refuses to start
 

@@ -76,17 +76,24 @@
 # instruction attached. `secret-init` below is a separate service that does not
 # mount the secret, which is what lets it be the thing that creates it.
 #
-# FIRST ADMINISTRATOR. There is no public self-registration and the setup wizard
-# is not built yet, so the first account is created from the host, which is the
-# proof of ownership every privileged operation here rests on:
+# FIRST RUN. There is no public self-registration; an instance is set up in a
+# BROWSER, at BETTER_AUTH_URL/setup (D-039, D-187). The wizard is gated by a
+# one-time token the container writes to its data volume — host access is the
+# proof of ownership every privileged operation here rests on, and the token is
+# in a FILE rather than in the log because logs get pasted into public issues
+# (D-101, F-99):
 #
-#     docker compose exec app splashtrack admin:create --email you@example.org
+#     docker compose up -d
+#     docker compose exec app cat /app/data/setup-token
 #
-# That command creates the account and STOPS. Setup is not complete until a
-# second factor exists (D-185), which happens in a browser: sign in at
-# BETTER_AUTH_URL/sign-in and you are taken straight to the QR code. Until then
-# the instance serves the setup notice and stays in PENDING_ENROLMENT (D-186) —
-# a state it restarts into safely, as often as you like.
+# Then open /setup, enter that token, name the organisation, choose the first
+# administrator's password, and scan the QR code with an authenticator. Setup is
+# not complete until that second factor is verified (D-185) — and when it is,
+# /setup closes for good.
+#
+# Until then the instance stays in setup mode, which it restarts into safely, as
+# often as you like. `splashtrack admin:create` still exists as the host path for
+# an instance the wizard cannot finish; it is break-glass, not the front door.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -157,13 +164,36 @@ services:
     secrets:
       - splashtrack_secret_key
     volumes:
-      # The one writable path in the container: the MFA enrolment artefacts the
-      # CLI writes, and the migration acknowledgement marker.
+      # `$DATA_DIR`, and the ONE writable path in the container: D-101's setup
+      # token, the MFA enrolment artefacts `admin:reset-mfa` writes, and the
+      # migration acknowledgement marker. The image creates it owned by uid
+      # 10001 at mode 0700.
+      #
+      # NO KEY MATERIAL LIVES HERE (D-113, F-96): the backup archive captures
+      # this tree, so a `SECRET_KEY` under it would put an archive's own
+      # decryption key inside the archive.
       - splashtrack-data:/app/data
-      # Where `secret:init` writes when run through this compose file. A bind
-      # mount, so the operator ends up holding the key on their own host rather
-      # than inside a Docker volume they might never think to back up.
-      - ./secrets:/app/secrets
+      # ── `./secrets` IS NOT MOUNTED INTO THIS SERVICE, DELIBERATELY ─────────
+      #
+      # It used to be, "so `secret:init` can write here" — and that was never
+      # true: the `secret-init` service below has its own mount, and it has to,
+      # because it is the service that CREATES the directory. So this mount
+      # served nothing, and it cost two things.
+      #
+      # It BROKE, first. Docker creates a missing bind source as root, so
+      # `./secrets` arrives root-owned; the container runs as uid 10001, which
+      # cannot traverse a 0700 root-owned directory. Anything inside `/app/secrets`
+      # was therefore unreadable to the application — measured on the UAT host on
+      # 2026-09-04, where a `--password-file` under it could not be opened at
+      # all. Fixing the mode on one host is not a fix; removing the mount is.
+      #
+      # And it WIDENED the surface D-112 exists to narrow. The bootstrap secret
+      # reaches this container as a Docker secret at a single read-only path,
+      # `/run/secrets/splashtrack_secret_key`. Bind-mounting the whole directory
+      # it came from gives a compromised web process the key AND anything else
+      # the operator keeps beside it, by a second route nothing needed.
+      #
+      # Generate the key with `docker compose run --rm secret-init`.
     ports:
       # `APP_PORT` is a COMPOSE variable, not an application one: it chooses
       # which host port maps to the container's 3000. It is not part of D-037's
