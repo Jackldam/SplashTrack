@@ -60,9 +60,14 @@ with documented gaps) and findings (F-01–F-108, with documented gaps) are
 current as of this revision. The domain input in `15-assessment-and-fees.md`
 (aftesten, examengeld, contributie, wachtlijst, proeflessen, inhaallessen,
 group moves, NRZ export, poolside/papieren fallback) is fully incorporated;
-the two genuinely open questions from that input — the NRZ criterion catalogue
-contents (F-44) and whether a school will ever define its own grade scale
-(OD-17) — are data questions for Jack, not architecture.
+the two questions from that input that were still open at the time — the NRZ
+criterion catalogue contents (F-44) and whether a school will ever define its
+own grade scale (OD-17) — are now both closed. **(Resolved) F-44** dissolved
+rather than answered: an administrator authors the catalogue in the
+application instead of seeding it from NRZ source (D-164), through a form
+editor and an equivalent JSON document over the same model (D-188).
+**(Resolved) OD-17** was confirmed by the domain expert: *onvoldoende / matig
+/ voldoende / goed / zeer goed* is the scale, and the only one seeded (D-160).
 
 ## Document set
 
