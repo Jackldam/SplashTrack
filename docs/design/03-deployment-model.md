@@ -62,32 +62,41 @@ database point `DATABASE_URL` elsewhere. Acceptable and expected.
 #### Target properties of the image — and what is actually true today
 
 An earlier draft of this section listed six "non-negotiable properties of the
-image" as though they described the artifact we have. They do not. Verified
-against the repository: the Dockerfile is a self-described *"development/Sprint-0
-image"* — single-stage, `FROM node:22-alpine` with no digest pin, `npm ci`
-including devDependencies, the full source tree in the final layer, and the
-process running as root. `postgresql-client` is not installed, although
-`14-backup-restore-upgrade.md` §3.1 previously claimed the client tooling ships
-in the image. Two further bullets in that list were not merely unmet but *wrong*:
-"all configuration via environment variables" inverts the whole of chapter 13,
-and "secrets are generated on first run and written to the data volume" is
-incompatible with restore (the archive would then contain its own key — F-96).
+image" as though they described the artifact we have. At the time they did not:
+the Dockerfile was a self-described *"development/Sprint-0 image"* — single-stage,
+`FROM node:22-alpine` with no digest pin, `npm ci` including devDependencies, the
+full source tree in the final layer, and the process running as root. Two further
+bullets in that list were not merely unmet but *wrong*: "all configuration via
+environment variables" inverts the whole of chapter 13, and "secrets are
+generated on first run and written to the data volume" is incompatible with
+restore (the archive would then contain its own key — F-96).
 
-The list below is therefore stated as **targets with their current status**, not
-as a description. An implementer must be able to tell which of these they have
-to build. Finding **F-102**.
+Phase 1.0 built most of it. The list below is therefore stated as **targets with
+their current status**, not as a description, and the status is dated — an
+implementer must be able to tell which of these they still have to build, and a
+row that says "to build" against built work is how work gets done twice. Finding
+**F-102**.
 
 | Property | Status | Where it is specified |
 |---|---|---|
-| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **To build** | `13-…` §3.1.1 (D-112) |
-| **Bootstrap secrets only in the environment.** All runtime configuration is database-backed and edited in-app | **To build** | `13-…` §3 (D-036/D-037) |
-| **First-run setup wizard in-app** — first administrator, forced MFA, organisation name, branding. Replaces D-028's script | **To build** | `13-…` §6.3 (D-039) |
-| **Migrations never run against a database whose state is unknown.** The entrypoint detects state first; migration is a consequence of that state | **To build** | `13-…` §6 (D-055, D-098) |
-| **The application's database role is not a superuser** — owner of its own schema only, `NOSUPERUSER NOCREATEROLE`, created that way by the reference compose | **To build** | `14-…` §4.2 (D-116) |
-| **Runs as non-root**, read-only root filesystem, multi-stage build, no build tools or devDependencies in the final layer, digest-pinned base image, published SBOM | **None of this holds today.** Single-stage, root, undigested, devDeps present | Phase 1 of the build |
-| **`postgresql-client` present** for dump/restore tooling | **Absent today** | `14-…` §3.1 |
-| **Health and readiness endpoints** so an operator's own monitoring works | **To build** | — |
-| **Backup and restore commands shipped with the image**, because a self-hoster who cannot restore has no backups | **To build** | `14-…` §3, §4 |
+| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **Built** — `src/lib/crypto/secret-key.ts` | `13-…` §3.1.1 (D-112) |
+| **Bootstrap secrets only in the environment.** All runtime configuration is database-backed and edited in-app | **Partly built** — the two credentials and `SECRET_KEY_FILE` are environment-only; the in-app settings surface is not built | `13-…` §3 (D-036/D-037) |
+| **First-run setup wizard in-app** — first administrator, forced MFA, organisation name, branding. Replaces D-028's script | **Built** — three steps; branding and the steps behind the export and mail engines are not, and `13-…` §6.3 says which | `13-…` §6.3 (D-039, D-185, D-187) |
+| **Migrations never run against a database whose state is unknown.** The entrypoint detects state first; migration is a consequence of that state | **Built** — `src/lib/boot/state.ts`, eight states | `13-…` §6 (D-055, D-098, D-186) |
+| **The runtime database role is not a superuser and owns nothing** — a separate non-connecting owner role owns the schema; the runtime role holds `USAGE` plus DML. Stated where it is decided, not restated here (D-134) | **Built** — `infra/provision-roles.sql`, `src/lib/database/role-model.ts`, phase 1.2 | `14-…` §4.2.1 (D-116 as amended by **D-182**), `docs/adr/0002-database-roles-and-least-privilege.md` §7 |
+| **Runs as non-root**, multi-stage build, no build tools or devDependencies in the final layer, digest-pinned base image | **Built** — four stages, `USER splashtrack` (`Dockerfile:179`), `node:22-alpine@sha256:c610fcdf…` (`:57`), `npm ci --omit=dev` (`:117`) | Phase 1.0 |
+| **Read-only root filesystem and a published SBOM** | **To build.** `Dockerfile:31-32` names both as deliberately not done here: the SBOM is a CI concern, the read-only rootfs a compose concern | Phase 1.0 report, "not done here" |
+| **`postgresql-client` deliberately ABSENT** — `pg_dump`/`pg_restore` are out of scope, not a fallback (D-169), so shipping the client would ship tooling for a mechanism this version does not have | **Absent, and that is the target** — `Dockerfile:48` | `14-…` §4.2.1 (D-169) |
+| **Health and readiness endpoints** so an operator's own monitoring works | **Built** — `src/app/api/health/route.ts`, `src/app/api/ready/route.ts` | — |
+| **Backup and restore commands shipped with the image**, because a self-hoster who cannot restore has no backups | **To build** — the export/restore engine is unbuilt, which is also why the wizard has no restore branch | `14-…` §3, §4 |
+
+**Status column re-run against the tree on 2026-09-05** (rev8 D-12/D-13). The
+column above had gone stale in the direction that costs the most: it described
+built work as *"to build"* and named `postgresql-client`'s absence as a gap when
+D-169 makes that absence the target. Evidence is
+`docs/build/phase-1.0-deployment-and-breakglass-report.md` and the files cited in
+each row. **Re-run this column against the repository before trusting it**; a
+status table is a claim about a moment, and this one is dated on purpose.
 
 **D-095** (stated in `14-…` §3.1, not restated here) makes the backup a
 structured logical export the application writes and reads itself rather than a

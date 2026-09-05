@@ -476,13 +476,35 @@ The previous verification step made this worse by sounding sufficient: it checke
 that the archive was *intact*, not that it was *benign*, and both the checksum
 and the manifest came from the same attacker-supplied file. Finding **F-97**.
 
-**Decision D-116 — The application's database role is not a superuser. It owns
-its own schema and nothing else, `NOSUPERUSER NOCREATEROLE`, and the reference
-`docker-compose.yml` creates it that way.**
+**Decision D-116 (amended by D-182 — the original wording was the precondition
+D-182 forbids) — The runtime database role is not a superuser and **owns
+nothing**. A separate, non-connecting `splashtrack_owner` role owns the schema
+and every table in it; the runtime role holds `USAGE` on the schema plus DML on
+the tables, `NOSUPERUSER NOCREATEROLE`, and `infra/provision-roles.sql` creates
+the roles that way.**
+
+**Why this changed, because the reasoning is the durable part.** D-116 as
+originally written said the application role *"owns its own schema and nothing
+else"*. Ownership was the whole problem: **an owner re-grants itself in one
+statement**, so every revoke made against the runtime role — including D-149
+part 2's `REVOKE ALL … ON "AuditEvent"` — is decorative while that role owns the
+table it is revoked on. D-182 states the precondition and moves ownership to a
+role with no password that nothing ever connects as. The implementation follows
+D-182, not this section's original text: `src/lib/database/role-model.ts`
+(`ALTER SCHEMA public OWNER TO <owner>` then `GRANT USAGE … TO <app>`) and
+`infra/provision-roles.sql`, shipped and tested in phase 1.2. **The code was
+right and this section was wrong**; the chapter is what moved.
+
+The full role model — four roles, two credentials, what each holds and what it
+deliberately does not defend against — is stated once in
+`docs/adr/0002-database-roles-and-least-privilege.md` §7 and summarised in
+`02-security-privacy.md` §3.2. This section states only the property the restore
+path depends on, and does not re-enumerate the roles (D-134).
 
 This is a non-negotiable property of what we ship, stated alongside "runs as
 non-root" (`03-…` §1.2). It bounds the blast radius of *every* SQL-injection
-class in the product, not only this one.
+class in the product, not only this one — and it is the reason the terms below
+say *"a freshly created empty schema"* rather than the application's own.
 
 **The dump-replay path is not built** (D-169). This chapter previously specified
 it in full behind an *"if v1 nonetheless"*, which left two mechanisms specified
