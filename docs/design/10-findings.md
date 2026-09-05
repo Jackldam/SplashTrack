@@ -394,6 +394,8 @@ the domain expert. A seed containing invented swimming requirements would be
 worse than an empty one, because it would look authoritative and would be
 assessed against. `AssessmentScheme.source` and D-083's fork rule exist so
 that the provenance of whatever is eventually seeded stays visible.
+**Status 2026-09-05: how the catalogue is authored is now settled too — D-188.** Two surfaces over one model: a form editor for a single correction, and a JSON document for the bulk load, a scheme change and review. Same validation, same versioned `CriterionSet`, and round-tripping is required so the two cannot drift. Jack's reasoning: typing a full catalogue into a form is an evening nobody repeats, and a half-filled catalogue is assessed against for years.
+
 **Status 2026-09-02: CLOSED — dissolved rather than answered.** Jack's answer
 was not a set of criteria but a rejection of the premise:
 
