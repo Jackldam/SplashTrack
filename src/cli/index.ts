@@ -61,10 +61,14 @@ type Command = (ctx: CommandContext) => Promise<number>;
 const USAGE = `splashtrack <command> [flags]
 
   boot:state                      Print the boot state and the action it implies
+  setup:token [--new|--ensure]    Issue or report the one-time token that opens
+                                  the /setup wizard. NEVER prints the token
   setup:init                      Apply migrations and seed the catalogue
-  admin:create --email <e>        Create the FIRST ORGANIZATION administrator.
-                 [--name <n>]     MFA is enrolled afterwards in a browser, and
-                 [--password-file <p>]  setup is not complete until it is
+  admin:create --email <e>        BREAK-GLASS, not the front door. Creates an
+                 [--name <n>]     ORGANIZATION administrator from the host on an
+                                  instance whose /setup wizard cannot be used.
+                                  The password is typed at a prompt or piped;
+                                  there is no --password-file (D-187)
   admin:reset-mfa --email <e>     Replace a LOST authenticator, and re-enrol
                  [--password-file <p>] [--out <dir>]
   admin:grant-admin --email <e>   Grant ORGANIZATION admin for 24 hours
@@ -77,13 +81,18 @@ const USAGE = `splashtrack <command> [flags]
 
 Every command that changes anything writes an audit event with a system:cli
 actor and raises a banner for all administrators. None of them prints a
-password, a TOTP secret or a backup code.
+password, a TOTP secret, a backup code or the setup token.
 
-A NEW INSTALLATION, END TO END:
+A NEW INSTALLATION IS SET UP IN A BROWSER (D-187). Nothing above is part of it:
 
-    splashtrack admin:create --email you@example.org --name 'Your Name'
-    …then open <this instance>/sign-in, sign in with that password, and scan
-      the QR code you are taken to. That completes setup.`;
+    docker compose up -d
+    docker compose exec app cat /app/data/setup-token    # the PATH is in the log
+    …then open <this instance>/setup, enter that token, name the organisation,
+      choose the first administrator's password, and scan the QR code with an
+      authenticator. That completes setup and /setup closes permanently.
+
+The commands above are the recovery route for an instance the wizard cannot
+finish — a lost password before enrolment, a data volume you cannot read.`;
 
 async function resolve(name: string): Promise<Command | null> {
   switch (name) {
@@ -93,6 +102,8 @@ async function resolve(name: string): Promise<Command | null> {
       return (await import("./commands/boot")).bootstrapClearTampered;
     case "setup:init":
       return (await import("./commands/setup")).setupInit;
+    case "setup:token":
+      return (await import("./commands/setup")).setupToken;
     case "admin:create":
       return (await import("./commands/admin")).adminCreate;
     case "admin:reset-mfa":

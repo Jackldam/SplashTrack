@@ -14,12 +14,12 @@
  * the completed answer is cached forever and the query stops. The incomplete
  * answer is never cached: that is the state that changes.
  *
- * THE WIZARD IS NOT HERE. D-039's in-app setup wizard is phase 1; what setup
- * mode serves today is a page naming the two host commands that complete setup
- * (`13-…` §6.3 step 0's "new installation" branch, driven from the host rather
- * than from a browser, on the same host-access-is-proof-of-ownership pattern
- * D-101 and §7 already rest on). When the wizard arrives it replaces that page
- * and this module is what gates it.
+ * THE WIZARD IS AT `/setup` (D-039, phase 1.5). This module is one of the two
+ * things gating it: `@/lib/setup/gate.ts` decides which step an operator sees
+ * from the BOOT STATE, and `completeSetupIfInvariantHolds` below is what closes
+ * the surface for good. The host commands the setup notice used to name are
+ * still there and still work — they are break-glass now, not the front door
+ * (`../../cli/commands/admin.ts`).
  *
  * SERVER-ONLY, Node runtime — it reads the database, so it can never be called
  * from `middleware.ts`, which runs on the Edge runtime.
@@ -29,6 +29,11 @@ import { APP_VERSION } from "@/lib/app-version";
 import { countLocalOrganizationAdmins } from "@/lib/auth/local-admin-invariant";
 import { prisma } from "@/lib/database";
 import { logger } from "@/lib/logging";
+// The FILE and not the `@/lib/setup` barrel, on purpose: the barrel re-exports
+// `@/lib/setup/gate`, which imports this module's own package — so the barrel
+// here would be a `boot → setup → boot` cycle. `./token` imports nothing but
+// `node:fs` and `./data-dir`.
+import { clearSetupToken } from "@/lib/setup/token";
 
 /** The enforced-singleton id, pinned by a CHECK constraint in the migration. */
 export const INSTALLATION_BOOTSTRAP_ID = "installation";
@@ -233,5 +238,22 @@ export async function completeSetupIfInvariantHolds(
     },
   });
   completedLatch = true;
+
+  // SETUP IS OVER, SO THE TOKEN GOES (D-101). It is already inert — the wizard
+  // is gated on the boot state, which has just changed, and the token is
+  // single-use anyway — but leaving a file literally called `setup-token` in
+  // the data volume of a live installation is how it ends up in a support
+  // answer that says "paste it". Best-effort: a read-only data volume must not
+  // turn a completed setup into a failed one.
+  try {
+    clearSetupToken();
+  } catch (error) {
+    logger.warn(
+      { event: "setup.token_cleanup_failed", err: error },
+      "setup completed but the setup-token file could not be removed; delete " +
+        "it from the data volume by hand",
+    );
+  }
+
   return true;
 }

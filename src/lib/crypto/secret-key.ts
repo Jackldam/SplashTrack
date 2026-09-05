@@ -86,6 +86,22 @@ export const KEY_PURPOSES = [
    * EDITING and REMOVAL, because either orphans every value written under it.
    */
   "relationship-evidence-v1",
+  /**
+   * ADDED IN PHASE 1.5, for the setup wizard's own short-lived cookie
+   * (`@/lib/setup/wizard-session.ts`, D-101 and D-187).
+   *
+   * It is a MAC key rather than an encryption key, and it authenticates a
+   * cookie asserting exactly one fact: *this browser presented the one-time
+   * setup token before it expired*. A label of its own for the ordinary reason
+   * — `auth-signing-v1` is Better Auth's session-signing branch, and a value
+   * the wizard minted under that key would be forged in the same key space as a
+   * real session.
+   *
+   * Its blast radius is bounded by something other than the key: the wizard is
+   * closed by the BOOT STATE, so a forged cookie on a set-up installation still
+   * reaches a 404.
+   */
+  "setup-session-v1",
 ] as const;
 
 export type KeyPurpose = (typeof KEY_PURPOSES)[number];
