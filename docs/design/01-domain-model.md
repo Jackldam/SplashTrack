@@ -227,6 +227,7 @@ Organization
   │       ├──< ExamAssessor >── Person
   │       └──< ExamResult ──0..1── Award
   ├──< WaitlistEntry >── Person
+  │       └──0..1── Inquiry          (public form submission, owned by `pages`)
   ├──< FeeType ──< Charge ──< Payment
   └──< CustomPage    (inherited CMS)
 
@@ -317,7 +318,8 @@ Every combination is valid and every one occurs in practice:
 | `StudentLifecycleEvent` | studentProfileId, type (`JOINED`/`PAUSED`/`LEFT`/`RETURNED`/`TRIAL_ATTENDED`), occurredAt, reason? | 1 `StudentProfile` | Append-only lifecycle history; current state is derived |
 | `PersonRelationship` | type (`GUARDIAN_OF`, `EMERGENCY_CONTACT`), fromPersonId, toPersonId, authority, evidence, validFrom, validTo? | Person ↔ Person | **v1.** `authority` records whether this relationship may consent on behalf of the subject (R-04); `evidence` records *how the claim was established* and is **non-optional where `authority = true`** (D-063). Every change audited |
 | `PersonQualification` | personId, type, validFrom, validTo? | 1 `Person` | *"Een leraar die bevoegd is"* — what makes someone eligible to conduct an *aftest* (`15-…` §2.1) |
-| `WaitlistEntry` | personId, studentProfileId?, courseId?, requestedAt, source (`INQUIRY`/`MANUAL`), status (`WAITING`/`PLACED`/`WITHDRAWN`), note? | Person, 0..1 `Inquiry` | The front door. Placement creates the `StudentProfile`/`Enrolment`; the entry is closed, not deleted |
+| `WaitlistEntry` | personId, studentProfileId?, **courseLevelId?**, requestedAt, source (`INQUIRY`/`MANUAL`), status (`WAITING`/`PLACED`/`WITHDRAWN`), note? | Person, 0..1 `Inquiry`, 0..1 `CourseLevel` | The front door. **One list for the club, not a queue per group** (D-180): an entry records the child **and the level** — not a course — and placement is a matching decision against groups that have room, never automatic and never strictly first-in-first-out. Placement creates the `StudentProfile`/`Enrolment`; the entry is closed, not deleted |
+| `Inquiry` | submittedAt, name, email, phone?, message, childName?, childBirthDate?, status (`NEW`/`HANDLED`/`SPAM`), handledByPersonId? | 0..1 `WaitlistEntry` | **The public contact/enrolment form's submission.** Owned by `pages`, which is where §5's retention row for it already sits (6 months, `DELETE`). Referenced by `WaitlistEntry.source = INQUIRY` (D-109) and by `00-overview.md` R-33. Its free text is protected under D-148, so it is encrypted, read-audited and export-excluded like the other members of that class |
 
 **Decision D-059 — Leaving and returning is modelled with periods and lifecycle
 events, never by creating a second profile or flipping a status.**
@@ -575,8 +577,9 @@ is unresolved and must be settled before that default ships (F-128).
 | Skill progress | `skills` | Group | Contract | Achievement date | 7 years | `REVIEW` |
 | Assessment results (formal) | `assessment` | Course / instance | Contract; legal claims where a ground applies | Assessment date | 7 years | `REVIEW` |
 | Exam results & awards | `exams` | Course / instance | *Unresolved* — a ground must be identified per organisation (§5.2) | Award issue | 10 years **only where a retention ground applies** | `REVIEW` (§5.2) |
-| Charges | `fees` | `fees.read` | Legal obligation — fiscal administration | Charge due date | 7 years | **`PSEUDONYMISE`** (D-092) |
-| Payments | `fees` | `fees.read` | Legal obligation — fiscal administration | Received date | 7 years | **`PSEUDONYMISE`** (D-092) |
+| **`SafetyNote` free text** | `students` | Instructors teaching that child **this season**, resolved through `resolveReach` — never by role name, never club-wide | **Explicit consent** (Art. 9(2)(a)), given by the guardian or by the pupil once D-151's age is reached, with authority evidence | Enrolment that justifies it ends, **or consent is withdrawn** | No longer than that enrolment | **`DELETE`** — never anonymise. Withdrawal deletes the text at once (D-177) |
+| Charges | `fees` | `fees.read` | Legal obligation — fiscal administration | Charge due date | 7 years | `REVIEW` — **and see the pseudonymisation note below** (D-092) |
+| Payments | `fees` | `fees.read` | Legal obligation — fiscal administration | Received date | 7 years | `REVIEW` — **and see the pseudonymisation note below** (D-092) |
 | Consent records | `consent` | Instance-wide | Legal obligation — accountability (Art. 5(2)) | Withdrawal or expiry of purpose | As long as needed to demonstrate compliance | `REVIEW` |
 | Audit events | `audit` | `audit.read` | Legitimate interest — security, and Art. 5(2) accountability | Event date | **Floor computed, stated once in `02-security-privacy.md` §3.2.1 (D-168):** `max(12 months, the longest configured retention among the classes these events evidence)` — with exam results and awards below at 7–10 years, that is the effective floor | `DELETE`, **prefix-only and checkpointed** (D-168) |
 | Inquiries (public forms) | `pages` | Instance-wide | Legitimate interest — responding to a request | Submission | 6 months | `DELETE` |
@@ -585,6 +588,35 @@ is unresolved and must be settled before that default ships (F-128).
 | Public page content | `pages` | Instance-wide | — (no personal data) | — | Until deleted | — |
 | Organisation settings & branding | `organization` | Singleton | — (no personal data) | — | Indefinite | — |
 | Operational logs | `lib/logging` | Operators — **no PII** | Legitimate interest — operations | Write | 30 days | `DELETE` |
+
+**Note on the two `fees` rows (D-092, and rev8 D-14).** These rows previously
+read `PSEUDONYMISE`, which is **not a value `onExpiry` has**: the enum is
+`DELETE`, `ANONYMISE`, `REVIEW` in the sentence above this table, in
+`02-security-privacy.md` §5.6, and in `prisma/schema.prisma` (`enum OnExpiry`) —
+and D-155 rules the fourth value out explicitly. The section stated the enum and
+then used a value outside it.
+
+**The two are different mechanisms, and separating them resolves it — which is
+the reading the implementation had already reached.** `enum OnExpiry` in
+`prisma/schema.prisma` states it: *"Retention expiry and erasure exemption are
+two mechanisms; the fiscal ground belongs to the second."* `onExpiry` is what
+happens when *retention runs out*, and at seven years the fiscal ground has
+lapsed, so `REVIEW` is right — a human decides. **D-092 is about *erasure*:**
+when a person exercises Article 17 while the fiscal ground still applies, the
+charge is **pseudonymised** rather than deleted — it keeps its amount, date, fee
+type and period and loses the link to the person. That is an **erasure exemption
+on a financial retention ground**, which is exactly the shape D-154 generalises,
+and it belongs to the D-014 erasure registry where D-092 puts it, not to this
+column. Adding a fourth `onExpiry` value would reopen the argument D-155 spends
+a page closing — that pseudonymisation does not end the obligation. Following D-065's honesty rule, a pseudonymised charge is **still
+personal data** while the person exists elsewhere; what it is not is a reason to
+keep the person.
+
+**Note on `SafetyNote` (D-177).** Its row is above, and it is the one retention
+default in this table whose trigger is not a date: *"retained no longer than the
+enrolment that justifies it"*, and **withdrawal of consent deletes the text
+immediately**, before any expiry. Consent is its lawful basis, so the retention
+default is a ceiling, not a promise to keep it that long.
 
 **Note on the audit row (F-133, settled by D-168).** Audit events must be
 retained *at least as long as the longest-retained data class whose changes they
