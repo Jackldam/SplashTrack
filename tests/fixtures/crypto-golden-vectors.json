@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Committed golden vectors for the envelope's decryptor registry (D-097).",
+    "One entry per ciphertext FORMAT this application has ever shipped. Entries",
+    "are APPENDED, never edited and never removed: a backup contains ciphertext,",
+    "and D-048/D-049 oblige every later version to keep reading every format",
+    "written before it. tests/unit/envelope.test.ts fails the build if a format",
+    "loses its decryptor or its vector.",
+    "",
+    "secretBase64 is a FIXED PUBLIC TEST KEY. It is not, and must never be, an",
+    "instance's SECRET_KEY."
+  ],
+  "secretBase64": "KysrKysrKysrKysrKysrKysrKysrKysrKysrKysrKys=",
+  "vectors": [
+    {
+      "format": "v1",
+      "columnId": "fixture.round_trip",
+      "purpose": "fixture-v1",
+      "keyId": "1",
+      "primaryKey": "cm4qz9x1k0000abcd1234efgh",
+      "ciphertext": "v1:1:VdVHf4bU8Vu6nzX3:PxcjmYOsLmc3fubO5KiqcUIA_brGYUXVOcOLcaRKCQAWQOU3HCN44_ksGFjXQQ4t5gR1KByhP7Y",
+      "expectedPlaintext": "golden vector v1 — protected free text"
+    }
+  ]
+}

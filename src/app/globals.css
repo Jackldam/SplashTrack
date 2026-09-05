@@ -1,0 +1,29 @@
+/*
+ * Application styles.
+ *
+ * Bootstrap is imported first in `layout.tsx`; anything here overrides it. The
+ * token-driven theming D-019 describes — CSS custom properties fed from
+ * administrator-configured branding — is a phase 4 surface and is not here.
+ *
+ * One rule that is here from the start, because it is a poolside requirement
+ * rather than a preference: touch targets. The competitor is a clipboard, on a
+ * tablet, with wet hands. An interaction that is slower than paper is a defect.
+ */
+
+:root {
+  /* WCAG 2.5.5 asks for 44px; wet fingers on a tablet want more. */
+  --st-touch-target-min: 48px;
+}
+
+button,
+[role="button"],
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: var(--st-touch-target-min);
+}
+
+/* Never remove a focus indicator. Keyboard and switch access depend on it. */
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}

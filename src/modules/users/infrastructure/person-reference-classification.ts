@@ -1,0 +1,206 @@
+/**
+ * Hand-maintained classification of EVERY Prisma field that references a
+ * `Person` — a `personId` / `*PersonId` scalar column, or a relation field
+ * typed `Person` / `Person?` — across the whole schema.
+ *
+ * ADOPTED FROM THE TEMPLATE (D-135), not re-invented. `05-technical.md` §5.1
+ * corrects the design on this point: D-014 describes "a registry with a test
+ * asserting every `Person`-referencing table appears in it" as something to
+ * CREATE. It already existed, and it is checked BIDIRECTIONALLY —
+ * `tests/unit/person-reference-sync.test.ts` reads `prisma/schema.prisma`
+ * directly and fails if a schema column has no entry here (an undocumented,
+ * possibly-unhandled Person reference) AND if an entry here has no matching
+ * schema column (a stale entry after a rename or removal).
+ *
+ * THE CONSEQUENCE IS A FORCING FUNCTION, AND IT BELONGS IN THE DEFINITION OF
+ * DONE RATHER THAN IN A CI SURPRISE (`06-delivery.md` §4.4): the build goes red
+ * the moment a domain model adds a `Person` reference without an entry here.
+ * That is the desired behaviour. In a system holding children's records, an
+ * erasure that silently misses a column is the failure this exists to prevent —
+ * and in the template it happened twice, in ways nothing else would have
+ * caught: `OrganizationBranding.updatedByPersonId` had a `Restrict` foreign key
+ * with no sever step, so erasing that editor rolled back the WHOLE transaction;
+ * and `MaintenanceJob.updatedByPersonId` was never referenced by the erasure
+ * repository at all — no foreign key, so erasure "succeeded" while leaving the
+ * erased person's id on the row forever. Neither would have failed a migration
+ * or a typecheck.
+ *
+ * PHASE 0.4b: the D-014 erasure REGISTRY is now complete —
+ * `src/lib/retention/erasure-registry.ts`, table-level (`erase` | `exempt`,
+ * D-154), checked against this file's column-level classifications by
+ * construction (`AuditEvent.actorPersonId` is `RETAIN_BY_DESIGN` here because
+ * `AuditEvent` is `exempt` there). STILL ABSENT: the `erasePersonData`
+ * transaction that actually WALKS both registries and performs the erasure —
+ * that is R-25, alongside the D-065 retention scheduled job
+ * (`docs/build/phase-0.4b-reach-and-retention-report.md` §3). What exists
+ * today is a complete, tested map of every table and every column an erasure
+ * would touch — the right order: the map must be accurate before anything is
+ * written against it.
+ *
+ * Categories:
+ *   HARD_DELETE      — the row is the person's OWN data. The erasure deletes it
+ *                      explicitly (its FK to Person is `onDelete: Restrict`, so
+ *                      this step is MANDATORY — there is no cascade to fall
+ *                      back on).
+ *   CASCADES         — the person's own data AND the FK is `onDelete: Cascade`,
+ *                      so the database would remove it automatically.
+ *   SEVER_AND_RETAIN — NOT the person's own data (operator content, or
+ *                      accountability evidence). Only the personal-id LINK is
+ *                      nulled; the row itself survives.
+ *   RETAIN_BY_DESIGN — the plain id token is left AS-IS, forever, by deliberate
+ *                      choice. MUST carry a `reason` (enforced by the sync
+ *                      test) — this is the category it is easiest to hide a
+ *                      silent leak behind, so every entry justifies itself in
+ *                      writing.
+ *
+ * Keyed `"<Model>.<field>"`, matching every model/field pair the sync test
+ * extracts from the schema.
+ */
+
+export type PersonReferenceCategory =
+  "HARD_DELETE" | "CASCADES" | "SEVER_AND_RETAIN" | "RETAIN_BY_DESIGN";
+
+export interface PersonReferenceClassification {
+  category: PersonReferenceCategory;
+  /** Why this row is classified this way. Mandatory for RETAIN_BY_DESIGN. */
+  reason: string;
+}
+
+export const PERSON_REFERENCE_CLASSIFICATION: Record<
+  string,
+  PersonReferenceClassification
+> = {
+  // --- HARD_DELETE — the person's own data (Restrict FK, explicit delete) ---
+  "UserAccount.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "The account IS the person's sign-in identity. The FK is deliberately " +
+      "onDelete: Restrict, never a silent cascade; the erasure deletes it " +
+      "explicitly before the Person row. That in turn cascades Session / " +
+      "Account (the password hash) / TwoFactor / Passkey via userId — those " +
+      "reference UserAccount, not Person, so they are out of this map.",
+  },
+  "Membership.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "The person's own membership row. Restrict FK; an explicit deleteMany " +
+      "in the erasure. Its RETENTION is a separate decision from the erasure " +
+      "category and is not settled here: a diploma history outliving a lapsed " +
+      "membership is the whole point of D-053's split, and the `people` " +
+      "module brings MembershipPeriod (D-059) and its own retention policy " +
+      "(D-065, phase 0.4) to this table.",
+  },
+  "RoleAssignment.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "The person's own role grant. Restrict FK; an explicit deleteMany in " +
+      "the erasure.",
+  },
+  "StudentProfile.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "The person's own pupil identity — `leerling`, D-053's separate table " +
+      "with its own lifecycle and its own retention. Restrict FK; an explicit " +
+      "delete in the erasure, which in turn CASCADES StudentLifecycleEvent via " +
+      "studentProfileId (those rows reference the profile, not the Person, so " +
+      "they are out of this map by construction). What the erasure must NOT do " +
+      "is treat a retained diploma history as a reason to keep this row: §5.2 " +
+      "is explicit that an award register does not automatically defeat an " +
+      "erasure request, and any ground for retaining an award is recorded " +
+      "against the award, in the `exams` module, never inferred here.",
+  },
+  "PersonRelationship.fromPersonId": {
+    category: "HARD_DELETE",
+    reason:
+      "This row is personal data about TWO people at once, and it is the " +
+      "erased person's own data from whichever end they stand at. Erasing the " +
+      "guardian deletes the row; the child keeps every other relationship they " +
+      "have. Restrict on both foreign keys, so it can never leave as a cascade " +
+      "nobody sees. The `evidence` column being encrypted under the " +
+      "D-096/D-167 envelope changes nothing here: an unreadable ciphertext is " +
+      "still personal data, and deleting the row is what removes it.",
+  },
+  "PersonRelationship.toPersonId": {
+    category: "HARD_DELETE",
+    reason:
+      "The same row from the SUBJECT's end — the child, or the person an " +
+      "emergency contact is for. Erasing them deletes it, which is also what " +
+      "keeps D-066 coherent: a guardian is held only while the child they are " +
+      "guardian of is held, so once the child's record is gone the " +
+      "relationship that held the guardian is gone with it and the guardian's " +
+      "own retention clock starts.",
+  },
+
+  // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
+  "RoleAssignment.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO ISSUED a grant, not who holds it — the accountability evidence that " +
+      "makes §2.6's anti-amplification rule auditable after the fact rather " +
+      "than only preventable in the moment (D-144). It is somebody ELSE's " +
+      "grant, so erasing the granter must not delete it: an instructor's " +
+      "access surviving the administrator who left is correct, and revoking " +
+      "it is a separate, deliberate act. The FK is onDelete: SetNull as " +
+      "defence in depth; the erasure severs it explicitly regardless, on the " +
+      "Organization.updatedByPersonId pattern beside it.",
+  },
+  "CredentialRoleAssignment.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "The same fact for a machine caller's grant. A plain token with no " +
+      "foreign key, matching ApiCredential.createdByPersonId, because the " +
+      "credential is a live permission-managed asset that stays usable after " +
+      "its creator is erased. Nothing reads this table in v1 (D-163, " +
+      "`05-technical.md` §4 keeps API credentials in place and unused), which " +
+      "is precisely why it needs a classification now rather than when " +
+      "somebody finally writes to it.",
+  },
+  "Organization.updatedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "A last-editor accountability pointer on the organisation singleton, " +
+      "which carries the configuration document since D-056 merged " +
+      "PlatformSettings into it. The FK " +
+      "is onDelete: SetNull as defence in depth; the erasure severs it " +
+      "explicitly regardless. Both, deliberately: the explicit sever is the " +
+      "control, and SetNull is what stops a FUTURE delete path that forgets " +
+      "the sever from rolling back an entire erasure — which is exactly what " +
+      "the sibling column in the template did before it was fixed.",
+  },
+  "ApiCredential.createdByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "The administrator who minted the credential — accountability only. The " +
+      "credential is a live, permission-managed asset that stays usable after " +
+      "its creator is erased; a plain token, no FK. The erasure severs it " +
+      "explicitly. There is no code reading this table yet " +
+      "(`05-technical.md` §4 keeps API credentials in place, unused), which " +
+      "is precisely why it needs a classification now rather than when " +
+      "someone finally writes to it.",
+  },
+  "RetentionPolicy.confirmedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO confirmed the organisation's lawful basis for a data class (D-065, " +
+      "F-27) — Art. 5(2) accountability evidence, not the confirmer's own " +
+      "data. The policy row itself is organisation configuration and is never " +
+      "erased; only the confirmer's identity is severed, on the same pattern " +
+      "as Organization.updatedByPersonId beside it. The FK is onDelete: " +
+      "SetNull as defence in depth; the erasure severs it explicitly " +
+      "regardless — a confirmation stands after its confirmer leaves.",
+  },
+
+  // --- RETAIN_BY_DESIGN — the id token is kept, forever, on purpose ---
+  "AuditEvent.actorPersonId": {
+    category: "RETAIN_BY_DESIGN",
+    reason:
+      "Article 17(3) security and accountability: the tamper-evident audit " +
+      "trail must OUTLIVE the entities it references, so this column is " +
+      "deliberately NOT a foreign key and is NEVER severed or deleted on " +
+      "erasure. Severing it would also break the hash chain — actorPersonId " +
+      "is inside the canonicalized content every row's hash commits to, so an " +
+      "UPDATE here makes the trail report itself as tampered with. The " +
+      "erasure's own event retains the erased person's id as targetId under " +
+      "this same rule.",
+  },
+};

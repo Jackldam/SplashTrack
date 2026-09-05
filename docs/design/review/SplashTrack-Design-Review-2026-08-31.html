@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>SplashTrack — Design Review</title>
+  <title>SplashTrack — Design Review (rev. 5)</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -137,24 +137,25 @@ h2.done::after{content:"✓";color:var(--ok);font-size:.8em;margin-left:.5em}
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">SplashTrack — Design Review</h1>
+<h1 class="title">SplashTrack — Design Review (rev. 5)</h1>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
-<li><a href="#splashtrack--design--architecture-phase" id="toc-splashtrack--design--architecture-phase">SplashTrack — Design
-&amp; Architecture Phase</a>
+<li><a href="#splashtrack--design--architecture" id="toc-splashtrack--design--architecture">SplashTrack — Design &amp;
+Architecture</a>
 <ul>
-<li><a href="#leesvolgorde-bij-weinig-tijd" id="toc-leesvolgorde-bij-weinig-tijd">Leesvolgorde bij weinig
-tijd</a></li>
+<li><a href="#wat-er-veranderde-in-rev-5" id="toc-wat-er-veranderde-in-rev-5">Wat er veranderde in rev. 5</a></li>
 </ul></li>
-<li><a href="#splashtrack--design--architecture-phase-1" id="toc-splashtrack--design--architecture-phase-1">SplashTrack — Design
-&amp; Architecture Phase</a>
+<li><a href="#splashtrack--product-vision-requirements--scope" id="toc-splashtrack--product-vision-requirements--scope">SplashTrack —
+Product Vision, Requirements &amp; Scope</a>
 <ul>
+<li><a href="#review-status" id="toc-review-status">Review
+status</a></li>
 <li><a href="#document-set" id="toc-document-set">Document set</a></li>
 <li><a href="#1-product-vision" id="toc-1-product-vision">1. Product
 vision</a></li>
-<li><a href="#2-starting-position--analysis-of-the-existing-repositories" id="toc-2-starting-position--analysis-of-the-existing-repositories">2.
-Starting position — analysis of the existing repositories</a></li>
+<li><a href="#2-starting-position" id="toc-2-starting-position">2.
+Starting position</a></li>
 <li><a href="#3-core-requirements" id="toc-3-core-requirements">3. Core
 requirements</a></li>
 <li><a href="#4-non-functional-requirements" id="toc-4-non-functional-requirements">4. Non-functional
@@ -315,8 +316,8 @@ layers</a></li>
 <li><a href="#4-applying-changes-without-a-restart" id="toc-4-applying-changes-without-a-restart">4. Applying changes
 without a restart</a></li>
 <li><a href="#5-secrets-in-the-database" id="toc-5-secrets-in-the-database">5. Secrets in the database</a></li>
-<li><a href="#6-first-run-setup" id="toc-6-first-run-setup">6. First-run
-setup</a></li>
+<li><a href="#6-start-up-setup-restore-and-migration--one-sequence" id="toc-6-start-up-setup-restore-and-migration--one-sequence">6.
+Start-up, setup, restore and migration — one sequence</a></li>
 <li><a href="#7-break-glass-locked-out-of-your-own-instance" id="toc-7-break-glass-locked-out-of-your-own-instance">7. Break-glass:
 locked out of your own instance</a></li>
 <li><a href="#8-diagnostics-page" id="toc-8-diagnostics-page">8.
@@ -338,48 +339,92 @@ the settings registry</a></li>
 </ul></li>
 </ul>
 </nav>
-<h1 id="splashtrack--design--architecture-phase">SplashTrack — Design
-&amp; Architecture Phase</h1>
-<p><strong>Versie:</strong> 2026-08-31 · <strong>Status:</strong> ter
-review · <strong>Auteur:</strong> Lucky <strong>Branch:</strong>
-<code>design/architecture-phase</code> (9 commits, nog niet gepusht)</p>
-<blockquote>
-<p><strong>Hoe je dit reviewt.</strong> Onder elke sectie staat een
-commentaarveld met drie knoppen: <strong>Akkoord</strong>,
-<strong>Wijzigen</strong>, <strong>Bespreken</strong>. Alles wordt
-lokaal in je browser bewaard — je kunt tussendoor sluiten. Als je klaar
-bent (of halverwege) klik je bovenin op <strong>Exporteer
-commentaar</strong>; je krijgt dan een markdown-bestand met alleen de
-secties waar je iets van vond. Dat stuur je terug en ik verwerk het.</p>
-<p>Je hoeft niet alles te beoordelen. Secties zonder oordeel blijven
-leeg.</p>
-</blockquote>
-<blockquote>
-<p><strong>Let op bij het lezen:</strong> dit ontwerp bevat drie
-opeenvolgende modelwijzigingen van 31 augustus: multi-tenant →
-single-tenant → open-source self-hosted. Hoofdstuk 11 en 12 leggen die
-revisies vast. <strong>Waar een eerdere paragraaf en een latere revisie
-elkaar tegenspreken, wint de revisie.</strong></p>
-</blockquote>
-<h2 id="leesvolgorde-bij-weinig-tijd">Leesvolgorde bij weinig tijd</h2>
-<ol type="1">
-<li><strong>Hoofdstuk 00</strong> — visie, requirements, analyse van je
-twee repo&#39;s</li>
-<li><strong>Hoofdstuk 09</strong> — alle 49 beslissingen in één
-tabel</li>
-<li><strong>Hoofdstuk 10</strong> — 25 findings: gaten, inconsistenties,
-securityrisico&#39;s</li>
-<li><strong>Hoofdstuk 08</strong> — 15 open beslissingen die jouw input
-nodig hebben</li>
-</ol>
+<h1 id="splashtrack--design--architecture">SplashTrack — Design &amp;
+Architecture</h1>
+<p><strong>Versie:</strong> 2026-08-31 (rev. 5) ·
+<strong>Branch:</strong> <code>design/architecture-phase</code> · PR
+#14</p>
+<p><strong>Hoofdstuk 00: AKKOORD.</strong> Hoofdstukken 01–14 blijven in
+review.</p>
+<h2 id="wat-er-veranderde-in-rev-5">Wat er veranderde in rev. 5</h2>
+<table>
+<thead>
+<tr>
+<th>Punt</th>
+<th>Verwerkt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Numerieke env-limiet weg uit R-17</td>
+<td>R-17 herschreven naar het bootstrap-noodzaakcriterium; geen maximum.
+Runtime/platform-variabelen (<code>TZ</code>, <code>NODE_ENV</code>,
+proxy, CA-pad) tellen expliciet niet mee</td>
+</tr>
+<tr>
+<td>Dubbele D-037 opgeruimd</td>
+<td>De oude normatieve versie (&quot;capped at five keys&quot;) in <code>13</code>
+§3.3 is verwijderd; er is nu precies één normatieve regel, in
+<code>13</code> §3.1</td>
+</tr>
+<tr>
+<td>&quot;Multi-tenant machinerie wordt simpelweg niet gebruikt&quot; weg</td>
+<td><code>00</code> §2.1 herschreven: herbruikbare delen blijven,
+tenant-specifieke modellen/middleware/authz-paden/schema worden
+<strong>actief verwijderd bij extractie</strong>, incrementeel en met
+tests gedekt</td>
+</tr>
+<tr>
+<td>D-056 aangescherpt</td>
+<td>Expliciet &quot;incrementeel en test-gedekt&quot; in <code>01</code> §1.1.1 en
+in het register</td>
+</tr>
+<tr>
+<td>Reviewstatus hoofdstuk 00</td>
+<td>Reviewblok bovenaan <code>00</code> met status AKKOORD en de vier
+bevestigde punten</td>
+</tr>
+</tbody>
+</table>
 <hr />
-<h1 id="splashtrack--design--architecture-phase-1">SplashTrack — Design
-&amp; Architecture Phase</h1>
+<h1 id="splashtrack--product-vision-requirements--scope">SplashTrack —
+Product Vision, Requirements &amp; Scope</h1>
 <blockquote>
-<p>Status: <strong>Draft for review.</strong> No application code is
-written in this phase. Every numbered deliverable from the assignment is
-covered; the index below maps assignment item → document section.</p>
+<p><strong>Status: authoritative.</strong> This document and chapters
+01–10, 13 and 14 describe <strong>one</strong> architecture: an
+open-source, self-hosted, single-organisation application. There are no
+multi-tenant or platform-operator assumptions left in the active
+chapters.</p>
+<p>Chapters 11 and 12 are <strong>history, not authority</strong> — they
+record how the design arrived here and why. Nothing in them may be used
+as an implementation instruction. If they appear to contradict an active
+chapter, the active chapter is correct and the revision note is
+stale.</p>
 </blockquote>
+<h2 id="review-status">Review status</h2>
+<p><strong>Chapter 00 — Status: AKKOORD</strong> (Jack, 2026-08-31)</p>
+<ul>
+<li>The product direction is <strong>accepted</strong>.</li>
+<li><strong><code>WebAppTemplate</code> is the implementation
+foundation</strong> (D-001); the existing SplashTrack repository serves
+only as a domain reference.</li>
+<li><strong>Obsolete multi-tenant functionality is removed, not retained
+unused</strong> (D-056) — incrementally, covered by tests, for a smaller
+attack surface and less maintenance debt.</li>
+<li><strong>Environment configuration follows the bootstrap-necessity
+criterion</strong> (D-037), not an arbitrary count: a variable is
+permitted only when its value must be known before the database can be
+read, or when it determines where persistent state lives. Everything
+else is database-backed.</li>
+<li>Chapter 00 is now <strong>consistent with the later single-instance,
+self-hosted architecture</strong>: one organisation per installation, no
+shared control plane, no platform super administrator, database-backed
+runtime settings, and the security-first / GDPR-by-design requirements
+intact.</li>
+</ul>
+<p>Chapters 01–14 remain <strong>under review</strong>; approving
+chapter 00 approves nothing else, and the open decisions in
+<code>08-open-decisions.md</code> remain open.</p>
 <h2 id="document-set">Document set</h2>
 <table>
 <thead>
@@ -412,7 +457,7 @@ covered; the index below maps assignment item → document section.</p>
 </tr>
 <tr>
 <td>5</td>
-<td>Roles &amp; authorization model (scoping)</td>
+<td>Roles &amp; authorization model (scoped)</td>
 <td><code>02-security-privacy.md</code> §2</td>
 </tr>
 <tr>
@@ -452,7 +497,7 @@ covered; the index below maps assignment item → document section.</p>
 </tr>
 <tr>
 <td>13</td>
-<td>Distribution / isolation architecture</td>
+<td>Distribution &amp; isolation architecture</td>
 <td><code>03-deployment-model.md</code> §1</td>
 </tr>
 <tr>
@@ -523,8 +568,7 @@ covered; the index below maps assignment item → document section.</p>
 <tr>
 <td>27</td>
 <td>Backup / restore</td>
-<td><code>07-operations.md</code> §2 ·
-<strong><code>14-backup-restore-upgrade.md</code></strong></td>
+<td><code>14-backup-restore-upgrade.md</code></td>
 </tr>
 <tr>
 <td>28</td>
@@ -533,7 +577,7 @@ covered; the index below maps assignment item → document section.</p>
 </tr>
 <tr>
 <td>29</td>
-<td>Scalability risks</td>
+<td>Scalability</td>
 <td><code>07-operations.md</code> §4</td>
 </tr>
 <tr>
@@ -548,31 +592,30 @@ covered; the index below maps assignment item → document section.</p>
 </tr>
 <tr>
 <td>+</td>
-<td>Backup, restore, migration &amp; upgrade</td>
-<td><code>14-backup-restore-upgrade.md</code></td>
+<td>Decision register (all decisions)</td>
+<td><code>09-decision-register.md</code></td>
+</tr>
+<tr>
+<td>+</td>
+<td>Findings (gaps, risks, inconsistencies)</td>
+<td><code>10-findings.md</code></td>
+</tr>
+<tr>
+<td>—</td>
+<td><em>History only:</em> how the design changed</td>
+<td><code>11-…</code>, <code>12-…</code></td>
 </tr>
 </tbody>
 </table>
-<p>Revisions: <code>11-revision-single-tenant.md</code> (multi-tenant →
-single-tenant) and <code>12-revision-open-source.md</code>
-(single-tenant → open-source self-hosted). Both dated 2026-08-31; the
-second supersedes the operational half of the first.</p>
-<p>Cross-cutting: <code>09-decision-register.md</code> lists every
-<strong>Decision / Reason / Trade-off</strong> in one table.
-<code>10-findings.md</code> lists gaps, inconsistencies, security risks
-and scalability problems found while analysing the brief and the two
-existing repositories.</p>
 <hr />
 <h2 id="1-product-vision">1. Product vision</h2>
 <p>SplashTrack is an <strong>open-source, self-hosted</strong> web
-application for organisations that teach, assess and certify people. It
-ships as a Docker image that any organisation downloads and runs on its
-own infrastructure (<code>03-deployment-model.md</code>) — starting with
-<strong>swim schools</strong> (the existing <code>SplashTrack</code>
-repository is explicitly <em>&quot;a custom solution for swim schools&quot;</em>,
-and the name, the skills/exam model and the poolside workflows all
-follow from that).</p>
-<p>The product thesis is a single sentence:</p>
+application for organisations that teach, assess and certify swimming.
+It ships as a Docker image; each organisation runs its own independent
+instance on infrastructure it owns and controls
+(<code>03-deployment-model.md</code>).</p>
+<p>The product thesis is one sentence, and it is the constraint the rest
+of the design is shaped around:</p>
 <blockquote>
 <p><strong>An instructor standing at the poolside with wet hands should
 be able to register attendance and sign off a skill for a whole group in
@@ -580,130 +623,133 @@ under thirty seconds, on a tablet, without training — and the
 organisation behind them should get a compliant, auditable record of
 everything that happened.</strong></p>
 </blockquote>
-<p>Everything else in this design serves that sentence. The management
-depth (members, courses, exams, planning, CMS) exists because
-organisations need it, but it must never leak complexity into the
-operational moment.</p>
+<p>The management depth — members, courses, exams, planning, website —
+exists because organisations need it, but it must never leak complexity
+into that operational moment.</p>
 <p><strong>Secondary thesis:</strong> an organisation should be able to
 run its entire public web presence on SplashTrack. Not as a WordPress
 replacement — as a small, branded, content-managed site that shares
-identity, branding and data with the portal so that &quot;sign up for a
-course&quot; is one system, not an integration.</p>
-<h3 id="11-what-splashtrack-is-not">1.1 What SplashTrack is not</h3>
-<p>Naming the non-goals now prevents scope creep later:</p>
+identity, branding and course data with the portal, so &quot;sign up for a
+course&quot; is one system rather than an integration.</p>
+<h3 id="11-domain-scope--swim-education-first">1.1 Domain scope — swim
+education first</h3>
+<p><strong>Decision D-050 — v1 is designed for the swimming-lesson
+domain, not for a generic education platform.</strong></p>
+<p>Vocabulary, default skill catalogues, exam concepts (diplomas), group
+structures and the poolside workflows are all modelled on swim schools.
+Where a concept is genuinely generic — <code>Person</code>,
+<code>Group</code>, <code>Course</code>, <code>Skill</code>,
+<code>Enrolment</code> — it is named generically, so a future adjacent
+domain is not blocked. But no abstraction is introduced <em>now</em> for
+a customer that does not exist.</p>
+<p><strong>Reason.</strong> A generic platform built before a second
+domain exists is speculation, and it is what makes products vague and
+slow. The brief&#39;s KISS requirement points the same way.
+<strong>Trade-off.</strong> Adapting to a materially different domain
+later will require real work rather than configuration. Accepted
+deliberately: extensibility is preserved through clean module boundaries
+and generic core entities, not through premature abstraction.</p>
+<h3 id="12-what-splashtrack-is-not">1.2 What SplashTrack is not</h3>
 <ul>
-<li>Not a general-purpose CMS. No plugins, no page builder, no themes
+<li>Not a general-purpose CMS. No plugins, no page builder, no theme
 marketplace.</li>
 <li>Not an LMS. No e-learning content, no video hosting, no SCORM.</li>
-<li>Not a payment/invoicing platform in v1. Financial data is the single
-largest regulatory and complexity multiplier; see
-<code>08-open-decisions.md</code> OD-4.</li>
+<li>Not a payment or invoicing platform in v1 (OD-4).</li>
 <li>Not an HR system. Instructors are people with roles, not employees
-with contracts and payroll.</li>
-<li>Not offline-first as a v1 guarantee — but the attendance workflow is
-designed so that adding offline tolerance later does not require
-re-architecture (see <code>04-ux.md</code> §4.1).</li>
+with payroll.</li>
+<li>Not a hosted service. We publish software; we operate nothing
+(OD-14).</li>
+<li>Not offline-first as a v1 guarantee — but attendance is designed so
+offline tolerance is an addition rather than a rewrite (§3.2,
+P-02).</li>
 </ul>
 <hr />
-<h2 id="2-starting-position--analysis-of-the-existing-repositories">2.
-Starting position — analysis of the existing repositories</h2>
-<p>This design is not greenfield. Two repositories exist and were
-analysed before any decision below was taken.</p>
-<h3 id="21-jackldamwebapptemplate-typescript-updated-2026-08-10">2.1
-<code>Jackldam/WebAppTemplate</code> (TypeScript, updated
-2026-08-10)</h3>
-<p>A deliberately extracted, <strong>mature</strong> multi-tenant
-foundation. Not a scaffold. SplashTrack runs it single-tenant, which
-<em>removes</em> work rather than adding it: the tenancy machinery is
-dropped, everything else is reused.</p>
-<ul>
-<li><strong>~35 Prisma models</strong>, 30 ADRs, an 862-line
-authoritative <code>Architecture.md</code>, and focused docs for
-security, privacy, database, API, branding, consent.</li>
-<li>Stack: Next.js App Router on Node, PostgreSQL, Prisma, Better Auth,
+<h2 id="2-starting-position">2. Starting position</h2>
+<p>Two repositories were analysed before any decision was taken.</p>
+<h3 id="21-jackldamwebapptemplate--the-technical-base">2.1
+<code>Jackldam/WebAppTemplate</code> — the technical base</h3>
+<p>A mature, deliberately extracted foundation: ~35 Prisma models, 30
+ADRs, an 862-line authoritative <code>Architecture.md</code>, plus
+focused security, privacy, database, API and branding documents.</p>
+<p>Stack: Next.js App Router on Node, PostgreSQL, Prisma, Better Auth,
 Bootstrap themed via CSS custom properties, next-intl (NL + EN), Docker
-Compose, Playwright + Vitest, pino logging.</li>
-<li>Already implements, working: <code>Person</code> /
-<code>UserAccount</code> separation, org membership, roles + permissions
-+ access groups + organisational units, platform vs organisation
-branding (<code>PlatformSettings</code>,
-<code>OrganizationBranding</code>, <code>UploadedAsset</code>), a
-custom-pages CMS (<code>CustomPage</code>, ADR-015/029), consent records
-(ADR-014/023), audit events, API credentials with scopes, MFA, passkeys,
-Microsoft Entra sign-in, email templates, maintenance jobs, rate-limit
-counters, GDPR person-erasure.</li>
-<li>CI already runs format, lint, typecheck, seed smoke-test, unit
-tests, build, Playwright E2E, <strong>and a
-migrate-on-populated-database job</strong> that replays this PR&#39;s
-migrations against a database populated at the base commit.</li>
-</ul>
-<p><strong>Assessment: this is the single most valuable asset in the
-project.</strong> It answers, with tested code, roughly 70% of the
-assignment&#39;s non-domain requirements — the exact 70% that is tedious,
-security-critical and easy to get wrong.</p>
-<p>Quality signal worth recording: the schema comments document
-<em>real</em> incidents.
-<code>OrganizationBranding.updatedByPersonId</code> carries a long
-comment explaining that a <code>Restrict</code> foreign key once caused
-a GDPR Article 17 erasure to roll back entirely, and why the column is
-now <code>SetNull</code> as defence in depth. That is a codebase that
-has been operated, not just written.</p>
-<h3 id="22-jackldamsplashtrack-typescript-updated-2026-07-13">2.2
-<code>Jackldam/SplashTrack</code> (TypeScript, updated 2026-07-13)</h3>
-<p>An <strong>early prototype</strong>, roughly one order of magnitude
-less developed.</p>
-<ul>
-<li>12 Prisma models, ~102 TypeScript files, dependencies limited to
-Next, React, Better Auth, Prisma, Zod.</li>
-<li>Models: <code>User</code>, <code>Session</code>,
-<code>Account</code>, <code>Verification</code>,
-<code>Organization</code>, <code>OrganizationWelcomePage</code>,
-<code>Student</code>, <code>SwimGroup</code>,
-<code>GroupMembership</code>, <code>OrganizationMember</code>,
-<code>OrganizationMemberCapability</code>, <code>AuditLog</code>.</li>
-<li>Confirms the domain: swim groups, students, per-org welcome page,
-capability-based org membership.</li>
-</ul>
+Compose, Vitest + Playwright, pino.</p>
+<p>Already working: <code>Person</code> / <code>UserAccount</code>
+separation, roles, permissions, access groups, organisational units,
+branding with uploaded assets, a custom-pages CMS, consent records,
+audit events, API credentials, MFA, passkeys, Microsoft Entra sign-in
+with <strong>its configuration stored encrypted in the database and
+edited in-app</strong>, email templates, maintenance jobs, rate
+limiting, GDPR person-erasure.</p>
+<p>CI already runs format, lint, typecheck, seed smoke-test, unit and
+integration tests, Playwright E2E, container build, <strong>and a
+migration-against-populated- database job</strong>.</p>
+<p><strong>Assessment: the single most valuable asset in the
+project.</strong> It answers, with tested code, most of the non-domain
+requirements — the tedious, security-critical part that is easy to get
+wrong.</p>
+<p><strong>How it is adopted (D-056).</strong> The template is the
+implementation foundation, and its reusable parts are retained where
+applicable: security and authentication primitives, the authorization
+framework, GDPR tooling, audit infrastructure, branding and CMS, the
+testing setup and the operational components.</p>
+<p>Its <strong>multi-tenant-specific</strong> parts are a different
+matter. Tenant models, middleware, authorization paths, schema elements
+and any other code that has no purpose in a single-instance architecture
+are <strong>identified and actively removed during extraction</strong> —
+not carried along unused. Nothing is preserved merely because it already
+exists.</p>
+<p>Removal is <strong>incremental and covered by tests</strong>, so that
+reusable functionality is not broken on the way out. The objective is a
+smaller attack surface, less complexity and less maintenance debt —
+dormant security code is worse than absent security code, because it
+suggests an enforcement that is not happening.</p>
+<p>Quality signal: the schema comments document real incidents. One
+foreign-key comment explains that a <code>Restrict</code> constraint
+once caused a GDPR Article 17 erasure to roll back entirely, and why the
+column is now <code>SetNull</code> as defence in depth. That is code
+that has been operated, not merely written.</p>
+<h3 id="22-jackldamsplashtrack--the-domain-reference">2.2
+<code>Jackldam/SplashTrack</code> — the domain reference</h3>
+<p>An early prototype: 12 Prisma models, ~102 TypeScript files. Models
+include <code>User</code>, <code>Organization</code>,
+<code>OrganizationWelcomePage</code>, <code>Student</code>,
+<code>SwimGroup</code>, <code>GroupMembership</code>,
+<code>OrganizationMember</code>,
+<code>OrganizationMemberCapability</code>, <code>AuditLog</code>.</p>
 <p><strong>Assessment: valuable as domain evidence, not as a
 foundation.</strong> It has no
-<code>Person</code>/<code>UserAccount</code> split (the assignment
-explicitly requires one), no branding system, no CMS, no API layer, no
-consent or retention model, and no organisational scoping primitive.</p>
-<h3 id="23-the-first-and-most-consequential-decision">2.3 The first and
-most consequential decision</h3>
-<p><strong>Decision D-001 — Build SplashTrack v2 from
-<code>WebAppTemplate</code>; port the swim domain as concepts, not as
-code.</strong></p>
-<p><strong>Reason.</strong> The assignment&#39;s own priorities — security
-first, GDPR by design, privacy by default, least privilege,
-auditability, minimal code, modular design — are precisely the
-properties the template already has and the prototype lacks. Rebuilding
-those from the prototype would mean re-deriving
-<code>Person</code>/<code>UserAccount</code>, org scoping, RBAC,
-branding, consent and audit from scratch, which contradicts
-<em>&quot;minimale hoeveelheid code&quot;</em>. Meanwhile the prototype&#39;s
-genuinely valuable output is knowledge — that the domain needs swim
-groups, that org members carry capabilities, that orgs want a welcome
-page — and knowledge ports for free.</p>
-<p><strong>Trade-off.</strong> The existing SplashTrack code and its
-migration history are discarded, including work someone spent real time
-on. Any live prototype data requires a one-time export/import rather
-than a migration chain. We accept this because the prototype has no
-production users to protect (to be confirmed — see
-<code>08-open-decisions.md</code> OD-1), and because carrying its schema
-forward would import the exact technical debt the brief warns
-against.</p>
-<p><strong>Explicitly rejected alternative:</strong> evolving the
-prototype and back-porting template features. Rejected because it
-inverts the effort — it is far cheaper to add ~10 domain models to a
-hardened foundation than to add a hardened foundation to ~10 domain
-models.</p>
+<code>Person</code>/<code>UserAccount</code> split (which the brief
+explicitly requires), no branding system, no CMS, no API layer, and no
+consent or retention model.</p>
+<h3 id="23-d-001--build-from-the-template-port-the-domain-as-concepts">2.3
+D-001 — build from the template, port the domain as concepts</h3>
+<p><strong>Decision D-001 (approved) — <code>WebAppTemplate</code> is
+the technical base. The existing SplashTrack repository is used as a
+<em>domain reference only</em>; its code is not carried
+forward.</strong></p>
+<p><strong>Reason.</strong> The brief&#39;s own priorities — security first,
+GDPR by design, least privilege, auditability, minimal code — are
+precisely the properties the template has and the prototype lacks.
+Re-deriving them from the prototype would contradict &quot;minimale
+hoeveelheid code&quot;. The prototype&#39;s real value is knowledge about the
+domain, and knowledge ports for free.</p>
+<p><strong>Trade-off.</strong> The prototype&#39;s code and migration
+history are not reused.</p>
+<p><strong>Condition — not yet satisfied.</strong> Whether the
+prototype&#39;s <em>migration history</em> may be discarded depends on
+whether it holds data that must be migrated. That is <strong>OD-1, and
+it is blocking</strong>: no destructive action is taken against the
+existing repository or any prototype database until Jack confirms. If
+real data exists, a one-time export/import path becomes a v1 requirement
+(R-20) rather than an assumption.</p>
 <hr />
 <h2 id="3-core-requirements">3. Core requirements</h2>
-<p>Split by the three categories the assignment demands.
-<strong>&quot;Prepare&quot;</strong> means the architecture must not need rework
-when the feature arrives; it does not mean building it now.</p>
-<h3 id="31-build-now-v1">3.1 Build now (v1)</h3>
+<p>Three categories, as the brief demands. <strong>&quot;Prepare&quot;</strong>
+means the architecture must not need rework when the feature arrives —
+not that it is built now.</p>
+<h3 id="31-build-now--v1">3.1 Build now — v1</h3>
+<p><strong>Product and domain</strong></p>
 <table>
 <thead>
 <tr>
@@ -714,122 +760,216 @@ when the feature arrives; it does not mean building it now.</p>
 <tbody>
 <tr>
 <td>R-01</td>
-<td>Ships as a self-hostable Docker image; works after one command; safe
-defaults; no default credentials</td>
+<td>Distinct <code>Person</code>, <code>StudentProfile</code> and
+<code>Membership</code> concepts; a person may exist with no login
+account and with no student profile (§5.1,
+<code>01-domain-model.md</code> §3.1)</td>
 </tr>
 <tr>
 <td>R-02</td>
-<td><code>Person</code> exists independently of
-<code>UserAccount</code>; a student may have no login</td>
+<td>Member administration: people, contact details, relationships, org
+membership</td>
 </tr>
 <tr>
 <td>R-03</td>
-<td>Authentication with MFA mandatory for privileged roles</td>
+<td>Student administration: enrolment identity, status, progress —
+<strong>not</strong> the same thing as membership</td>
 </tr>
 <tr>
 <td>R-04</td>
-<td>Scoped permission authorization (org/unit/group/course/self), deny
-by default, server-side</td>
+<td>Guardian relationships between persons, with the authority to
+consent on behalf of a minor, modelled and audited (§3.2 P-04 covers
+only the <em>portal</em>)</td>
 </tr>
 <tr>
 <td>R-05</td>
-<td>Member/people administration (the PII anchor)</td>
+<td>Groups with time-bounded membership</td>
 </tr>
 <tr>
 <td>R-06</td>
-<td>Student profiles: the swim-domain view of a Person</td>
+<td>Courses, levels and enrolment</td>
 </tr>
 <tr>
 <td>R-07</td>
-<td>Groups (<code>SwimGroup</code> successor) with membership over
-time</td>
+<td>Skill catalogue, requirements per level, append-only per-student
+progress with instructor sign-off</td>
 </tr>
 <tr>
 <td>R-08</td>
-<td>Courses / training programmes and enrolment</td>
-</tr>
-<tr>
-<td>R-09</td>
-<td>Skills catalogue, per-student progress, sign-off by an
-instructor</td>
-</tr>
-<tr>
-<td>R-10</td>
 <td>Attendance registration — the flagship operational workflow</td>
 </tr>
 <tr>
-<td>R-11</td>
-<td>Exams: sessions, candidates, examiners, results, history</td>
+<td>R-09</td>
+<td>Exams: sessions, candidates, examiners (including external),
+results, certificates</td>
 </tr>
 <tr>
-<td>R-12</td>
+<td>R-10</td>
 <td>Planning: lessons, groups, locations, instructors, resources</td>
 </tr>
 <tr>
-<td>R-13</td>
+<td>R-11</td>
 <td>Branding without code changes</td>
 </tr>
 <tr>
-<td>R-14</td>
-<td>Simple public website / CMS per organisation</td>
-</tr>
-<tr>
-<td>R-15</td>
-<td>Audit logging of security- and privacy-relevant events</td>
-</tr>
-<tr>
-<td>R-16</td>
-<td>GDPR rights: access, rectification, erasure, export</td>
-</tr>
-<tr>
-<td>R-17</td>
-<td>Data retention policy with automated enforcement</td>
-</tr>
-<tr>
-<td>R-18</td>
-<td>DEV and UAT environments; the same tag publishes the signed public
-image</td>
-</tr>
-<tr>
-<td>R-19</td>
-<td>CI blocking merges on failed tests or security checks</td>
+<td>R-12</td>
+<td>Public website / simple CMS, sharing branding and the public course
+catalogue</td>
 </tr>
 </tbody>
 </table>
-<h3 id="32-architecturally-prepare-not-built-in-v1">3.2 Architecturally
-prepare (not built in v1)</h3>
+<p><strong>Platform, security and operability — all v1, none
+optional</strong></p>
 <table>
 <thead>
 <tr>
 <th>ID</th>
 <th>Requirement</th>
-<th>Preparation required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R-13</td>
+<td>Authentication with MFA mandatory for administrator roles</td>
+</tr>
+<tr>
+<td>R-14</td>
+<td>Scoped permission authorization (<code>ORGANIZATION</code> /
+<code>UNIT</code> / <code>GROUP</code> / <code>COURSE</code> /
+<code>EXAM_SESSION</code> / <code>SELF</code> / <code>RELATED</code>),
+deny by default, enforced server-side
+(<code>02-security-privacy.md</code> §2.1–2.2)</td>
+</tr>
+<tr>
+<td>R-15</td>
+<td><strong>Configurable OAuth 2.0 / OIDC identity providers</strong>
+(Microsoft Entra, Google, Keycloak, Okta, generic), administered in-app
+(D-035)</td>
+</tr>
+<tr>
+<td>R-16</td>
+<td><strong>First-run setup wizard</strong> — organisation, first
+administrator, forced MFA, optional restore (D-039)</td>
+</tr>
+<tr>
+<td>R-17</td>
+<td><strong>In-app configuration</strong> — a database-backed settings
+registry is the home of all configuration. An application-owned
+environment variable is permitted <strong>only</strong> when its value
+must be known before the database can be read, or when it determines
+where persistent state lives; adding one requires an ADR justifying why
+it cannot be database-backed. <strong>No numeric maximum is
+imposed.</strong> Standard runtime/platform variables (<code>TZ</code>,
+<code>NODE_ENV</code>, proxy settings, custom CA/trust-store paths,
+container runtime settings) are not SplashTrack application
+configuration and are not counted. No container restart for a runtime
+setting (D-036, D-037, D-038)</td>
+</tr>
+<tr>
+<td>R-18</td>
+<td><strong>Encrypted backup and restore</strong> — the Recovery Kit:
+encrypted archive plus a printable recovery token (D-040)</td>
+</tr>
+<tr>
+<td>R-19</td>
+<td><strong>Recovery and break-glass</strong> — host-level CLI for
+lockout, MFA reset, settings reset; all audited (<code>13-…</code>
+§7)</td>
+</tr>
+<tr>
+<td>R-20</td>
+<td><strong>Migrations and upgrades</strong> — automatic forward-only
+migration on start, automatic pre-migration backup, restore-then-migrate
+so an old backup runs on a new version (D-043 – D-048)</td>
+</tr>
+<tr>
+<td>R-21</td>
+<td><strong>Diagnostics page</strong> — effective configuration, value
+provenance, connectivity, migration state, backup age, version and
+advisory status; safe to paste in a public issue</td>
+</tr>
+<tr>
+<td>R-22</td>
+<td><strong>Secure release artifacts</strong> — signed images, SBOM,
+provenance, pinned dependencies, tag-only release workflow (F-18)</td>
+</tr>
+<tr>
+<td>R-23</td>
+<td>Audit logging of security-, privacy- and domain-significant events,
+readable by the organisation</td>
+</tr>
+<tr>
+<td>R-24</td>
+<td>GDPR rights: access, rectification, erasure, export — operated by
+the organisation itself, which is the controller (D-064)</td>
+</tr>
+<tr>
+<td>R-25</td>
+<td><strong>Policy-driven</strong> retention and erasure: per data class
+a purpose, lawful basis, trigger and expiry action (<code>DELETE</code>
+/ <code>ANONYMISE</code> / <code>REVIEW</code>), automated and
+dry-runnable (D-065, D-066)</td>
+</tr>
+<tr>
+<td>R-26</td>
+<td>Public surface cannot enumerate or expose any person, student,
+member, group or other private record (§3.4)</td>
+</tr>
+<tr>
+<td>R-27</td>
+<td>DEV and UAT environments; the same tag publishes the public
+image</td>
+</tr>
+<tr>
+<td>R-28</td>
+<td>CI blocking merges on failed tests, security checks, or a broken
+<strong>restore-from-every-supported-release</strong> matrix — every
+release at or above <code>minimumRestorableVersion</code> (D-047,
+D-048)</td>
+</tr>
+<tr>
+<td>R-29</td>
+<td><em>Conditional on OD-1:</em> one-time import path from the existing
+prototype</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-architecturally-prepare--not-built-in-v1">3.2 Architecturally
+prepare — not built in v1</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Preparation</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>P-01</td>
 <td>Public REST API for integrations</td>
-<td>Route handlers stay thin; services are the shared layer;
-<code>/api/v1</code> versioning and API credentials already exist in the
-template</td>
+<td>Route handlers stay thin; application services are the shared layer;
+<code>/api/v1</code> versioning and scoped API credentials already
+exist</td>
 </tr>
 <tr>
 <td>P-02</td>
 <td>Offline-tolerant attendance</td>
-<td>Attendance writes modelled as idempotent, client-generated-id
-events</td>
+<td>Attendance writes are idempotent events carrying a client-generated
+id</td>
 </tr>
 <tr>
 <td>P-03</td>
 <td>Payments / invoicing</td>
-<td>Never couple enrolment to a payment state field; keep a seam</td>
+<td>Enrolment never grows a payment-state field; a seam is kept
+(OD-4)</td>
 </tr>
 <tr>
 <td>P-04</td>
-<td>Parent/guardian portal</td>
-<td><code>Person</code>↔︎<code>Person</code> relationship table exists
-from day one</td>
+<td>Guardian <strong>portal</strong></td>
+<td>The relationship and consent authority are built in v1 (R-04); only
+the login surface and its <code>RELATED</code> scope axis are deferred
+(OD-5)</td>
 </tr>
 <tr>
 <td>P-05</td>
@@ -838,84 +978,114 @@ from day one</td>
 </tr>
 <tr>
 <td>P-06</td>
-<td>Notifications (email/push)</td>
-<td>Template&#39;s notification + email-template modules stay in place</td>
+<td>Notifications beyond transactional email</td>
+<td>Template&#39;s notification module stays in place</td>
 </tr>
 <tr>
 <td>P-07</td>
 <td>Reporting / analytics</td>
-<td>Audit and attendance are append-only and queryable</td>
+<td>Audit, attendance and progress are append-only and queryable</td>
 </tr>
 <tr>
 <td>P-08</td>
-<td>Horizontal scaling</td>
+<td>Larger single instances</td>
 <td>Stateless app processes; no in-process session or cache state</td>
+</tr>
+<tr>
+<td>P-09</td>
+<td>Portable certificates between organisations</td>
+<td>Certificates are immutable numbered records, signable later
+(OD-12)</td>
 </tr>
 </tbody>
 </table>
 <h3 id="33-deliberately-deferred">3.3 Deliberately deferred</h3>
-<p>Waiting lists; resource/inventory management; shift planning for
-staff; financial administration; mobile native apps; SSO per
-organisation (the template has Entra for the platform, per-tenant IdP is
-a later ADR); e-learning content; a public API marketplace; SCIM
-provisioning.</p>
+<p>Waiting lists; resource/inventory management; staff shift planning;
+financial administration; native mobile apps; e-learning content; SCIM
+provisioning; a hosted &quot;SplashTrack Cloud&quot; (OD-14); any cross-instance
+data path.</p>
+<p><strong>Note:</strong> configurable SSO/OIDC was previously listed
+here. It is <strong>not</strong> deferred — it is R-15, in v1.</p>
+<h3 id="34-the-anonymous-access-rule">3.4 The anonymous-access rule</h3>
+<p><strong>Decision D-051 — The public surface may not read any person,
+student, member, group, attendance, progress or exam record, and must
+expose no endpoint from which their existence can be
+inferred.</strong></p>
+<p>Concretely: no person or membership queries from
+<code>(public)</code>; no enumerable identifiers; opaque non-sequential
+ids everywhere; uniform responses on public forms so a submitted email
+cannot be confirmed or denied; public forms write to an
+<code>Inquiry</code> table, never to <code>Person</code>; and rate
+limiting on every public write. Publishing anything person-derived (an
+instructor page, a results list) requires an explicit opt-in that copies
+approved fields into a published content record.</p>
+<p><strong>Reason.</strong> The worst plausible incident for this
+product is a public page exposing data about children. Making it
+structurally impossible is worth more than any amount of careful coding
+(<code>03-deployment-model.md</code> §5.1). <strong>Trade-off.</strong>
+Some naturally public-feeling features need a deliberate publishing
+step. That friction is exactly where consent belongs.</p>
 <hr />
 <h2 id="4-non-functional-requirements">4. Non-functional
 requirements</h2>
+<p><strong>Scope note.</strong> SplashTrack is software that
+organisations run themselves. We therefore state <strong>software
+targets</strong> (what the application must achieve on a reference
+deployment) and <strong>operator guidance</strong> (what the
+organisation is responsible for). <em>We cannot and do not offer an
+infrastructure SLA.</em></p>
+<h3 id="41-software-targets--verified-in-ci-on-the-reference-deployment">4.1
+Software targets — verified in CI on the reference deployment</h3>
 <table>
 <thead>
 <tr>
 <th>Area</th>
 <th>Target</th>
-<th>How it is verified</th>
+<th>Verified by</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Attendance write latency</td>
-<td>p95 &lt; 300 ms server-side for a full group</td>
-<td>Load test in CI on a seeded 30-student group</td>
+<td>p95 &lt; 300 ms server-side for a group of 30</td>
+<td>Load test in CI against a seeded instance</td>
 </tr>
 <tr>
-<td>Page interactive (portal, 4G tablet)</td>
+<td>Group skill matrix (30 × 40)</td>
+<td>p95 &lt; 500 ms, no N+1</td>
+<td>Query-count assertion in CI</td>
+</tr>
+<tr>
+<td>Page interactive, portal on a 4G tablet</td>
 <td>p95 &lt; 2.5 s</td>
 <td>Playwright trace budget</td>
 </tr>
 <tr>
-<td>Availability (PROD, once live)</td>
-<td>99.5% monthly</td>
-<td>Uptime probe on <code>/api/ready</code></td>
-</tr>
-<tr>
-<td>RPO / RTO</td>
-<td>RPO ≤ 24 h, RTO ≤ 4 h</td>
-<td>Quarterly restore drill (<code>07-operations.md</code> §2)</td>
-</tr>
-<tr>
-<td>Concurrent orgs</td>
-<td>100 orgs / 50k persons on one Postgres instance</td>
-<td>Seeded volume test before PROD</td>
+<td>Cold start to serving</td>
+<td>&lt; 60 s including migrations</td>
+<td>CI container test</td>
 </tr>
 <tr>
 <td>Accessibility</td>
-<td>WCAG 2.2 AA on portal + public site</td>
-<td>axe checks in E2E, contrast validated against org brand colours</td>
+<td>WCAG 2.2 AA, including against configured brand colours</td>
+<td>axe in E2E; contrast validated at save time</td>
 </tr>
 <tr>
 <td>Browser support</td>
-<td>Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari is a
-first-class target</td>
+<td>Last 2 versions of Chrome/Edge/Safari/Firefox; iPadOS Safari
+first-class</td>
 <td>Playwright matrix</td>
 </tr>
 <tr>
 <td>Localisation</td>
 <td>NL default, EN available; no hardcoded UI strings</td>
-<td>Lint rule + missing-key check in CI</td>
+<td>Lint rule + missing-key check</td>
 </tr>
 <tr>
-<td>Test coverage</td>
-<td>Every vertical slice ships data model → service → UI → tests</td>
-<td>Definition of Done, enforced in review</td>
+<td>Restore from every supported release (≥
+<code>minimumRestorableVersion</code>)</td>
+<td>Succeeds and migrates forward</td>
+<td>Restore matrix job (D-047, D-048)</td>
 </tr>
 <tr>
 <td>Dependency risk</td>
@@ -925,121 +1095,230 @@ first-class target</td>
 <tr>
 <td>Secret exposure</td>
 <td>Zero secrets in the repository</td>
-<td>Secret scanning gate, push protection on</td>
+<td>Secret scanning + push protection</td>
+</tr>
+<tr>
+<td>Resource footprint</td>
+<td>Runs within 1 vCPU / 1 GB RAM for a small organisation</td>
+<td>Documented and measured on the reference deployment</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Deliberate non-target:</strong> SplashTrack does not aim for
-sub-second global latency or multi-region deployment. Its users are
-geographically concentrated per organisation; a single well-placed
-region is correct until proven otherwise.</p>
+<h3 id="42-per-instance-capacity">4.2 Per-instance capacity</h3>
+<p><strong>One instance serves one organisation.</strong> The design
+target is a single organisation of realistic size:</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Design target</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Persons per instance</td>
+<td>10,000</td>
+<td>Comfortably beyond a large swim school</td>
+</tr>
+<tr>
+<td>Concurrent users</td>
+<td>100</td>
+<td>Instructors during peak lesson blocks</td>
+</tr>
+<tr>
+<td>Sessions per year</td>
+<td>~50,000 attendance-bearing sessions</td>
+<td>Drives the largest tables</td>
+</tr>
+<tr>
+<td>Retained history</td>
+<td>10 years of exam results, 24 months of attendance detail</td>
+<td>Retention doubles as a growth control</td>
+</tr>
+</tbody>
+</table>
+<p>Beyond these numbers the response is measurement, not architecture:
+index tuning, a materialised progress summary (D-005), table
+partitioning for audit and attendance. Nothing in the design requires a
+second database, a cache server or a message broker at this scale
+(D-020).</p>
+<p><strong>Deliberately not a requirement:</strong> any aggregate figure
+across organisations. Instances are independent; &quot;total persons across
+all deployments&quot; is not a quantity this system has.</p>
+<h3 id="43-availability-rpo-and-rto--operator-guidance">4.3
+Availability, RPO and RTO — operator guidance</h3>
+<p>These depend on hardware, network and operator practice that we do
+not control. They are therefore stated as <strong>recommended targets
+with the mechanisms we ship to achieve them</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>Recommended target</th>
+<th>What we ship to make it achievable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Availability</td>
+<td>99.5% monthly</td>
+<td>Stateless app, health and readiness endpoints, fast start, no manual
+migration step</td>
+</tr>
+<tr>
+<td>RPO</td>
+<td><strong>≤ the configured backup interval; ≤ 24 h with the shipped
+default</strong></td>
+<td>Scheduled encrypted backups; backup-age warning on the dashboard
+(D-041). <em>Sub-hour RPO requires Postgres WAL archiving / PITR, which
+the operator configures at database level — we neither ship nor test it,
+and therefore do not claim it</em></td>
+</tr>
+<tr>
+<td>RTO</td>
+<td>≤ 4 h</td>
+<td>One-command redeploy; restore in the setup wizard; documented
+drill</td>
+</tr>
+<tr>
+<td>Verified recoverability</td>
+<td>Quarterly restore drill</td>
+<td>Shipped <code>restore</code> command; documentation stating a
+never-tested backup is a hypothesis</td>
+</tr>
+</tbody>
+</table>
+<p>The documentation must state plainly that meeting these is the
+organisation&#39;s responsibility, and must not imply we monitor or
+guarantee anything.</p>
 <hr />
 <h2 id="5-user-types">5. User types</h2>
-<p>The assignment&#39;s most important structural rule is that <strong>a
-person is not an account</strong>. These are two different tables, two
-different lifecycles, and two different privacy postures. The user types
-below are therefore expressed as <em>roles a Person may hold</em>, not
-as account types.</p>
+<p>The structural rule underneath all of them: <strong>a person is not
+an account, and a member is not a student.</strong> These are three
+distinct concepts with three lifecycles (<code>01-domain-model.md</code>
+§3.1).</p>
 <table>
 <thead>
 <tr>
 <th>Type</th>
 <th>Has login?</th>
 <th>Primary need</th>
-<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Student / member</strong></td>
-<td>Usually not (children); optionally yes (adults)</td>
+<td><strong>Student</strong></td>
+<td>Usually not — most are children</td>
 <td>Be registered, progress, be assessed</td>
-<td>The dominant population. Most have <strong>no account at
-all</strong> — they exist only as administrative records</td>
+</tr>
+<tr>
+<td><strong>Member</strong></td>
+<td>Optional</td>
+<td>Belong to the organisation; may or may not also be a student</td>
 </tr>
 <tr>
 <td><strong>Parent / guardian</strong></td>
-<td>Optional, v2</td>
-<td>See their child&#39;s progress and attendance</td>
-<td>Modelled as a <code>PersonRelationship</code> from day one (P-04),
-portal deferred</td>
+<td>Optional; portal deferred (P-04)</td>
+<td>Consent on behalf of a minor; later, view their child&#39;s
+progress</td>
 </tr>
 <tr>
-<td><strong>Instructor / teacher</strong></td>
+<td><strong>Instructor</strong></td>
 <td>Yes</td>
-<td>Register attendance, sign off skills, see their groups</td>
-<td>The performance-critical user. Optimise for them</td>
+<td>Register attendance, sign off skills, see their own groups.
+<strong>The performance-critical user</strong></td>
 </tr>
 <tr>
 <td><strong>Examiner</strong></td>
-<td>Yes</td>
-<td>Assess exam candidates, record results</td>
-<td>Often an instructor with an extra role; sometimes external and
-temporary</td>
+<td>Yes, if they record results themselves</td>
+<td>Assess candidates and record results — possibly without being a
+member (§5.2)</td>
 </tr>
 <tr>
 <td><strong>Planner / coordinator</strong></td>
 <td>Yes</td>
-<td>Build schedules, assign instructors and locations</td>
-<td>Desktop-first user</td>
+<td>Schedules, groups, locations, instructor assignment</td>
 </tr>
 <tr>
-<td><strong>Organisation administrator</strong></td>
-<td>Yes, MFA required</td>
-<td>Manage people, roles, branding, content, policies</td>
-<td>Full control <strong>within one organisation only</strong></td>
+<td><strong>Member administrator</strong></td>
+<td>Yes</td>
+<td>People, memberships, enrolments</td>
 </tr>
 <tr>
 <td><strong>Content editor</strong></td>
 <td>Yes</td>
-<td>Maintain the public website</td>
-<td>Deliberately separable from org admin (least privilege)</td>
+<td>Public website and branding. <strong>No access to person
+data</strong></td>
 </tr>
 <tr>
-<td><strong>Platform super administrator</strong></td>
+<td><strong>Instance administrator</strong></td>
 <td>Yes, MFA required</td>
-<td>Operate SplashTrack itself, create organisations</td>
-<td>Cross-organisation. The one dangerous role; every use logged at
-<code>warn</code></td>
+<td>Full control <strong>of this installation</strong>: settings,
+identity providers, backups, roles</td>
 </tr>
 <tr>
 <td><strong>Anonymous visitor</strong></td>
 <td>No</td>
-<td>Read public pages, find courses, contact the org</td>
-<td>Must never be able to enumerate persons or organisations</td>
+<td>Read public pages, find courses, contact the organisation. Can reach
+<strong>no</strong> private data (D-051)</td>
 </tr>
 <tr>
 <td><strong>API consumer</strong></td>
-<td>No (credential)</td>
-<td>Integrate</td>
-<td>Scoped API credential, not a user session (P-01)</td>
+<td>No — scoped credential</td>
+<td>Integrate (P-01)</td>
 </tr>
 <tr>
 <td><strong>Lucky (AI dev agent)</strong></td>
 <td>Not a product user</td>
-<td>Develop within DEV</td>
-<td>Has <strong>no identity in the application at all</strong> — see
-<code>06-delivery.md</code> §4</td>
+<td>Develop in DEV only; no identity in the application at all
+(<code>06-delivery.md</code> §4)</td>
 </tr>
 </tbody>
 </table>
-<h3 id="51-two-clarifications-that-change-the-model">5.1 Two
-clarifications that change the model</h3>
-<p><strong>A student is not a user type — it is a profile on a
-Person.</strong> The same human may be a student in one organisation and
-an instructor in another. Modelling &quot;student&quot; as an account type would
-make that impossible and would force duplicate PII. Consequently
-<code>StudentProfile</code> is an org-scoped table referencing
-<code>Person</code>, exactly as the template&#39;s Architecture.md §8
-prescribes for domain profiles.</p>
-<p><strong>An examiner is not necessarily a member of the
-organisation.</strong> Swim diplomas are frequently assessed by an
-external examiner who appears for one afternoon. This is a real
-requirement the brief does not state and is easy to design out of by
-accident. The model must allow an <code>ExamSession</code> to reference
-an examiner <code>Person</code> who holds a narrowly-scoped,
-time-bounded role — not full org membership. Recorded as finding
-<strong>F-03</strong> in <code>10-findings.md</code>.</p>
+<h3 id="51-three-clarifications-that-shape-the-model">5.1 Three
+clarifications that shape the model</h3>
+<p><strong>There is no platform super administrator.</strong> Earlier
+drafts carried one from the multi-tenant design. It is removed: there is
+no platform. The highest authority is the <strong>instance
+administrator</strong>, whose reach ends at their own installation.
+Other organisations run entirely independent instances with no shared
+identity, no shared data and no path between them.</p>
+<p><strong>A person may hold several roles within one instance.</strong>
+The same human can be an instructor of two groups, a planner for one
+location and the parent of a student. Their effective reach is the union
+of their scoped grants. What is <em>not</em> supported — deliberately —
+is one identity spanning organisations: a person working at two swim
+schools has two records in two independent databases, which is the
+correct privacy outcome.</p>
+<p><strong>&quot;Student&quot; is a profile, not an account type.</strong>
+<code>StudentProfile</code> references <code>Person</code>; membership
+is a third, separate thing. Conflating member administration with
+student administration would make it impossible to register a member who
+never takes lessons, or a student enrolled by a guardian who is
+themselves the member.</p>
+<h3 id="52-external-examiners">5.2 External examiners</h3>
+<p>Swim diplomas are frequently assessed by an examiner who appears for
+one afternoon and is not a member of the organisation.</p>
+<p><strong>Decision D-052 — An examiner may exist as a
+<code>Person</code> with no membership. If they log in or record results
+themselves, they receive an individual, time-bounded, minimally scoped
+account — never a shared or generic one.</strong></p>
+<p>Concretely: their own <code>UserAccount</code>, and a role assignment
+scoped to <code>EXAM_SESSION</code> — a first-class scope type (D-054),
+not a special case — carrying only <code>exams.assess</code> and
+<code>exams.results.record</code>. The grant has a mandatory expiry
+after which it lapses automatically, MFA is required as for any account
+that can write results, and every action is attributed to them by name
+in the audit trail. An <em>internal</em> examiner may instead hold
+<code>COURSE</code> scope; the difference is deliberate and visible in
+the role catalogue (<code>02-security-privacy.md</code> §2.4).</p>
+<p><strong>Reason.</strong> A shared &quot;examiner&quot; login destroys
+attribution on exactly the records that most need it — a child&#39;s diploma
+outcome. A full membership over-grants for someone present for one
+afternoon. <strong>Trade-off.</strong> Slightly more administration per
+exam day. That is the correct cost for attributable, expiring
+access.</p>
 <hr />
 <h1 id="01--functional-modules--domain-model">01 — Functional Modules
 &amp; Domain Model</h1>
@@ -1065,28 +1344,64 @@ nothing in the workload justifies it (<code>07-operations.md</code>
 <h3 id="11-module-map">1.1 Module map</h3>
 <p>Inherited from <code>WebAppTemplate</code> (already built, reused
 as-is):</p>
-<pre class="text"><code>identity            Person, UserAccount, sessions, MFA, passkeys
-access-control      Roles, permissions, access groups, assignments
-organizations       Tenants, membership, organisational units
-organization-units  Hierarchy / reach
+<pre class="text"><code>identity            Person, UserAccount, login sessions, MFA, passkeys
+access-control      Roles, permissions, scopes, access groups, assignments
+organization        The singleton organisation record, its settings and units
 audit               Append-only security &amp; privacy event trail
-consent             GDPR consent records
+consent             Consent records with legal basis and authority evidence
 pages               Custom pages CMS
-profile-fields      Org-configurable person attributes
+profile-fields      Configurable person attributes
 users               Account administration
 api-credentials     Scoped machine credentials
 email-templates     Templated transactional email
 notifications       Delivery
 maintenance         Scheduled jobs (retention, cleanup)</code></pre>
+<p><strong>Naming.</strong> The module is <code>organization</code>,
+singular, and it manages <strong>the</strong> organisation — its record,
+settings, branding and unit tree. It is not a tenant registry, and
+nothing in the active design uses the word <em>tenant</em>. Likewise the
+join table is <code>Membership</code>, not
+<code>OrganizationMembership</code>: there is only one organisation to
+be a member of.</p>
 <p>New SplashTrack domain modules (built in v1, in this order):</p>
-<pre class="text"><code>people              Domain view over Person: guardians, relationships, tags
-students            StudentProfile, enrolment state, student lifecycle
+<pre class="text"><code>people              Domain view over Person: relationships, guardians, tags
+students            StudentProfile, lifecycle, enrolment state
 groups              Group definition and membership over time
 courses             Course/programme definitions, levels, enrolment
 skills              Skill catalogue, requirements, per-student progress
-attendance          Sessions and attendance records  ← flagship
-exams               Exam sessions, candidates, examiners, results, certificates
-planning            Schedule, locations, resources, instructor assignment</code></pre>
+sessions            ScheduledSession — the shared scheduling primitive
+attendance          Attendance events against a session  ← flagship
+exams               Exam sessions, candidates, assessors, results, certificates
+planning            Schedule construction, locations, resources, assignment</code></pre>
+<h3 id="111-removing-what-single-instance-operation-does-not-need">1.1.1
+Removing what single-instance operation does not need</h3>
+<p><strong>Decision D-056 — Multi-tenant machinery inherited from the
+template is <em>removed</em>, not left dormant.</strong></p>
+<p>The template carries a tenant-scoping client extension, per-row
+tenant columns, a platform-versus-organisation settings duality, and a
+platform role and bootstrap layer. In a single-organisation installation
+none of it has a function.</p>
+<p><strong>Reason.</strong> Dormant code is not free. It is attack
+surface — a scoping extension that is bypassed everywhere gives a false
+sense of protection — plus maintenance load, since every migration and
+refactor must keep it compiling, and a source of confusion for anyone
+reading the codebase to learn how authorization actually works. Dead
+security code is worse than absent security code, because it invites the
+assumption that something is being enforced.</p>
+<p><strong>Trade-off.</strong> Extraction work up front, and a real
+divergence from the upstream template that makes future cherry-picking
+harder. Accepted: the template is a starting point, not a dependency we
+track.</p>
+<p>Removed at extraction time: the tenant-scoping extension, tenant
+columns and their composite foreign keys, <code>PlatformSettings</code>
+(merged into the organisation singleton),
+<code>PlatformRoleAssignment</code>, and the platform permission
+namespace.</p>
+<p><strong>Removal is incremental and test-covered.</strong> Each
+removal is its own change with the existing suites green before and
+after, so that reusable functionality — authentication, authorization,
+GDPR tooling, audit, branding, CMS — is not broken on the way out.
+Recorded as finding <strong>F-26</strong>.</p>
 <p>Deliberately <strong>not</strong> modules: &quot;reporting&quot; (a read
 concern satisfied by queries until proven otherwise), &quot;billing&quot;
 (deferred), &quot;website&quot; (the <code>pages</code> module plus theming
@@ -1097,20 +1412,38 @@ only</em>:</p>
 <pre class="text"><code>        planning        exams
             \            /
         attendance    skills
-              \        /
-          groups    courses
+             |          |
+          sessions   courses
               \      /
+              groups
+                 |
               students
                  |
                people
                  |
-  identity / access-control / organizations   (foundation)</code></pre>
+  identity / access-control / organization    (foundation)</code></pre>
 <p>A module may depend on modules below it, never above or sideways
 without an explicit published interface. <code>attendance</code> may ask
 <code>groups</code> who is in a group; <code>groups</code> may never ask
 <code>attendance</code> anything. Where an upward signal is needed (e.g.
 &quot;attendance was registered, update progress&quot;), it goes through a domain
 event, not a call.</p>
+<p><strong>Decision D-057 — <code>ScheduledSession</code> is owned by
+its own <code>sessions</code> module.</strong></p>
+<p>An earlier draft had <code>planning</code> writing the table and
+<code>attendance</code> reading it — &quot;one table, two owners&quot;, which
+violates this document&#39;s own isolation rule and would have been the
+first boundary to erode in practice.</p>
+<p><strong>Reason.</strong> A session is a real domain concept in its
+own right: a time, a place, a group, a status. Both
+<code>planning</code> (which creates and reschedules sessions) and
+<code>attendance</code> (which records against them) are
+<em>consumers</em> of it. Giving it an owner turns an implicit shared
+table into an explicit published service, and makes the exam module&#39;s
+future need for the same primitive a reuse rather than a duplicate.</p>
+<p><strong>Trade-off.</strong> One more module for a small table. That
+is the correct cost: module count is cheap, ownership ambiguity is
+not.</p>
 <p><strong>Decision D-003 — In-process domain events for upward/sideways
 signals.</strong> <strong>Reason.</strong> Keeps
 <code>attendance → skills</code> decoupled without a message broker.
@@ -1122,12 +1455,33 @@ without changing the publisher.</p>
 <h2 id="2-domain-model">2. Domain model</h2>
 <h3 id="21-the-identity-spine-inherited-unchanged">2.1 The identity
 spine (inherited, unchanged)</h3>
-<pre class="text"><code>Organization ──&lt; OrganizationMembership &gt;── Person ──0..1── UserAccount
-                                              │
-                                              └──&lt; RoleAssignment &gt;── Role ──&lt; RolePermission &gt;── Permission</code></pre>
+<pre class="text"><code>Organization ──&lt; Membership &gt;── Person ──0..1── UserAccount
+                                  │
+                                  └──&lt; RoleAssignment &gt;── Role ──&lt; RolePermission &gt;── Permission</code></pre>
 <ul>
-<li><code>Person</code> is the <strong>PII anchor</strong>. Name, date
-of birth, contact details live here and nowhere else.</li>
+<li><code>Person</code> is the <strong>canonical identity and
+biographical anchor</strong>: name, date of birth, contact details, and
+the identifiers by which a human is recognised.</li>
+</ul>
+<p><strong>Decision D-058 — <code>Person</code> is the canonical
+identity record, not the only place personal data may live.
+Purpose-specific personal data stays in the module that owns its
+purpose.</strong></p>
+<p>Medical and pastoral remarks belong to <code>students</code>, not to
+<code>Person</code>. Attendance belongs to <code>attendance</code>. Exam
+outcomes belong to <code>exams</code>.</p>
+<p><strong>Reason.</strong> Data protection is organised around
+<em>purpose</em>, not around tables. Health data has a different lawful
+basis, a different permission, different retention and different
+encryption from a name and a date of birth; storing it on
+<code>Person</code> would drag all of that onto the identity record and
+make least-privilege impossible — everyone who may see a class list
+would inherit access to medical notes. <strong>Trade-off.</strong>
+Personal data is spread across modules, so erasure and export must
+consult a registry of contributing modules rather than one table. That
+registry already exists and is test-enforced (D-014); this decision
+makes its necessity explicit rather than accidental.</p>
+<ul>
 <li><code>UserAccount</code> holds <strong>no credentials</strong> —
 Better Auth owns those. It is the optional bridge between a human and a
 login.</li>
@@ -1136,21 +1490,23 @@ login.</li>
 <code>resolveReach()</code> (<code>02-security-privacy.md</code>
 §2.3).</li>
 </ul>
-<p><strong>Decision D-004 (revised) — One <code>Person</code> per human
-per instance; profiles are domain views on that Person.</strong>
-<strong>Reason.</strong> Single-tenancy (D-012 revised) means an
-instance holds exactly one organisation, so the earlier
-cross-organisation <code>Person</code> — and the isolation hole it
-created — is gone. Within the instance, one human is still one
-<code>Person</code> row so that rectification and erasure touch one
-place. A human who attends two different swim schools is simply two
-unrelated records in two unrelated databases, which is the correct
-privacy outcome, not a duplication problem. <strong>Trade-off.</strong>
-No cross-organisation continuity: an instructor working at two schools
-maintains two profiles and two logins. Accepted — the alternative
-(shared identity across customers) would recreate a cross-customer data
-path, which is precisely what the deployment model exists to
-prevent.</p>
+<p><strong>Decision D-004 — One <code>Person</code> per human per
+installation. <code>Person</code>, <code>Membership</code> and
+<code>StudentProfile</code> are three distinct concepts.</strong></p>
+<p>An installation holds exactly one organisation, so one human is one
+<code>Person</code> row — rectification and erasure then touch one
+place. That person may hold several roles simultaneously (instructor,
+planner, parent); their reach is the union of their scoped grants.</p>
+<p><strong>Reason.</strong> Separating the three concepts is what makes
+the real cases representable: a member who never takes lessons, a
+student enrolled by a guardian who is the member, an instructor who is
+also a parent, and an examiner who is neither member nor student
+(D-052).</p>
+<p><strong>Trade-off.</strong> No continuity between organisations:
+someone working at two swim schools has two records in two independent
+databases. That is the correct privacy outcome — shared identity across
+installations would recreate exactly the cross-organisation data path
+the distribution model exists to prevent.</p>
 <h3 id="22-the-swim-domain">2.2 The swim domain</h3>
 <pre class="text"><code>Organization
   ├──&lt; Location
@@ -1211,7 +1567,74 @@ before.</p>
 <code>id</code>, <code>id</code>, <code>createdAt</code>,
 <code>updatedAt</code> are implied on every entity; <code>unitId</code>
 is implied on every entity that participates in unit-scoped reach.</p>
-<h3 id="31-people-and-students">3.1 People and students</h3>
+<h3 id="31-people--three-distinct-concepts">3.1 People — three distinct
+concepts</h3>
+<p>The single most important structural rule in the domain model:
+<strong><code>Person</code>, <code>Membership</code> and
+<code>StudentProfile</code> are three different things with three
+different lifecycles.</strong> Member administration is not student
+administration.</p>
+<pre class="text"><code>Person            the human, and the only PII anchor
+  ├─ 0..1  UserAccount      optional login
+  ├─ 0..1  Membership       optional: belongs to the organisation
+  ├─ 0..1  StudentProfile   optional: takes lessons here
+  └─ N     PersonRelationship   guardian of / emergency contact for</code></pre>
+<p>Every combination is valid and every one occurs in practice:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Person</th>
+<th>Membership</th>
+<th>StudentProfile</th>
+<th>Account</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Child taking lessons</td>
+<td>✓</td>
+<td>—</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Adult member who also swims</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>optional</td>
+</tr>
+<tr>
+<td>Member who never takes lessons</td>
+<td>✓</td>
+<td>✓</td>
+<td>—</td>
+<td>optional</td>
+</tr>
+<tr>
+<td>Parent who consents for a child</td>
+<td>✓</td>
+<td>optional</td>
+<td>—</td>
+<td>later (P-04)</td>
+</tr>
+<tr>
+<td>Instructor</td>
+<td>✓</td>
+<td>✓</td>
+<td>—</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>External examiner (D-052)</td>
+<td>✓</td>
+<td>—</td>
+<td>—</td>
+<td>temporary, scoped</td>
+</tr>
+</tbody>
+</table>
 <table>
 <thead>
 <tr>
@@ -1225,26 +1648,110 @@ is implied on every entity that participates in unit-scoped reach.</p>
 <tr>
 <td><code>Person</code></td>
 <td>givenName, familyName, dateOfBirth, email?, phone?</td>
-<td>0..1 <code>UserAccount</code>, N
-<code>OrganizationMembership</code></td>
-<td><strong>Not</strong> org-scoped. The only PII anchor</td>
+<td>0..1 <code>UserAccount</code>, 0..1 <code>Membership</code>, 0..1
+<code>StudentProfile</code></td>
+<td>Canonical identity anchor (D-058). One row per human per
+installation</td>
 </tr>
 <tr>
-<td><code>PersonRelationship</code></td>
-<td>type (GUARDIAN_OF, EMERGENCY_CONTACT), fromPersonId, toPersonId</td>
-<td>Person ↔︎ Person</td>
-<td>Built in v1 (cheap); guardian portal deferred</td>
+<td><code>Membership</code></td>
+<td>memberNumber, unitId?</td>
+<td>1 <code>Person</code>, N <code>MembershipPeriod</code></td>
+<td><strong>One per person, for life.</strong> The number stays the same
+across gaps</td>
+</tr>
+<tr>
+<td><code>MembershipPeriod</code></td>
+<td>membershipId, startedAt, endedAt?, endReason?</td>
+<td>1 <code>Membership</code></td>
+<td>Belonging is a set of intervals, not a status flag</td>
 </tr>
 <tr>
 <td><code>StudentProfile</code></td>
-<td>studentNumber, status, joinedAt, leftAt?, notes?</td>
-<td>1 <code>Person</code>, N <code>Enrolment</code>, N
-<code>GroupMembership</code></td>
-<td>Org-scoped. Medical/pastoral notes are <strong>special-category
-data</strong> — see <code>02-security-privacy.md</code> §5.3</td>
+<td>studentNumber, unitId</td>
+<td>1 <code>Person</code>, N <code>StudentLifecycleEvent</code>, N
+<code>Enrolment</code>, N <code>GroupMembership</code></td>
+<td><strong>Persistent.</strong> Created once, never duplicated on
+return</td>
+</tr>
+<tr>
+<td><code>StudentLifecycleEvent</code></td>
+<td>studentProfileId, type
+(<code>JOINED</code>/<code>PAUSED</code>/<code>LEFT</code>/<code>RETURNED</code>),
+occurredAt, reason?</td>
+<td>1 <code>StudentProfile</code></td>
+<td>Append-only lifecycle history; current state is derived</td>
+</tr>
+<tr>
+<td><code>PersonRelationship</code></td>
+<td>type (<code>GUARDIAN_OF</code>, <code>EMERGENCY_CONTACT</code>),
+fromPersonId, toPersonId, validFrom, validTo?, evidence?</td>
+<td>Person ↔︎ Person</td>
+<td><strong>v1.</strong> Records the claimed authority <em>and how it
+was established</em> — see D-063</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-059 — Leaving and returning is modelled with
+periods and lifecycle events, never by creating a second profile or
+flipping a status.</strong></p>
+<p>One <code>Membership</code> per person with many
+<code>MembershipPeriod</code> rows; one persistent
+<code>StudentProfile</code> with an append-only
+<code>StudentLifecycleEvent</code> history. Returning creates a new
+period and new <code>Enrolment</code> / <code>GroupMembership</code>
+rows — it never creates a second profile.</p>
+<p><strong>Reason.</strong> A returning swimmer is the same human with
+the same history, and that history is the product&#39;s value: their skills,
+their diplomas, their previous groups. A second profile fragments it and
+duplicates PII, which then has to be merged by hand and re-erased twice.
+A status flag, meanwhile, silently destroys the answer to &quot;when were
+they a member?&quot; — which matters for contributions, insurance and
+retention. <strong>Trade-off.</strong> Current membership and current
+student status are derived rather than read from a column. A small
+derived-state helper covers it, and it is the same append-only reasoning
+used for progress and attendance (D-005).</p>
+<p><strong>Decision D-060 — Membership is never an implicit prerequisite
+for a role.</strong></p>
+<p>Authorization comes exclusively from role assignments and their
+scopes (<code>02-security-privacy.md</code> §2). An instructor, planner
+or examiner may hold a role with no <code>Membership</code> at all, and
+holding a membership grants nothing by itself.</p>
+<p><strong>Reason.</strong> Membership is an <em>administrative and
+often financial</em> relationship; authorization is a <em>security</em>
+concern. Conflating them means a volunteer instructor who is not a
+paying member cannot be given access without inventing a fake membership
+— and worse, it creates the reverse expectation that members implicitly
+have rights. If an organisation genuinely wants &quot;instructors must be
+members&quot;, that is a configurable business rule they enable, checked at
+assignment time, not an assumption baked into the model.
+<strong>Trade-off.</strong> Two things to administer where a naive model
+has one. The UI offers them together when adding a person, so the cost
+is conceptual, not clerical. | <code>PersonRelationship</code> | type
+(<code>GUARDIAN_OF</code>, <code>EMERGENCY_CONTACT</code>),
+fromPersonId, toPersonId, authority, validFrom, validTo? | Person ↔︎
+Person | <strong>v1.</strong> <code>authority</code> records whether
+this relationship may consent on behalf of the subject (R-04). Every
+change audited |</p>
+<p><strong>Decision D-053 — <code>Membership</code> and
+<code>StudentProfile</code> are separate tables, never one table with a
+flag.</strong> <strong>Reason.</strong> They have different numbering,
+different lifecycles (a member can leave while their diploma history is
+retained for ten years), different retention rules and different
+permissions. A single table with a <code>isStudent</code> flag would
+force one retention policy onto both and make &quot;member who never swims&quot;
+awkward to represent. <strong>Trade-off.</strong> Two lookups where a
+naive model has one, and administrators must understand the distinction.
+The UI hides it: adding a person offers both options.</p>
+<p><strong>Guardian authority is a v1 requirement, not just a
+relationship.</strong> Almost all data subjects here are children who
+cannot legally consent. A consent record therefore references both the
+<strong>subject</strong> person and the <strong>consenting</strong>
+person, and is only valid if a <code>GUARDIAN_OF</code> relationship
+with <code>authority = true</code> existed at the time it was given.
+That is why the relationship carries validity dates and is audited:
+consent evidence that cannot be traced to the authority behind it is not
+evidence.</p>
 <h3 id="32-teaching-structure">3.2 Teaching structure</h3>
 <table>
 <thead>
@@ -1316,8 +1823,8 @@ update</td>
 <td><code>Skill</code></td>
 <td>code, name, description, catalogueId, sequence</td>
 <td>N <code>SkillRequirement</code>, N <code>SkillProgress</code></td>
-<td>Org-defined; catalogues are copyable between orgs by a platform
-admin</td>
+<td>Defined by this organisation. A default catalogue ships with the
+seed; catalogues can be exported and imported as files</td>
 </tr>
 <tr>
 <td><code>SkillRequirement</code></td>
@@ -1354,21 +1861,46 @@ PRACTISING, ACHIEVED, REVOKED}</td>
 <code>attendance</code></td>
 </tr>
 <tr>
-<td><code>AttendanceRecord</code></td>
+<td><code>AttendanceEvent</code></td>
 <td>sessionId, studentProfileId, state, recordedByPersonId, recordedAt,
-clientEventId, note?</td>
+<code>clientEventId</code>, <code>supersedesEventId?</code>, note?</td>
 <td></td>
-<td><code>state</code> ∈ {PRESENT, ABSENT, EXCUSED, LATE}.
-<code>clientEventId</code> is a <strong>client-generated UUID</strong>
-making the write idempotent (P-02)</td>
+<td><strong>Append-only.</strong> <code>state</code> ∈ {PRESENT, ABSENT,
+EXCUSED, LATE}. A correction is a <em>new</em> event pointing at the one
+it replaces — the superseded row is never modified.
+<code>clientEventId</code> is a client-generated UUID making the write
+idempotent (P-02)</td>
+</tr>
+<tr>
+<td><em>(derived)</em> <code>AttendanceStatus</code></td>
+<td>sessionId, studentProfileId → effective state</td>
+<td></td>
+<td>The current answer per student per session: the latest event not
+superseded by another. Materialised only if measurement demands it</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-061 — Attendance is an append-only event log; a
+correction never mutates an existing row.</strong></p>
+<p>An instructor who marked a child absent and then finds them in the
+water writes a <em>new</em> event carrying
+<code>supersedesEventId</code>. The effective status is derived: the
+latest event for that student and session that nothing supersedes.</p>
+<p><strong>Reason.</strong> &quot;Append-only&quot; was previously asserted while
+the model still allowed an in-place update, which would have quietly
+destroyed exactly the history the claim promises. Attendance is evidence
+— for absence policy, for parental disputes, and occasionally for
+safeguarding. Who said a child was present, and when they changed their
+mind, is precisely what must survive. <strong>Trade-off.</strong> Reads
+need a derived-state resolution instead of a direct column, and the
+table grows with corrections. Both are cheap; a
+<code>(sessionId, studentProfileId, recordedAt)</code> index answers the
+derivation directly.</p>
 <p><strong><code>clientEventId</code> is the single most important
 forward-looking field in the schema.</strong> It costs one indexed
 column now and is what makes offline-tolerant attendance a feature
 addition rather than a rewrite. A retry, a double-tap or a replayed
-offline queue all collapse to the same row.</p>
+offline queue all collapse to the same event.</p>
 <h3 id="35-exams">3.5 Exams</h3>
 <table>
 <thead>
@@ -1389,32 +1921,47 @@ offline queue all collapse to the same row.</p>
 <tr>
 <td><code>ExamCandidate</code></td>
 <td>examSessionId, studentProfileId, status</td>
-<td>0..1 <code>ExamResult</code></td>
-<td></td>
+<td><strong>0..N</strong> <code>ExamResult</code></td>
+<td>A candidate may have several results over time: an original, a
+correction, an appeal outcome</td>
 </tr>
 <tr>
 <td><code>ExamAssessor</code></td>
 <td>examSessionId, personId, role</td>
 <td></td>
-<td>Supports the <strong>external examiner</strong> case (F-03) without
-org membership</td>
+<td>Records <strong>who assessed</strong> this session — an attribution
+fact, not an access grant. Access comes from an
+<code>EXAM_SESSION</code>-scoped role assignment (D-054). Supports the
+external examiner with no membership (D-052)</td>
 </tr>
 <tr>
 <td><code>ExamResult</code></td>
-<td>candidateId, outcome, recordedByPersonId, recordedAt, remarks?</td>
+<td>candidateId, outcome, recordedByPersonId, recordedAt,
+<code>supersedesResultId?</code>, reason?, remarks?</td>
 <td>0..1 <code>Certificate</code></td>
-<td>Append-only; a correction is a new row referencing the superseded
-one</td>
+<td><strong>Append-only.</strong> A correction is a new row pointing at
+the one it replaces. The <strong>effective result</strong> is the latest
+non-superseded row; exactly one exists per candidate at any time</td>
 </tr>
 <tr>
 <td><code>Certificate</code></td>
 <td>resultId, number, issuedAt, revokedAt?, revokeReason?</td>
 <td></td>
-<td>A diploma is a legal-ish artefact: issue and revoke, never
-delete</td>
+<td>Issued against a <em>specific</em> result. Correcting a result
+revokes the certificate and issues a new one — never edits it</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Decision D-062 — A candidate has 0..N results, not
+0..1.</strong> <strong>Reason.</strong> A single-result model forces a
+correction to overwrite the original, destroying the record of what was
+first decided and by whom — on a diploma outcome, the one thing that
+must stay reconstructable. Appeals and administrative corrections are
+normal in this domain, not exceptional. <strong>Trade-off.</strong>
+Every read resolves the effective result rather than following a single
+relation. One indexed lookup, and it is the same derivation pattern used
+for attendance (D-061) and skill progress (D-005) — one concept, not
+three.</p>
 <h3 id="36-scoping-invariant">3.6 Scoping invariant</h3>
 <p>There is no tenant column. Instead, every entity that can be
 <em>reached</em> by a scoped role resolves to a position in the
@@ -1481,115 +2028,184 @@ transaction</strong>. Partial attendance is not a valid state — an
 instructor who saves must know it either all landed or none did.</p>
 <hr />
 <h2 id="5-data-ownership">5. Data ownership</h2>
-<p>&quot;Ownership&quot; answers three questions per data class: which module may
-write it, which organisation controls it, and who is the GDPR
-controller.</p>
+<p>&quot;Ownership&quot; answers four questions per data class: which module may
+write it, who may reach it, on what lawful basis it is held, and what
+happens when that basis expires.</p>
+<p><strong>All retention below is a <em>default proposal</em>, not a
+rule we impose.</strong> Each is a <code>RetentionPolicy</code> the
+organisation confirms or changes, with <code>onExpiry</code> being
+<code>DELETE</code>, <code>ANONYMISE</code> or <code>REVIEW</code>
+(<code>02-security-privacy.md</code> §5.6, D-065).</p>
 <table>
 <thead>
 <tr>
 <th>Data class</th>
 <th>Writing module</th>
-<th>Scope</th>
-<th>GDPR role</th>
-<th>Retention default</th>
+<th>Reach</th>
+<th>Trigger</th>
+<th>Default retention</th>
+<th>On expiry</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Person PII</td>
+<td>Person identity</td>
 <td><code>identity</code></td>
 <td>Instance-wide</td>
-<td>Organisation = controller; operator = processor</td>
-<td>While any active membership + 24 months</td>
+<td>Last relationship of any kind ends (§5.1)</td>
+<td>24 months</td>
+<td><code>REVIEW</code> → delete</td>
 </tr>
 <tr>
 <td>Login credentials</td>
 <td>Better Auth</td>
 <td>Instance-wide</td>
-<td>Processor</td>
-<td>Account lifetime</td>
+<td>Account closed</td>
+<td>Immediate</td>
+<td><code>DELETE</code></td>
 </tr>
 <tr>
-<td>Student profile &amp; notes</td>
+<td>Membership periods</td>
+<td><code>people</code></td>
+<td>Unit</td>
+<td>Last period ends</td>
+<td>7 years (financial/administrative, if applicable)</td>
+<td><code>REVIEW</code></td>
+</tr>
+<tr>
+<td>Student profile</td>
 <td><code>students</code></td>
 <td>Unit</td>
-<td>Org is controller</td>
-<td>Enrolment + 24 months, then anonymise</td>
+<td>Last enrolment ends</td>
+<td>24 months</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Medical / pastoral notes</td>
 <td><code>students</code></td>
-<td>Unit, extra permission</td>
-<td>Org is controller, <strong>special category</strong></td>
-<td>Enrolment + 12 months, then hard delete</td>
+<td>Unit + <code>students.medical.read</code></td>
+<td>Last enrolment ends</td>
+<td>12 months</td>
+<td><strong><code>DELETE</code></strong> — never anonymise</td>
 </tr>
 <tr>
-<td>Attendance records</td>
+<td>Attendance events</td>
 <td><code>attendance</code></td>
 <td>Group</td>
-<td>Org is controller</td>
-<td>24 months, then aggregate + anonymise</td>
+<td>Session date</td>
+<td>24 months</td>
+<td><code>ANONYMISE</code> to aggregate</td>
 </tr>
 <tr>
 <td>Skill progress</td>
 <td><code>skills</code></td>
 <td>Group</td>
-<td>Org is controller</td>
-<td>7 years (evidence for diplomas)</td>
+<td>Achievement date</td>
+<td>7 years</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Exam results &amp; certificates</td>
 <td><code>exams</code></td>
 <td>Course / instance</td>
-<td>Org is controller</td>
-<td>10 years — a diploma must remain verifiable</td>
+<td>Certificate issue</td>
+<td>10 years <strong>only where a retention ground applies</strong></td>
+<td><code>REVIEW</code> (§5.2)</td>
+</tr>
+<tr>
+<td>Consent records</td>
+<td><code>consent</code></td>
+<td>Instance-wide</td>
+<td>Withdrawal or expiry of purpose</td>
+<td>As long as needed to demonstrate compliance</td>
+<td><code>REVIEW</code></td>
 </tr>
 <tr>
 <td>Audit events</td>
 <td><code>audit</code></td>
-<td>Instance-wide, <code>audit.read</code></td>
-<td>Organisation is controller</td>
-<td>24 months minimum, then rotate</td>
+<td><code>audit.read</code></td>
+<td>Event date</td>
+<td>24 months</td>
+<td><code>DELETE</code></td>
+</tr>
+<tr>
+<td>Inquiries (public forms)</td>
+<td><code>pages</code></td>
+<td>Instance-wide</td>
+<td>Submission</td>
+<td>6 months</td>
+<td><code>DELETE</code></td>
 </tr>
 <tr>
 <td>Public page content</td>
 <td><code>pages</code></td>
 <td>Instance-wide</td>
-<td>Org is controller</td>
-<td>Until deleted by org</td>
+<td>—</td>
+<td>Until deleted</td>
+<td>—</td>
 </tr>
 <tr>
-<td>Instance settings &amp; branding</td>
-<td><code>organizations</code></td>
-<td>Instance singleton</td>
-<td>Org is controller</td>
+<td>Organisation settings &amp; branding</td>
+<td><code>organization</code></td>
+<td>Singleton</td>
+<td>—</td>
 <td>Indefinite</td>
+<td>—</td>
 </tr>
 <tr>
 <td>Operational logs</td>
 <td><code>lib/logging</code></td>
-<td>None — <strong>no PII</strong></td>
-<td>n/a</td>
+<td>Operators — <strong>no PII</strong></td>
+<td>Write</td>
 <td>30 days</td>
+<td><code>DELETE</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>The retention conflict is real and must be surfaced, not
-hidden.</strong> Exam results are kept for 10 years, but the
-<code>Person</code> behind them may exercise the right to erasure. These
-cannot both be satisfied literally.</p>
-<p><strong>Decision D-007 — Erasure severs identity; it does not delete
-the record.</strong> <strong>Reason.</strong> Erasing a
-<code>Person</code> anonymises the person record and severs the link,
-while the <code>ExamResult</code> and <code>Certificate</code> survive
-as pseudonymised rows retaining only the certificate number and outcome.
-The organisation keeps a verifiable diploma register; the human is no
-longer identifiable from it. This is the standard reconciliation of
-Article 17 with a legal-retention basis. <strong>Trade-off.</strong> A
-revoked-diploma dispute after erasure can no longer be traced to a named
-individual. Accepted, and it must be stated in the organisation&#39;s
-privacy notice — a <strong>process</strong> obligation SplashTrack
-cannot solve in code. This is finding <strong>F-06</strong>.</p>
+<h3 id="51-people-with-no-membership-are-not-an-edge-case">5.1 People
+with no membership are not an edge case</h3>
+<p>The most common person in the database — a child taking lessons — has
+<strong>no membership at all</strong>. Neither do guardians, external
+examiners, or former students. A retention rule keyed on &quot;active
+membership&quot; would therefore miss the majority of data subjects, silently
+retaining them forever.</p>
+<p><strong>Decision D-066 — Person retention is triggered by the end of
+the person&#39;s <em>last relationship of any kind</em>, not by
+membership.</strong></p>
+<p>Relationships that hold a <code>Person</code>: an active
+<code>MembershipPeriod</code>; an active <code>StudentProfile</code>
+enrolment; a role assignment (instructor, planner, examiner — including
+an expired-but-within-retention exam assessment); a guardian
+relationship to a person still held; an unexpired consent record; or a
+legal retention ground on a record referencing them.</p>
+<p>When the last one lapses, the person enters <code>REVIEW</code> and,
+after the configured period, is deleted or genuinely anonymised. A
+guardian is held only while the child they are guardian <em>of</em> is
+held — which follows automatically from the rule rather than needing a
+special case.</p>
+<p><strong>Reason.</strong> Every person category must be covered by
+construction, because the one that is forgotten is the one that
+accumulates indefinitely. <strong>Trade-off.</strong> &quot;Last
+relationship&quot; is a computed condition over several modules rather than a
+column, so it belongs to the same registry that erasure uses (D-014) and
+is covered by the same test that asserts every
+<code>Person</code>-referencing table is registered.</p>
+<h3 id="52-certificates-and-the-right-to-erasure--honestly">5.2
+Certificates and the right to erasure — honestly</h3>
+<p>An erasure request does <strong>not</strong> automatically lose to a
+diploma register.</p>
+<p>The organisation must identify an actual ground for retention — a
+legal obligation, or the establishment or defence of legal claims. Many
+swim schools will have none, in which case the certificate record is
+deleted or genuinely anonymised like anything else. Where a ground does
+exist, the record is retained <strong>with that ground recorded against
+it</strong>, the data subject is told which records were kept and why,
+and the retention is revisited when the ground expires.</p>
+<p>And where a certificate number remains looked-up-able, the honest
+statement is that the record is <strong>pseudonymised, not
+anonymous</strong> — it is still personal data (D-065). Telling a parent
+otherwise would be wrong, and the privacy notice must not do so. Finding
+<strong>F-06 (revised)</strong>.</p>
 <hr />
 <h1 id="02--security--privacy-architecture">02 — Security &amp; Privacy
 Architecture</h1>
@@ -1724,9 +2340,9 @@ implementing it as a single deny-list evaluated in
 permissions × scope</h2>
 <p>With tenancy gone, authorization carries the full weight of &quot;who may
 see and do what&quot;. Inside one organisation that is a harder and more
-interesting problem than tenant isolation was, and it is where the
-brief&#39;s <em>&quot;met scoping alle rechten granulair&quot;</em> requirement
-lands.</p>
+interesting problem than a tenant boundary would have been, and it is
+where the brief&#39;s <em>&quot;met scoping alle rechten granulair&quot;</em>
+requirement lands.</p>
 <h3 id="21-the-model">2.1 The model</h3>
 <p>A grant is not a permission. <strong>A grant is a permission plus a
 scope.</strong></p>
@@ -1766,6 +2382,11 @@ descendants</strong></td>
 <td>&quot;Examiner for Diploma B&quot;</td>
 </tr>
 <tr>
+<td><code>EXAM_SESSION</code></td>
+<td><strong>One single exam session</strong></td>
+<td>&quot;External examiner, Saturday 14 March&quot;</td>
+</tr>
+<tr>
 <td><code>SELF</code></td>
 <td>The holder&#39;s own records</td>
 <td>Every authenticated person, implicitly</td>
@@ -1787,9 +2408,68 @@ question</h3>
 <pre class="text"><code>requirePermission(session, &#39;attendance.record&#39;, { group: groupId })</code></pre>
 <p>Resolution: does the caller hold <em>any</em> grant whose permission
 includes <code>attendance.record</code> <strong>and</strong> whose scope
-covers the referenced resource? Scope coverage walks the unit tree
-upward — a grant on <code>Locatie Zuidbad</code> covers
-<code>Groep A1</code> beneath it.</p>
+covers the referenced resource?</p>
+<p>Coverage is defined per scope type, once, and nowhere else:</p>
+<table>
+<thead>
+<tr>
+<th>Scope type</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ORGANIZATION</code></td>
+<td>Every resource in the installation</td>
+</tr>
+<tr>
+<td><code>UNIT</code></td>
+<td>The unit <strong>and all its descendants</strong>, and every group,
+session, student and exam session beneath them</td>
+</tr>
+<tr>
+<td><code>GROUP</code></td>
+<td>That group, its scheduled sessions, and the students in it <em>for
+the period of their membership</em></td>
+</tr>
+<tr>
+<td><code>COURSE</code></td>
+<td>That course, its levels, its enrolments, and <strong>all</strong>
+its exam sessions</td>
+</tr>
+<tr>
+<td><code>EXAM_SESSION</code></td>
+<td><strong>That one exam session only</strong> — its candidates and
+their results. Nothing else, not the course, not the students&#39; other
+records</td>
+</tr>
+<tr>
+<td><code>SELF</code></td>
+<td>Records whose subject is the holder</td>
+</tr>
+<tr>
+<td><code>RELATED</code></td>
+<td>Records whose subject is a person the holder has an active
+relationship with (P-04)</td>
+</tr>
+</tbody>
+</table>
+<p>Only <code>UNIT</code> walks a tree. Every other scope covers exactly
+what it names.</p>
+<p><strong>Decision D-054 — <code>EXAM_SESSION</code> is a first-class
+scope type; there is no &quot;scope-like&quot; access that lives outside the
+enum.</strong> <strong>Reason.</strong> An external examiner attends one
+session. <code>COURSE</code> scope would grant them every exam session
+of that course, past and future, which over-grants on exactly the
+records that matter most — a child&#39;s diploma outcome. Rather than
+inventing a special case for examiners, the scope enum gains one member
+and the general mechanism handles it. Every grant in the system is then
+expressible as <code>(permission, scopeType, scopeId)</code> with no
+exceptions. <strong>Trade-off.</strong> One more scope type to implement
+and test, and <code>ExamAssessor</code> (<code>01-domain-model.md</code>
+§3.5) becomes a projection of a role assignment rather than an
+independent access mechanism — it records <em>who assessed</em>, not
+<em>who may</em>.</p>
 <p><strong>Decision D-030 — Authorization is always resource-referenced;
 a bare permission check is not sufficient.</strong>
 <strong>Reason.</strong> <code>hasPermission(&#39;students.read&#39;)</code> is
@@ -1809,9 +2489,8 @@ into a filter:</p>
 <pre class="text"><code>resolveReach(session, &#39;students.read&#39;) → { units: [...], groups: [...], all: false }</code></pre>
 <p>Repositories accept a reach object and constrain the query with it. A
 single helper, used everywhere, means there is one place to get list
-filtering right — the same architectural benefit a central
-tenant-scoping extension would have provided, applied to the boundary
-that still exists.</p>
+filtering right — one place to get list filtering right, which is the
+boundary that actually exists in a single-organisation installation.</p>
 <p><strong>Decision D-031 — Reach resolution is centralised and
 repositories cannot be called without it.</strong>
 <strong>Reason.</strong> Scoping bugs in list endpoints are the most
@@ -1831,9 +2510,11 @@ path in the application.</p>
 </thead>
 <tbody>
 <tr>
-<td>Organisation Administrator</td>
+<td>Instance Administrator</td>
 <td><code>ORGANIZATION</code></td>
-<td>Full control. MFA required</td>
+<td>Full control <strong>of this installation</strong>: settings,
+identity providers, backups, roles. MFA required. This is the highest
+authority that exists</td>
 </tr>
 <tr>
 <td>Location Manager</td>
@@ -1851,14 +2532,22 @@ path in the application.</p>
 <td>Attendance, skill sign-off, read student basics</td>
 </tr>
 <tr>
-<td>Examiner</td>
-<td><code>COURSE</code> or a single exam session, time-bounded</td>
-<td>Exam results only</td>
+<td>Internal examiner</td>
+<td><code>COURSE</code>, time-bounded</td>
+<td>Assesses any exam session of that course</td>
+</tr>
+<tr>
+<td>External examiner</td>
+<td><code>EXAM_SESSION</code>, always with an expiry</td>
+<td>One session only. A <code>Person</code> with no membership
+(D-052)</td>
 </tr>
 <tr>
 <td>Member Administrator</td>
 <td><code>UNIT</code> or <code>ORGANIZATION</code></td>
-<td>People and student administration, enrolments</td>
+<td>People, <strong>memberships</strong> and student administration,
+enrolments — three distinct concepts (<code>01-domain-model.md</code>
+§3.1)</td>
 </tr>
 <tr>
 <td>Content Editor</td>
@@ -1871,16 +2560,19 @@ path in the application.</p>
 <td>Oversight and reporting</td>
 </tr>
 <tr>
-<td>Instance Operator</td>
-<td><code>ORGANIZATION</code></td>
-<td>Bootstrap, integrations, technical settings. MFA required</td>
+<td>Guardian</td>
+<td><code>RELATED</code></td>
+<td>Consent on behalf of their child (v1); portal access deferred
+(P-04)</td>
 </tr>
 </tbody>
 </table>
-<p>Note there is no platform-wide super administrator any more: there is
-no platform. Each instance has its own operator, and that operator&#39;s
-reach ends at their own deployment (§1 of
-<code>03-deployment-model.md</code>).</p>
+<p><strong>There is no platform super administrator, and no
+platform.</strong> The instance administrator is the highest authority
+and their reach ends at this installation. There is no account,
+credential or code path that can reach a second organisation — other
+organisations run entirely independent deployments
+(<code>03-deployment-model.md</code> §1).</p>
 <h3 id="25-permission-catalogue">2.5 Permission catalogue</h3>
 <p>Unchanged in content from the earlier design, but every key is now
 evaluated against a scope. Domain additions:</p>
@@ -1940,9 +2632,8 @@ default, including on unexpected failure.</li>
 <li><strong>Scope tests.</strong> Every module ships tests asserting
 that a <code>GROUP</code>-scoped instructor cannot read, write, or list
 outside their groups, and that a <code>UNIT</code>-scoped role cannot
-escape its subtree. These replace the old isolation suite the
-multi-tenant design would have needed, and are equally non-optional for
-Definition of Done.</li>
+escape its subtree. These replace the old scope-escape suite is
+non-optional for Definition of Done.</li>
 </ol>
 <p><strong>Decision D-032 — Scope-escape tests are mandatory per
 module.</strong> <strong>Reason.</strong> The old isolation suite
@@ -1954,10 +2645,9 @@ an untested one. <strong>Trade-off.</strong> Test-writing effort per
 module. Unavoidable; this is the boundary that now protects a child&#39;s
 records from a colleague who should not see them.</p>
 <h3 id="31-raw-sql">3.1 Raw SQL</h3>
-<p><code>$queryRaw</code> / <code>$executeRaw</code> no longer risk
-cross-tenant leaks, but they <em>do</em> bypass reach filtering. They
-still require an explicit reviewer sign-off and are flagged by a lint
-rule.</p>
+<p><code>$queryRaw</code> / <code>$executeRaw</code> bypass reach
+filtering, which is the boundary that matters here. They still require
+an explicit reviewer sign-off and are flagged by a lint rule.</p>
 <h2 id="4-application-security-controls">4. Application security
 controls</h2>
 <table>
@@ -2048,22 +2738,43 @@ authorising route, and deleted on erasure. Finding
 <hr />
 <h2 id="5-gdpr--privacy-model">5. GDPR / privacy model</h2>
 <h3 id="51-roles-under-the-gdpr">5.1 Roles under the GDPR</h3>
+<p><strong>Decision D-064 — The organisation is the controller.
+Publishing self-hosted software does not make the SplashTrack project a
+processor.</strong></p>
 <ul>
-<li>Each <strong>organisation</strong> is both the <em>controller</em>
-and the <em>operator</em> of its own deployment. It runs the software on
-its own infrastructure.</li>
-<li><strong>We are neither controller nor processor.</strong> We publish
-software; we never touch anyone&#39;s data. No data processing agreement
-exists between us (F-05, closed).</li>
-<li>The organisation still needs its own privacy notice, and its own
-agreements with <em>its</em> sub-processors (hosting provider, email
-relay). The documentation should say so without pretending to be legal
-advice.</li>
-<li><strong>Consequence for the design:</strong> every privacy control
-must work with no outside help. Retention, export and erasure are
-features the organisation operates itself, not services we perform for
+<li>The <strong>organisation</strong> running the installation is the
+<em>controller</em>: it decides the purposes and means of
+processing.</li>
+<li>The <strong>SplashTrack project</strong> publishes software. It
+processes no personal data on anyone&#39;s behalf and is therefore
+<strong>not</strong> a processor by virtue of publishing. No data
+processing agreement arises between the project and an organisation from
+use of the software alone.</li>
+<li>A <strong>third party</strong> may still be a processor
+<strong>depending on the deployment</strong>: a hosting provider, a
+managed-database vendor, an email relay, or a consultant operating the
+instance for the organisation. Those relationships need their own
+agreements, and the organisation — not us — is responsible for
 them.</li>
+<li>If the project (or anyone else) ever <em>operates</em> an instance
+on an organisation&#39;s behalf, that specific relationship makes the
+operator a processor. That is a deployment fact, not a property of the
+software (OD-14).</li>
 </ul>
+<p><strong>Reason.</strong> The earlier text called the project a
+processor, which was simply wrong: a processor processes personal data
+on the controller&#39;s instructions, and we never receive any. Getting this
+right matters because it determines who owes which documents to whom,
+and overclaiming would create obligations we cannot fulfil while
+understating a hosting provider&#39;s role would leave a real gap.
+<strong>Trade-off.</strong> The documentation must explain a distinction
+most self-hosters have not thought about, without drifting into legal
+advice. It states the roles and points to the questions; it does not
+answer them for anyone.</p>
+<p><strong>Consequence for the design:</strong> every privacy control
+must work with no outside help. Retention, export, erasure and consent
+are features the organisation operates itself, not services anyone
+performs for them.</p>
 <h3 id="52-data-minimisation-by-default">5.2 Data minimisation by
 default</h3>
 <p>Before a field is added, its owner must answer: why is it required,
@@ -2088,17 +2799,50 @@ explicitly requests it and the requester holds
 <code>students.medical.read</code>; hard-deleted (not anonymised) at 12
 months after enrolment ends; never present in logs, ever.</p>
 <h3 id="54-consent">5.4 Consent</h3>
-<p>The inherited <code>consent</code> module records consent as
-first-class evidence: what was consented to, which version of which
-text, by whom, when, and how it was withdrawn. SplashTrack needs consent
-for: photographs, publication of results in a public list, marketing
-email, and any org-defined profile field.</p>
-<p><strong>Consent for a minor is given by a guardian.</strong> The
-<code>PersonRelationship</code> table (v1) is what makes this recordable
-— the consent points at the consenting <code>Person</code> (the
-guardian) <em>and</em> the subject <code>Person</code> (the child).
-Designing this in later would mean rewriting every existing consent row.
-Finding <strong>F-02</strong>.</p>
+<p><strong>Decision D-063 — A consent record captures subject, actor,
+purpose, legal basis, authority evidence, timestamp and withdrawal.
+Guardian authority is <em>evidence of a claim</em>, never automatic
+legal validity.</strong></p>
+<pre class="text"><code>Consent
+  subjectPersonId      whose data this is
+  actorPersonId        who actually gave it
+  purpose              photographs · publication of results · marketing · &lt;field&gt;
+  legalBasis           CONSENT | LEGITIMATE_INTEREST | CONTRACT | LEGAL_OBLIGATION
+  consentType          SELF | ON_BEHALF_OF
+  authorityEvidenceId? → PersonRelationship, when consentType = ON_BEHALF_OF
+  textVersionId        exactly which wording was agreed to
+  givenAt              timestamp
+  withdrawnAt?         withdrawal is a first-class event, never a deletion
+  withdrawnByPersonId?</code></pre>
+<p><strong>Self-consent and consent on behalf of another are separately
+representable.</strong> An adult member consenting to their own
+photograph is <code>SELF</code>. A parent consenting for their child is
+<code>ON_BEHALF_OF</code>, and must point at the
+<code>PersonRelationship</code> that was the claimed basis for that
+authority, valid at the moment consent was given.</p>
+<p><strong>Why authority is evidence, not proof.</strong> The
+application cannot verify that someone is legally a child&#39;s guardian. It
+can only record what the organisation was told, by whom, when, and —
+through <code>PersonRelationship.evidence</code> — how that claim was
+established (a registration form, an identity check, a court document
+reference). Treating a database row as legal validity would give false
+comfort to a school facing a custody dispute. What SplashTrack
+guarantees is an <strong>auditable trail of the basis on which the
+organisation acted</strong>, which is what accountability under Article
+5(2) actually requires.</p>
+<p><strong>Reason.</strong> Consent without a recorded purpose and legal
+basis cannot be demonstrated, and consent recorded without the authority
+behind it cannot be defended. Both are ordinary demands on any system
+holding data about minors. <strong>Trade-off.</strong> More fields at
+capture time and a UI that has to ask who is consenting on whose behalf.
+That question is unavoidable — a system that does not ask it simply gets
+the answer wrong silently.</p>
+<p><strong>Not everything is consent.</strong> Attendance and progress
+records are processed to perform the teaching agreement, not on consent;
+recording them under <code>CONSENT</code> would imply they can be
+withdrawn, which would break the organisation&#39;s own records.
+<code>legalBasis</code> exists precisely so the distinction is explicit
+per purpose.</p>
 <h3 id="55-data-subject-rights">5.5 Data subject rights</h3>
 <table>
 <thead>
@@ -2161,12 +2905,60 @@ a new table. A central registry with a test asserting that
 forgetting impossible to merge. <strong>Trade-off.</strong> The registry
 is a shared file that every module edits — mild coupling, deliberately
 accepted for a compliance-critical path.</p>
-<h3 id="56-retention">5.6 Retention</h3>
-<p>Retention rules live in the <code>maintenance</code> module as
-scheduled jobs, with a dry-run mode and a report before anything is
-deleted. Defaults are stated in <code>01-domain-model.md</code> §5. Each
-organisation may <strong>shorten</strong> a retention period, never
-lengthen it beyond the platform maximum.</p>
+<h3 id="56-retention-and-erasure--policy-driven">5.6 Retention and
+erasure — policy-driven</h3>
+<p><strong>Decision D-065 (replaces D-007) — Retention and erasure are
+driven by an explicit, per-purpose policy stating the lawful basis and
+its expiry. Nothing is retained because a record happens to
+exist.</strong></p>
+<p>The earlier design said erasure &quot;severs identity and keeps the
+pseudonymised diploma&quot;, justified by a ten-year retention. That
+reasoning was wrong in two ways, and both matter:</p>
+<p><strong>Pseudonymisation is not anonymisation.</strong> A
+pseudonymised record remains personal data under the GDPR while
+re-identification is reasonably possible — including by joining it
+against other data the organisation still holds. Calling it &quot;no longer
+identifiable&quot; does not make it so. Only genuine anonymisation, or
+deletion, ends the obligation.</p>
+<p><strong>A diploma does not by itself create an Article 17
+exception.</strong> An erasure request may be refused only where a
+specific ground applies — a legal obligation to retain, or the
+establishment/exercise/defence of legal claims. That ground must be
+<em>identified and recorded</em>, not assumed from the fact that a
+certificate exists. Many swim schools will have no statutory retention
+duty at all.</p>
+<p><strong>The policy model:</strong></p>
+<pre class="text"><code>RetentionPolicy
+  dataClass          person identity · attendance · progress · exam result ·
+                     certificate · medical note · audit event · inquiry
+  purpose            why it is kept
+  lawfulBasis        and, where retention is claimed, the specific ground
+  retainFor          duration, relative to a defined trigger
+  trigger            end of enrolment · end of last membership period ·
+                     certificate issue · record creation
+  onExpiry           DELETE | ANONYMISE | REVIEW</code></pre>
+<p>Each policy is configurable by the organisation within a platform
+maximum, is shown in the privacy admin area, and is executed by the
+<code>maintenance</code> module with a dry run and a report before
+anything is removed.</p>
+<p><strong>On erasure:</strong> an erasure request evaluates every data
+class against its policy. Classes with no live retention ground are
+<strong>deleted or genuinely anonymised</strong> — not merely stripped
+of a name. Where a ground does apply, the record is retained <em>with
+its ground recorded</em>, the requester is told which records were kept
+and why, and the retention is revisited when the ground expires. Where
+genuine anonymisation of a certificate register is not achievable (a
+certificate number that can be looked up is, by design,
+re-identifiable), that must be stated honestly to the data subject
+rather than described as anonymisation.</p>
+<p><strong>Reason.</strong> The previous rule optimised for keeping a
+tidy diploma register and back-filled a legal justification. This one
+starts from the basis and lets the data follow, which is both correct
+and simpler to defend. <strong>Trade-off.</strong> The organisation must
+actually decide its retention grounds rather than inherit ours; the
+setup wizard and documentation therefore ship sensible defaults
+<strong>as proposals</strong>, clearly marked as requiring the
+organisation&#39;s own confirmation. Finding <strong>F-27</strong>.</p>
 <h3 id="57-logging-without-personal-data">5.7 Logging without personal
 data</h3>
 <p>Operational logs (pino) carry: request id, org id, person id
@@ -2800,15 +3592,17 @@ mis-tap.</p>
 <h3 id="43-find-a-student">4.3 Find a student</h3>
 <p>Global search, keyboard-first on desktop, always reachable. Searches
 name and student number within the caller&#39;s reach only. Results show
-only what the caller may see. <strong>No cross-organisation results,
-ever.</strong></p>
+only what the caller may see — reach-filtered, so an instructor finds
+only students in their own groups. Other organisations run separate
+installations and are not reachable by any query.</p>
 <h3 id="44-record-exam-results">4.4 Record exam results</h3>
 <pre class="text"><code>Exam session  →  candidate list  →  per candidate: PASS/FAIL + remarks
                  [Record results]  →  step-up if issuing certificates
                  → certificates generated, audit events written</code></pre>
-<p>Results are append-only; a correction creates a new row referencing
-the superseded one, and the certificate is revoked and reissued rather
-than edited.</p>
+<p>Results are append-only (D-062): a correction writes a
+<strong>new</strong> result carrying <code>supersedesResultId</code>,
+and the certificate is revoked and reissued rather than edited. The
+candidate list shows the effective result and a link to its history.</p>
 <h3 id="45-onboard-a-new-student">4.5 Onboard a new student</h3>
 <pre class="text"><code>Admin → Students → New
   → search existing Person first (prevents duplicate PII)
@@ -2913,7 +3707,7 @@ Architecture</h1>
                    │ SMTP relay │
                    └────────────┘</code></pre>
 <p>One deployable application. Stateless processes — no in-process
-session store, no in-process cache holding tenant data — so horizontal
+session store, no in-process cache holding personal data — so horizontal
 scaling is a configuration change (P-08).</p>
 <h2 id="2-technology-stack">2. Technology stack</h2>
 <table>
@@ -3016,11 +3810,11 @@ indirection versus a flat root. Negligible.</p>
           api/
             v1/                external API (prepared, minimal in v1)
         modules/
-          identity/  access-control/  organizations/  audit/  consent/
+          identity/  access-control/  organization/  audit/  consent/
           pages/  profile-fields/  users/  api-credentials/
           email-templates/  notifications/  maintenance/
           people/  students/  groups/  courses/  skills/
-          attendance/  exams/  planning/
+          sessions/  attendance/  exams/  planning/
             ├ application/     services — the business logic
             ├ domain/          types, invariants
             ├ infrastructure/  repositories
@@ -3255,11 +4049,13 @@ PR&#39;s migrations. Catches destructive migrations before they reach
 data</td>
 </tr>
 <tr>
-<td><strong>Restore-from-every-release matrix</strong></td>
+<td><strong>Restore-from-every-supported-release matrix</strong></td>
 <td>Yes</td>
-<td>D-047: restores a seeded backup of each supported release into
-<code>HEAD</code>, migrates forward, asserts schema + domain invariants.
-Protects the &quot;old backup into new version&quot; promise (F-25)</td>
+<td>D-047: for every release <strong>at or above
+<code>minimumRestorableVersion</code></strong> (D-048), restore a seeded
+backup of it into <code>HEAD</code>, migrate forward, assert schema +
+domain invariants. Protects the &quot;old backup into new version&quot; promise
+(F-25)</td>
 </tr>
 <tr>
 <td>E2E (Playwright)</td>
@@ -3468,7 +4264,7 @@ control. Conflating them is a common and expensive mistake.</p>
 <td><strong>Audit trail</strong> (<code>AuditEvent</code>)</td>
 <td>&quot;Who did what to whom, when?&quot;</td>
 <td>Yes, by design</td>
-<td>Org admins with <code>audit.read</code>; platform super admin</td>
+<td>Holders of <code>audit.read</code> in this installation</td>
 <td>≥ 24 months</td>
 </tr>
 <tr>
@@ -3493,8 +4289,8 @@ rotated by a reviewed retention job.</p>
 <ul>
 <li>Authentication: login success/failure, MFA enrolment/reset, password
 reset, session revocation, step-up challenges.</li>
-<li>Authorization: every denial; every use of
-<code>platform.super_admin</code> (at <code>warn</code>).</li>
+<li>Authorization: every denial; every use of an instance-administrator
+override (at <code>warn</code>).</li>
 <li>Personal data: read of medical/pastoral notes (D-010);
 create/update/delete of a Person or StudentProfile; export; erasure;
 consent given/withdrawn.</li>
@@ -3547,9 +4343,12 @@ mechanism.</p>
 <tr>
 <td>Database</td>
 <td><strong>The operator&#39;s responsibility.</strong> We ship
-<code>backup</code> and <code>restore</code> commands in the image and
-document a recommended policy: daily full + WAL archiving, RPO ≤ 24
-h</td>
+<code>backup</code> and <code>restore</code> commands plus a scheduler.
+Shipped and tested recovery path: <strong>scheduled encrypted logical
+backups, RPO ≤ the configured interval (default daily)</strong>. WAL
+archiving / point-in-time recovery is a Postgres-level option the
+operator may add for a lower RPO; it is documented as such and is
+<strong>not</strong> part of the tested path</td>
 </tr>
 <tr>
 <td>Object storage</td>
@@ -3699,11 +4498,15 @@ export, no admin (D-009)</td>
 </tbody>
 </table>
 <h2 id="4-scalability-risks">4. Scalability risks</h2>
-<p>Stated scale: ~100 organisations. Under single-tenancy that is ~100
-modest deployments rather than one large one — each holding perhaps a
-few thousand persons. Per-instance load is trivial; <strong>fleet size
-is the scaling problem.</strong> The risks below are the ones that would
-bite first, in the order they would bite.</p>
+<p><strong>Scalability is defined per independent installation</strong>
+(<code>00-overview.md</code> §4.2): one organisation, up to ~10,000
+persons, ~100 concurrent users, ~50,000 attendance-bearing sessions per
+year, ten years of retained exam results. There is no aggregate figure
+across organisations — instances are independent and we operate none of
+them.</p>
+<p>At that scale a single modest Postgres is comfortable. The risks
+below are the ones that would bite first <em>within one
+installation</em>, in the order they would bite.</p>
 <table>
 <thead>
 <tr>
@@ -3729,9 +4532,10 @@ timestamp, actor)</td>
 </tr>
 <tr>
 <td><strong>Attendance table growth</strong></td>
-<td>~50k persons × weekly sessions ≈ millions of rows/year</td>
-<td>Partition by period; aggregate + anonymise at 24 months (retention
-policy doubles as a scalability control)</td>
+<td>~50,000 attendance-bearing sessions/year in a large
+organisation</td>
+<td>Partition by period; aggregate + anonymise at 24 months — the
+retention policy doubles as a growth control</td>
 </tr>
 <tr>
 <td><strong>Seasonal peak</strong></td>
@@ -3747,13 +4551,10 @@ scale</td>
 already partitioned by organisation</td>
 </tr>
 <tr>
-<td><strong>Fleet size</strong></td>
-<td>The real scaling axis is now <em>number of instances</em>, not rows.
-100 organisations = 100 deployments, databases, backup schedules and
-upgrade targets</td>
-<td>Scripted provisioning (D-028), waved rollouts, fleet manifest,
-per-instance monitoring. <strong>This is the dominant operational
-cost</strong> — F-13</td>
+<td><strong>Ten years of retained exam history</strong></td>
+<td>The one table that never shrinks, by legal necessity</td>
+<td>Small rows, indexed by candidate; a diploma register is naturally
+append-only and read-rarely</td>
 </tr>
 <tr>
 <td><strong>Public site traffic spikes</strong></td>
@@ -3792,8 +4593,12 @@ used, and a data-migration project if a swim school is depending on it
 today. <strong>Needed.</strong> A yes/no, plus — if yes — how many
 organisations, how many people, and whether they can tolerate a cutover.
 <strong>Cost of delay.</strong> High. It changes whether v1 needs an
-import path at all. <strong>My assumption if unanswered:</strong> no
-production users; no import path built.</p>
+import path at all. <strong>Status: BLOCKING, confirmed by Jack
+(2026-08-31).</strong> No destructive action is taken against the
+existing repository, its migration history, or any prototype database
+until this is answered. If real data exists, a one-time export/import
+path becomes requirement <strong>R-29</strong> rather than an
+assumption.</p>
 <hr />
 <h3 id="od-2--who-is-the-first-real-customer-and-are-they-a-swim-school">OD-2
 — Who is the first real customer, and are they a swim school?</h3>
@@ -4060,15 +4865,17 @@ network; no independent scaling per module</td>
 </tr>
 <tr>
 <td>D-004</td>
-<td><strong>(Revised)</strong> One <code>Person</code> per human per
-<em>instance</em>; profiles are domain views</td>
-<td>Single-tenancy removes the cross-organisation Person and the
-isolation hole it created; one row per human keeps rectification and
-erasure in one place</td>
-<td>No cross-organisation continuity — an instructor at two schools has
-two records and two logins. Correct privacy outcome, mild
-inconvenience</td>
-<td><code>01-domain-model.md</code> §2.1</td>
+<td>One <code>Person</code> per human per installation;
+<code>Person</code>, <code>Membership</code> and
+<code>StudentProfile</code> are three distinct concepts</td>
+<td>Separating them is what makes the real cases representable: a member
+who never takes lessons, a student enrolled by a guardian who is the
+member, an instructor who is also a parent. One row per human keeps
+rectification and erasure in one place</td>
+<td>No continuity between organisations — someone working at two schools
+has two records in two independent databases. Correct privacy
+outcome</td>
+<td><code>01-domain-model.md</code> §2.1, §3.1</td>
 </tr>
 <tr>
 <td>D-005</td>
@@ -4092,13 +4899,13 @@ Accepted; designing for a rejected model is premature complexity</td>
 </tr>
 <tr>
 <td>D-007</td>
-<td>Erasure severs identity; legally-retained records survive
-pseudonymised</td>
-<td>Reconciles Article 17 with 10-year diploma retention; org keeps a
-verifiable register, human is no longer identifiable</td>
-<td>A post-erasure diploma dispute can&#39;t be traced to a named person;
-must be stated in the privacy notice (F-06)</td>
-<td><code>01-domain-model.md</code> §5</td>
+<td><strong>(Superseded by D-065)</strong> Erasure severs identity;
+retained records survive pseudonymised</td>
+<td>Rested on two errors: pseudonymisation does not end the GDPR
+obligation, and a diploma does not itself create an Article 17
+exception</td>
+<td>—</td>
+<td><code>10-findings.md</code> F-06</td>
 </tr>
 <tr>
 <td>D-008</td>
@@ -4403,15 +5210,19 @@ small bootstrap layer</td>
 </tr>
 <tr>
 <td>D-037</td>
-<td>The environment-variable surface is capped at five keys
-(<code>DATABASE_URL</code>, <code>APP_URL</code>,
-<code>SECRET_KEY</code>, <code>DATA_DIR</code>, <code>PORT</code>)</td>
-<td>A self-hoster should never grep a 200-entry
-<code>.env.template</code> to find why email fails. A hard cap forces
-every new option into the in-app registry</td>
-<td>Conventional env-var settings (SMTP host, log level) move into the
-database and can&#39;t be changed while it is down</td>
-<td><code>13-configuration-and-setup.md</code> §3</td>
+<td>Environment holds only what must be known before the database is
+readable, or what selects where state lives; adding a variable requires
+an ADR. <strong>No numeric cap.</strong> Runtime/platform variables
+(<code>TZ</code>, <code>NODE_ENV</code>, proxy, CA path) are not
+application configuration</td>
+<td>A hard numeric cap would be an arbitrary rule that could later block
+necessary pre-database or platform configuration (TLS trust store,
+proxy, read-only paths). The criterion is what matters: if a value can
+be read from the database, it must be</td>
+<td>Requires judgement rather than counting, so the ADR gate keeps it
+honest. Conventional env settings (SMTP host, log level) move into the
+database</td>
+<td><code>13-configuration-and-setup.md</code> §3.1</td>
 </tr>
 <tr>
 <td>D-038</td>
@@ -4519,7 +5330,8 @@ the setup wizard controls the sequence via a distinct start-up mode</td>
 </tr>
 <tr>
 <td>D-047</td>
-<td>CI tests restore from <strong>every</strong> supported release into
+<td>CI tests restore from every supported release — every release at or
+above <code>minimumRestorableVersion</code> (D-048) — into
 <code>HEAD</code>, not just the previous one</td>
 <td>&quot;Skipped versions are supported&quot; is worthless as prose; it is only
 true if a machine checks it on every pull request. A migration that
@@ -4552,6 +5364,214 @@ would catch</td>
 obligation at each major boundary</td>
 <td><code>14-backup-restore-upgrade.md</code> §4.3.1</td>
 </tr>
+<tr>
+<td>D-050</td>
+<td>v1 is designed for the swimming-lesson domain, not a generic
+education platform</td>
+<td>A generic platform built before a second domain exists is
+speculation, and it is what makes products vague and slow. Generic core
+entities (<code>Person</code>, <code>Group</code>, <code>Course</code>,
+<code>Skill</code>) keep an adjacent domain possible without abstracting
+now</td>
+<td>Adapting to a materially different domain later is real work rather
+than configuration</td>
+<td><code>00-overview.md</code> §1.1</td>
+</tr>
+<tr>
+<td>D-051</td>
+<td>The public surface may not read any person, student, member, group,
+attendance, progress or exam record, nor expose any endpoint from which
+their existence can be inferred</td>
+<td>The worst plausible incident is a public page exposing data about
+children. Structural impossibility beats careful coding</td>
+<td>Naturally public-feeling features need a deliberate publishing step
+— which is where consent belongs</td>
+<td><code>00-overview.md</code> §3.4</td>
+</tr>
+<tr>
+<td>D-052</td>
+<td>An examiner may exist as a <code>Person</code> with no membership;
+if they log in or record results they get an individual, time-bounded,
+minimally scoped account — never a shared one</td>
+<td>A shared &quot;examiner&quot; login destroys attribution on exactly the
+records that most need it: a child&#39;s diploma outcome. Full membership
+over-grants for someone present one afternoon</td>
+<td>Slightly more administration per exam day — the correct cost for
+attributable, expiring access</td>
+<td><code>00-overview.md</code> §5.2</td>
+</tr>
+<tr>
+<td>D-053</td>
+<td><code>Membership</code> and <code>StudentProfile</code> are separate
+tables, never one table with a flag</td>
+<td>Different numbering, lifecycles, retention (a member may leave while
+diploma history is kept ten years) and permissions. One table with a
+flag forces one retention policy onto both</td>
+<td>Two lookups where a naive model has one; administrators must
+understand the distinction, so the UI hides it</td>
+<td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-054</td>
+<td><code>EXAM_SESSION</code> is a first-class scope type; no access
+mechanism lives outside the scope enum</td>
+<td>An external examiner attends one session. <code>COURSE</code> scope
+would grant every exam session of that course, past and future —
+over-granting on a child&#39;s diploma outcome. One extra enum member beats
+a special case for examiners; every grant stays expressible as
+<code>(permission, scopeType, scopeId)</code></td>
+<td>One more scope type to implement and test. <code>ExamAssessor</code>
+becomes an attribution record, not an access mechanism</td>
+<td><code>02-security-privacy.md</code> §2.1–2.2</td>
+</tr>
+<tr>
+<td>D-055</td>
+<td>The container never migrates a database whose purpose is not yet
+known; state is detected first (EMPTY / PARTIAL / EXISTING / CURRENT /
+AHEAD) and migration follows from it</td>
+<td>An empty database is ambiguous — fresh install, or the first minute
+of a restore. Migrating immediately resolves it wrongly: the operator
+gets a migrated empty schema and a backup that no longer restores
+cleanly into it</td>
+<td>The entrypoint carries a data-critical state machine instead of
+<code>migrate deploy &amp;&amp; start</code>; covered by a test matrix
+with one case per state</td>
+<td><code>13-configuration-and-setup.md</code> §6</td>
+</tr>
+<tr>
+<td>D-056</td>
+<td>The template&#39;s reusable parts are retained; its
+multi-tenant-specific models, middleware, authorization paths and schema
+elements are <strong>actively removed during extraction</strong>,
+incrementally and covered by tests</td>
+<td>Dead security code is worse than absent security code: a bypassed
+scoping extension is attack surface, maintenance load, and a false
+signal to the next reader that something is enforced. Nothing is
+preserved merely because it already exists</td>
+<td>Extraction work up front and real divergence from upstream, making
+cherry-picking harder</td>
+<td><code>00-overview.md</code> §2.1, <code>01-domain-model.md</code>
+§1.1.1</td>
+</tr>
+<tr>
+<td>D-057</td>
+<td><code>ScheduledSession</code> is owned by its own
+<code>sessions</code> module</td>
+<td>&quot;One table, two owners&quot; violated the design&#39;s own isolation rule and
+would have been the first boundary to erode. A session is a domain
+concept in its own right; planning and attendance are both
+consumers</td>
+<td>One more module for a small table — module count is cheap, ownership
+ambiguity is not</td>
+<td><code>01-domain-model.md</code> §1.2</td>
+</tr>
+<tr>
+<td>D-058</td>
+<td><code>Person</code> is the canonical identity anchor,
+<strong>not</strong> the only place personal data may live;
+purpose-specific PII stays in its owning module</td>
+<td>Data protection is organised around purpose, not tables. Health data
+has a different basis, permission, retention and encryption from a name;
+putting it on <code>Person</code> would make least privilege
+impossible</td>
+<td>Personal data spans modules, so erasure and export consult a
+test-enforced registry rather than one table</td>
+<td><code>01-domain-model.md</code> §2.1</td>
+</tr>
+<tr>
+<td>D-059</td>
+<td>Leaving and returning uses <code>MembershipPeriod</code> rows and
+<code>StudentLifecycleEvent</code>s — never a second profile or a status
+flag</td>
+<td>A returning swimmer is the same human with the same history, and
+that history is the product&#39;s value. A second profile fragments and
+duplicates PII; a status flag destroys the answer to &quot;when were they a
+member?&quot;</td>
+<td>Current membership and student status are derived rather than read
+from a column</td>
+<td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-060</td>
+<td>Membership is never an implicit prerequisite for a role</td>
+<td>Membership is an administrative/financial relationship;
+authorization is a security concern. Conflating them forces fake
+memberships for volunteers and implies members have rights they were
+never granted</td>
+<td>Two things to administer where a naive model has one; the UI offers
+them together</td>
+<td><code>01-domain-model.md</code> §3.1</td>
+</tr>
+<tr>
+<td>D-061</td>
+<td>Attendance is an append-only event log; a correction writes a new
+event with <code>supersedesEventId</code> and never mutates a row</td>
+<td>&quot;Append-only&quot; was previously asserted while the model still allowed
+in-place updates, which would have destroyed exactly the history the
+claim promises. Attendance is evidence for absence policy, disputes and
+occasionally safeguarding</td>
+<td>Reads resolve derived state instead of a column, and the table grows
+with corrections</td>
+<td><code>01-domain-model.md</code> §3.4</td>
+</tr>
+<tr>
+<td>D-062</td>
+<td>An <code>ExamCandidate</code> has 0..N results with
+<code>supersedesResultId</code>, one effective</td>
+<td>A single-result model forces corrections to overwrite the original,
+destroying what was first decided and by whom — on a diploma outcome,
+the one thing that must stay reconstructable</td>
+<td>Reads must resolve the effective result; same derivation pattern as
+D-061 and D-005</td>
+<td><code>01-domain-model.md</code> §3.5</td>
+</tr>
+<tr>
+<td>D-063</td>
+<td>Consent records subject, actor, purpose, lawful basis, authority
+evidence, timestamp and withdrawal; guardian authority is evidence of a
+claim, not automatic legal validity</td>
+<td>The application cannot verify guardianship — it can only record what
+it was told, by whom and how the claim was established. Treating a row
+as legal validity would give false comfort in a custody dispute</td>
+<td>More fields at capture and a UI that must ask who consents on whose
+behalf — an unavoidable question</td>
+<td><code>02-security-privacy.md</code> §5.4</td>
+</tr>
+<tr>
+<td>D-064</td>
+<td>The organisation is the controller; publishing self-hosted software
+does not make the project a processor. A hosting or service provider may
+be, depending on deployment</td>
+<td>A processor processes data on the controller&#39;s instructions; we
+never receive any. Overclaiming creates obligations we cannot fulfil,
+understating a hosting provider&#39;s role leaves a real gap</td>
+<td>Documentation must explain a distinction most self-hosters have not
+considered, without drifting into legal advice</td>
+<td><code>02-security-privacy.md</code> §5.1</td>
+</tr>
+<tr>
+<td>D-065</td>
+<td>Retention and erasure are policy-driven per data class: purpose,
+lawful basis, trigger, expiry action
+(<code>DELETE</code>/<code>ANONYMISE</code>/<code>REVIEW</code>)</td>
+<td>Replaces D-007. Pseudonymisation does not end the obligation, and a
+diploma does not itself create an Article 17 exception — the ground must
+be identified and recorded, not assumed</td>
+<td>The organisation must decide its own grounds; defaults ship as
+proposals requiring confirmation (F-27)</td>
+<td><code>02-security-privacy.md</code> §5.6</td>
+</tr>
+<tr>
+<td>D-066</td>
+<td>Person retention is triggered by the end of the person&#39;s
+<strong>last relationship of any kind</strong>, not by membership</td>
+<td>The most common person in the database — a child taking lessons —
+has no membership, and neither do guardians or external examiners. A
+membership-keyed rule would silently retain the majority forever</td>
+<td>&quot;Last relationship&quot; is a computed condition across modules, covered
+by the same registry and test as erasure (D-014)</td>
+<td><code>01-domain-model.md</code> §5.1</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -4573,24 +5593,31 @@ exists in exactly one database and the hole is gone. The
 <code>assertPersonReachable</code> guard is no longer needed.</p>
 <p><strong>Replaced by F-15</strong> — the same <em>shape</em> of risk
 now lives one level down, in unit- and group-scoped reach filtering.</p>
-<h3 id="f-02--consent-for-minors-was-not-specified">F-02 — Consent for
-minors was not specified</h3>
+<h3 id="f-02--resolved-into-v1-consent-for-minors-was-not-specified">F-02 —
+<strong>(Resolved into v1)</strong> Consent for minors was not
+specified</h3>
 <p><strong>Severity: high.</strong> The brief mentions consent but not
 that the overwhelming majority of data subjects are children who cannot
 legally consent. A consent record that only names the subject is useless
-for a minor. <strong>Response.</strong> <code>PersonRelationship</code>
-(guardian ↔︎ child) is built in v1, and every consent record references
-both the consenting person and the subject person. Retrofitting this
-would require rewriting every existing consent row.</p>
-<h3 id="f-03--external-examiners-were-not-modelled">F-03 — External
-examiners were not modelled</h3>
+for a minor. <strong>Response.</strong> R-04:
+<code>PersonRelationship</code> carries an <code>authority</code> flag
+and validity dates, every consent record references both subject and
+consenting person, and a consent is valid only if the authority existed
+when it was given. Changes to the relationship are audited. The guardian
+<em>portal</em> is deferred (P-04); the guardian <em>authority
+model</em> is v1.</p>
+<h3 id="f-03--resolved-external-examiners-were-not-modelled">F-03 —
+<strong>(Resolved)</strong> External examiners were not modelled</h3>
 <p><strong>Severity: medium.</strong> Swim diplomas are frequently
 assessed by an examiner who appears for one afternoon and is not a
 member of the organisation. A model where assessment requires org
 membership either blocks the real workflow or forces over-granting.
-<strong>Response.</strong> <code>ExamAssessor</code> references a
-<code>Person</code> directly with a time-bounded, narrowly-scoped role —
-assessment rights without organisational membership.</p>
+<strong>Response.</strong> D-052: <code>ExamAssessor</code> references a
+<code>Person</code> directly. If the examiner records results themselves
+they receive an individual, expiring account scoped to
+<code>exams.assess</code> / <code>exams.results.record</code> only —
+never a shared login, because attribution on a child&#39;s diploma outcome
+is exactly what must not be lost.</p>
 <h3 id="f-04--photographs-of-minors-were-not-called-out">F-04 —
 Photographs of minors were not called out</h3>
 <p><strong>Severity: high.</strong> &quot;Afbeeldingen&quot; appears in the
@@ -4608,14 +5635,23 @@ needed between us. The organisation still needs its own privacy notice
 and, where it uses sub-processors (hosting, email), its own agreements —
 which the documentation should point out without pretending to be legal
 advice.</p>
-<h3 id="f-06--retention-and-erasure-conflict-was-unresolved">F-06 —
-Retention and erasure conflict was unresolved</h3>
+<h3 id="f-06--revised-retention-and-erasure-conflict-was-resolved-wrongly">F-06
+— <strong>(Revised)</strong> Retention and erasure conflict was resolved
+wrongly</h3>
 <p><strong>Severity: high.</strong> Exam results are retained ~10 years;
 a data subject may demand erasure. Both cannot be satisfied literally.
-<strong>Response.</strong> D-007 — erasure severs identity and
-pseudonymises the retained record. This must be disclosed in each
-organisation&#39;s privacy notice, which is a process obligation SplashTrack
-cannot solve in code.</p>
+<strong>Original response was wrong, twice.</strong> It treated
+pseudonymisation as if it ended the obligation — it does not, a
+pseudonymised record is still personal data while re-identification is
+reasonably possible — and it assumed the existence of a diploma creates
+an Article 17 exception, which it does not. <strong>Correct
+response.</strong> D-065: retention is policy-driven, per data class,
+with an explicit lawful basis and expiry action. An erasure request
+deletes or genuinely anonymises everything with no live retention
+ground; where a ground exists the record is kept <em>with that ground
+recorded</em> and the data subject is told what was kept and why. Where
+a certificate number remains looked-up-able, the privacy notice must say
+<strong>pseudonymised, not anonymous</strong>.</p>
 <h3 id="f-07--backups-are-in-gdpr-scope-and-were-not-addressed">F-07 —
 Backups are in GDPR scope and were not addressed</h3>
 <p><strong>Severity: medium.</strong> Erasure cannot practically reach
@@ -4868,23 +5904,41 @@ declare <code>minimumRestorableVersion</code>), D-049 (versioned
 encryption envelopes with retained legacy decryptors). The encryption
 case is the nastiest, because it passes every schema check — it is
 called out separately for that reason.</p>
+<h3 id="f-26--unused-multi-tenant-machinery-would-have-been-left-dormant">F-26
+— Unused multi-tenant machinery would have been left dormant</h3>
+<p><strong>Severity: medium.</strong> The plan was to simply not use the
+template&#39;s tenant scoping, platform settings and platform roles. Dormant
+security code is worse than absent security code: it is attack surface,
+it must be kept compiling through every migration, and it teaches the
+next reader that something is being enforced when nothing is.
+<strong>Response.</strong> D-056 — it is removed at extraction time, not
+disabled. Accepting the resulting divergence from the upstream template
+is the cost.</p>
+<h3 id="f-27--retention-defaults-must-not-masquerade-as-legal-advice">F-27 —
+Retention defaults must not masquerade as legal advice</h3>
+<p><strong>Severity: medium.</strong> Shipping retention periods that
+look authoritative invites an organisation to adopt them without
+deciding anything, which leaves them unable to justify their own
+processing under Article 5(2). <strong>Response.</strong> Every default
+is presented as a <strong>proposal requiring confirmation</strong> in
+the setup wizard and the privacy admin area, with the lawful basis field
+empty until the organisation fills it. The documentation states the
+roles (D-064) and the questions, and explicitly declines to answer
+them.</p>
 <h2 id="scalability-problems">Scalability problems</h2>
-<p>Covered in full in <code>07-operations.md</code> §4. Single-tenancy
-changes which risks matter: per-instance data volume becomes small, and
-<strong>fleet size becomes the scaling axis</strong>.</p>
+<p>Covered in full in <code>07-operations.md</code> §4. Scale is defined
+<strong>per installation</strong> (<code>00-overview.md</code> §4.2),
+not across organisations. Two risks bite first:</p>
 <ol type="1">
-<li><strong>Fleet size.</strong> 100 organisations means 100 deployments
-to upgrade, back up and monitor. This is now the dominant scaling
-concern (F-13).</li>
 <li><strong>Derived progress state.</strong> The group skill matrix (30
 students × 40 skills) computed from an append-only log is still the
 first query that will be measurably slow, even in a small instance. The
 materialised summary is designed but deliberately not built
 (D-005).</li>
-<li><strong>Audit and attendance table growth.</strong> Still the two
-fastest-growing tables, but per organisation rather than globally —
-which pushes the problem out by roughly the number of customers.
-Partitioning plus retention rotation remains the answer.</li>
+<li><strong>Audit and attendance table growth.</strong> The two
+fastest-growing tables within an installation. Partitioning plus
+retention rotation is the answer, and the retention policy doubles as
+the growth control.</li>
 </ol>
 <p>Neither justifies added complexity today. Knowing the answer is the
 deliverable at this stage; building it would be exactly the premature
@@ -4892,6 +5946,16 @@ complexity the brief warns against.</p>
 <hr />
 <h1 id="11--revision-from-multi-tenant-to-single-tenant">11 — Revision:
 from multi-tenant to single-tenant</h1>
+<blockquote>
+<h2 id="warning-history--not-an-implementation-source">⚠️ HISTORY — NOT
+AN IMPLEMENTATION SOURCE</h2>
+<p>This chapter records <strong>how the design changed</strong>
+(multi-tenant → single-tenant) and why. It is kept for traceability of
+reasoning only. <strong>Do not implement from it and do not cite it as a
+requirement.</strong> The active chapters (00–10, 13, 14) are
+consolidated and authoritative; if this note appears to contradict them,
+they are right and this note is stale.</p>
+</blockquote>
 <p><strong>Date:</strong> 2026-08-31 · <strong>Requested by:</strong>
 Jack · <strong>Status:</strong> applied to the whole design set.</p>
 <blockquote>
@@ -5084,6 +6148,16 @@ required?</li>
 <hr />
 <h1 id="12--revision-open-source-self-hosted-product">12 — Revision:
 open-source, self-hosted product</h1>
+<blockquote>
+<h2 id="warning-history--not-an-implementation-source-1">⚠️ HISTORY —
+NOT AN IMPLEMENTATION SOURCE</h2>
+<p>This chapter records <strong>how the design changed</strong>
+(single-tenant → open-source self-hosted) and why. It is kept for
+traceability of reasoning only. <strong>Do not implement from it and do
+not cite it as a requirement.</strong> The active chapters (00–10, 13,
+14) are consolidated and authoritative; if this note appears to
+contradict them, they are right and this note is stale.</p>
+</blockquote>
 <p><strong>Date:</strong> 2026-08-31 · <strong>Requested by:</strong>
 Jack · <strong>Supersedes the operational half of
 <code>11-revision-single-tenant.md</code>.</strong></p>
@@ -5318,19 +6392,41 @@ layers</h2>
 <p>The honest position is that <strong>not everything can be in the
 database</strong>, and pretending otherwise produces a chicken-and-egg
 failure. Three layers, and the first is kept deliberately tiny.</p>
-<h3 id="31-layer-1--bootstrap-environment-variables-restart-required">3.1
-Layer 1 — Bootstrap (environment variables, restart required)</h3>
-<p>Only what is needed to reach the database and serve a request at
-all:</p>
+<h3 id="31-layer-1--bootstrap-environment-restart-required">3.1 Layer 1
+— Bootstrap (environment, restart required)</h3>
+<p><strong>Application-owned bootstrap variables</strong> — the values
+the application must know <em>before</em> it can read its own database,
+or that select where its own state lives:</p>
 <pre class="text"><code>DATABASE_URL      where the database is
 APP_URL           the public origin (also the WebAuthn relying-party origin)
 SECRET_KEY        master key for encrypting secrets at rest (§5)
 DATA_DIR          uploads/assets path (optional, sane default)
-PORT              optional</code></pre>
-<p><strong>That is the entire environment-variable surface.</strong>
-Anything else being an env var is a design failure to be fixed, not
-documented. This list is short enough to print in the README and never
-revisit.</p>
+PORT              listen port (optional, sane default)</code></pre>
+<p>That is the current set, not a quota. It may grow when a value
+genuinely meets the criterion below, and it should stay small because
+few values do.</p>
+<p>Separately, and <strong>not</strong> application-owned: standard
+runtime and platform variables an operator may need (<code>TZ</code>,
+<code>NODE_ENV</code>, proxy settings, a custom CA bundle, container
+resource limits). We document them where relevant but do not own or
+invent them.</p>
+<p><strong>Decision D-037 — Environment holds only what must be known
+before the database is readable, or what selects where state lives.
+Everything else belongs in the settings registry. Adding a variable
+requires an ADR stating why it cannot live in the database.</strong></p>
+<p><strong>Reason.</strong> A hard numeric cap would be an arbitrary
+architectural rule that could later block genuinely necessary
+pre-database or platform configuration — a TLS trust store, a proxy, a
+read-only-filesystem path. The <em>criterion</em> is what matters, not
+the count: if a value can be read from the database, it must be. A
+self-hoster should still never have to grep a two-hundred-entry
+<code>.env.template</code> to find why email is failing.</p>
+<p><strong>Trade-off.</strong> The rule requires judgement rather than
+counting, so it needs the ADR gate to stay honest. Settings that
+conventionally live in environment variables (SMTP host, log level) move
+into the database and therefore cannot be changed while it is
+unreachable — acceptable, because if the database is down, those are not
+the settings being fixed.</p>
 <h3 id="32-layer-2--runtime-settings-database-in-app-live">3.2 Layer 2 —
 Runtime settings (database, in-app, live)</h3>
 <p>Everything else. A typed registry defines each setting once:</p>
@@ -5354,15 +6450,8 @@ content</h3>
 domain data (§4 and §5 of <code>03-deployment-model.md</code>).
 Mentioned only to note it is <em>not</em> part of the settings registry
 — content and configuration stay separate.</p>
-<p><strong>Decision D-037 — The environment-variable surface is capped
-at five keys.</strong> <strong>Reason.</strong> A self-hoster should
-never have to grep a <code>.env.template</code> with two hundred entries
-to find why email is not sending. Capping the surface forces every new
-option into the in-app registry by default. <strong>Trade-off.</strong>
-Some settings that are conventionally env vars (SMTP host, log level)
-move into the database and therefore cannot be changed while the
-database is down. Acceptable — if the database is down, email settings
-are not the problem being solved.</p>
+<p>The rule governing what may live in the environment is stated once,
+in §3.1 (D-037). It is not restated here.</p>
 <hr />
 <h2 id="4-applying-changes-without-a-restart">4. Applying changes
 without a restart</h2>
@@ -5418,40 +6507,94 @@ which ships with the image.</li>
 column encryption); both are answered by one key and one documented
 rotation path.</p>
 <hr />
-<h2 id="6-first-run-setup">6. First-run setup</h2>
-<pre class="text"><code>container starts → migrations run → no PlatformBootstrap row exists
-   → every request redirects to /setup
-   → wizard:
-        1. Organisation name, locale, timezone
-        2. First administrator account (email, password or passkey)
-        3. MFA enrolment — forced, not offered
-        4. Email settings (optional, with a test-send button)
-        5. Done → bootstrap row written, /setup permanently disabled</code></pre>
+<h2 id="6-start-up-setup-restore-and-migration--one-sequence">6.
+Start-up, setup, restore and migration — one sequence</h2>
+<p>This is the <strong>authoritative boot sequence</strong>. Chapter 14
+describes backup and restore mechanics; where the two appear to differ,
+this section defines the order.</p>
+<p><strong>Decision D-055 — The container never migrates a database
+whose purpose is not yet known. State is detected first; migration is a
+consequence of that state, never the first action.</strong></p>
+<pre class="text"><code>container start
+  │
+  ├─ database reachable?            no → fail fast, clear error, do not retry blindly
+  │
+  ├─ inspect schema state
+  │
+  ├── EMPTY  (no tables at all)
+  │     → SETUP MODE. No migrations are run yet.
+  │       Every request redirects to /setup. The wizard asks the one question
+  │       only the operator can answer:
+  │
+  │         ┌─ New installation
+  │         │    → run migrations  → seed catalogue + starter roles
+  │         │    → create first administrator, force MFA
+  │         │    → write bootstrap record → serving
+  │         │
+  │         └─ Restore from backup
+  │              → decrypt + verify archive (nothing written until this passes)
+  │              → restore dump: old schema + old data + _prisma_migrations
+  │              → run forward migrations from that point (D-046)
+  │              → verify against manifest → serving with the original accounts
+  │
+  ├── PARTIAL  (tables exist, no bootstrap record)
+  │     → setup was interrupted. Resume SETUP MODE; do not migrate silently.
+  │
+  ├── EXISTING  (tables + bootstrap record, schema older than app)
+  │     → take automatic pre-migration backup (D-044)
+  │     → run forward migrations → serving
+  │
+  ├── CURRENT  (schema matches app)
+  │     → serving
+  │
+  └── AHEAD  (schema newer than app)
+        → REFUSE TO START. Name the image version required (D-043).</code></pre>
+<p><strong>Reason.</strong> An empty database is ambiguous: it is either
+a fresh installation or the first minute of a restore. Migrating it
+immediately resolves that ambiguity in the wrong direction — the
+operator then has a fully migrated empty schema and a backup that no
+longer restores cleanly into it. Detecting state first makes the two
+paths explicit and keeps restore a normal operation rather than a
+rescue.</p>
+<p><strong>Trade-off.</strong> The entrypoint cannot be a naive
+<code>migrate deploy &amp;&amp; start</code>; it carries a small state
+machine, and that state machine is security- and data-critical code. It
+is therefore covered by its own test matrix, one case per state
+above.</p>
+<h3 id="61-the-setup-wizard">6.1 The setup wizard</h3>
+<p>Reachable <strong>only</strong> in <code>SETUP MODE</code> (states
+EMPTY and PARTIAL), so it cannot be re-opened once an administrator
+exists:</p>
+<pre class="text"><code>0. New installation, or restore from backup?
+1. Organisation name, locale, timezone
+2. First administrator account (email, password or passkey)
+3. MFA enrolment — forced, not offered
+4. Recovery token shown once, with a required &quot;I have stored this&quot; step (D-040)
+5. Email settings (optional, with a test-send button)
+6. Done → bootstrap record written, /setup permanently closed</code></pre>
 <p><code>PlatformBootstrap</code> is the template&#39;s existing
-enforced-singleton first-run record; this reuses it unchanged. The
-wizard is reachable <strong>only</strong> while that row is absent, so
-it cannot be re-opened by an attacker later.</p>
+enforced-singleton first-run record, reused unchanged.</p>
 <p><strong>Decision D-039 — The setup wizard is the only unauthenticated
 administrative surface, and it self-destructs.</strong>
 <strong>Reason.</strong> First-run configuration is the one moment where
 no account can exist yet. Bounding that window to &quot;before the first
 administrator exists&quot; removes the standing unauthenticated admin surface
-that Vaultwarden&#39;s <code>ADMIN_TOKEN</code> model keeps open
-permanently. <strong>Trade-off.</strong> A race exists between container
-start and the operator reaching <code>/setup</code> — whoever arrives
-first becomes administrator. Mitigated by printing a one-time setup
-token to the container logs that the wizard requires. The operator can
-read their own logs; a stranger on the internet cannot.</p>
+that a permanent admin-token model keeps open forever.
+<strong>Trade-off.</strong> A race exists between container start and
+the operator reaching <code>/setup</code> — whoever arrives first
+becomes administrator. Mitigated by printing a one-time setup token to
+the container logs, which the wizard requires: the operator can read
+their own logs, a stranger on the internet cannot.</p>
 <hr />
 <h2 id="7-break-glass-locked-out-of-your-own-instance">7. Break-glass:
 locked out of your own instance</h2>
 <p>A self-hosted application must have a recovery path that does
 <strong>not</strong> depend on a network-reachable secret. Ours requires
 host access, which is proof of ownership:</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:reset-mfa   <span class="at">--email</span> …</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack admin:grant-admin <span class="at">--email</span> …</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:reset    <span class="at">--key</span> …</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec app splashtrack settings:list</span></code></pre></div>
 <p>Every one of these writes an audit event. This replaces Vaultwarden&#39;s
 &quot;disable the admin token&quot; escape hatch with something that cannot be
 reached from the internet at all.</p>
@@ -5519,8 +6662,10 @@ claiming otherwise is lying. So the split is:</p>
 </tr>
 <tr>
 <td><strong>Migrate</strong></td>
-<td>Automatically on container start</td>
-<td>Deterministic, forward-only</td>
+<td>Automatically on start, <strong>once the database state is
+known</strong> (§6 of <code>13-…</code>)</td>
+<td>Deterministic, forward-only; never on an ambiguous empty
+database</td>
 </tr>
 <tr>
 <td><strong>Update</strong></td>
@@ -5650,23 +6795,28 @@ states</strong>, not a version string we have to trust or guess from.
 The migration runner then does exactly what it does on any ordinary
 upgrade — there is no special restore-migration path to keep correct,
 which is precisely why it can be relied on.</p>
-<p><strong>Trade-off.</strong> The restore step must run before the
-application&#39;s normal start-up migration, so the setup wizard controls
-the sequence rather than the container entrypoint. A restore therefore
-happens in a distinct start-up mode, and the entrypoint must not blindly
-migrate an empty database before the wizard has had its say.</p>
+<p><strong>Trade-off.</strong> The restore step must run before any
+migration, so the entrypoint cannot be a naive
+<code>migrate deploy &amp;&amp; start</code>. It carries the small state
+machine in <code>13-configuration-and-setup.md</code> §6 (D-055), which
+is itself data-critical code and is covered by a test matrix with one
+case per state.</p>
 <h3 id="431-what-this-obliges-us-to-do--the-actual-cost">4.3.1 What this
 obliges us to do — the actual cost</h3>
 <p>The promise is easy to state and easy to break silently. Three
 commitments make it real:</p>
-<p><strong>Decision D-047 — CI tests restore from <em>every</em>
-supported release into <code>HEAD</code>, not just from the previous
-one.</strong></p>
-<p>A matrix job: for each released version, restore a stored seeded
-backup of that version into the current build, apply migrations, and
-assert the schema and a set of domain invariants. A migration that
-breaks restoring from v1.3 fails the build on the day it is written —
-not two years later on a stranger&#39;s server.</p>
+<p><strong>Decision D-047 — CI tests restore from <strong>every
+supported release</strong> into <code>HEAD</code> — that is, every
+release at or above <code>minimumRestorableVersion</code> (D-048), not
+merely the previous one.</strong></p>
+<p>A matrix job: for each such version, restore a stored seeded backup
+of it into the current build, apply migrations, and assert the schema
+and a set of domain invariants. Releases below the floor are not tested
+because they are not supported — the floor is the honest boundary of the
+promise, and the restore path refuses them with a message naming the
+intermediate version required. A migration that breaks restoring from
+v1.3 fails the build on the day it is written — not two years later on a
+stranger&#39;s server.</p>
 <p><strong>Reason.</strong> &quot;Skipped versions are supported&quot; is
 worthless as a sentence in a document. It is only true if a machine
 checks it on every pull request. <strong>Trade-off.</strong> The matrix
@@ -5744,16 +6894,22 @@ with an error naming the exact version they need.</p>
 <em>running</em> instance</h3>
 <p>Not offered in the UI. It is available deliberately and awkwardly,
 from the host:</p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose down app</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> app splashtrack restore <span class="at">--file</span> … <span class="at">--token</span> …</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span> app</span></code></pre></div>
 <p>Awkwardness is the feature — this destroys live data and should
 require intent and host access, not a button in a browser.</p>
 <hr />
 <h2 id="5-migration">5. Migration</h2>
-<p>Migrations run <strong>automatically on container start</strong>,
-forward-only, before the application accepts traffic. The operator never
-runs a migration command.</p>
+<p>Migrations run <strong>automatically on container start for an
+already-initialised installation</strong>, forward-only, before the
+application accepts traffic. The operator never runs a migration
+command.</p>
+<p>They do <strong>not</strong> run on an empty or partially-initialised
+database: that state is ambiguous (fresh install or the first minute of
+a restore) and is resolved by the setup wizard first. The authoritative
+boot sequence is <code>13-configuration-and-setup.md</code> §6 (D-055);
+this section describes only what happens once the state is known.</p>
 <p><strong>Decision D-044 — An automatic pre-migration backup is taken
 whenever a start would apply migrations, retained for a configurable
 number of upgrades.</strong> <strong>Reason.</strong> The most dangerous
@@ -5811,7 +6967,7 @@ upgrade</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb34"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
+<div class="sourceCode" id="cb38"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose pull <span class="kw">&amp;&amp;</span> <span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
 <p><strong>Decision D-045 — The application prepares and verifies
 upgrades but never performs them; the operator runs one documented
 command.</strong> <strong>Reason.</strong> It keeps the trust boundary

@@ -1,0 +1,1918 @@
+// SplashTrack — Prisma schema
+//
+// Scope: phase 0.2 (foundation), extracted from WebAppTemplate (7db6488). This
+// models the identity graph, the authorization tables, the organisation
+// singleton with its configuration, and the audit trail. It deliberately contains NO domain
+// model yet — no Person-as-pupil, no group, no lesson, no attendance. Those
+// arrive per module, in the DAG order `06-delivery.md` §5 sets out, and every
+// one of them is blocked on the phase-0.4 ground rules below.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT IS DELIBERATELY ABSENT, AND WHY IT IS NOT AN OVERSIGHT
+//
+// PHASE 0.4 — the retrofit-hostile mechanisms (`docs/build/phase-0-foundation.md`
+// §0.4). Their specifications were repaired in D-166..D-173; building a
+// half-matching version before that would have had to be rebuilt against data.
+//
+// DONE (phase 0.4a — `docs/build/phase-0.4a-crypto-and-audit-report.md`):
+//   - The D-096/D-167 encryption envelope, in `src/lib/crypto/`. NO COLUMN HERE
+//     IS ENCRYPTED YET, and that is the ordering `CLAUDE.md` rule 1 asks for:
+//     the envelope exists before the first encrypted byte, so no value ever has
+//     to be unwrapped and rewritten by hand from a backup.
+//
+//     TO ENCRYPT A COLUMN: mark the field with a `/// @encrypted <columnId>`
+//     doc comment and add the matching entry to
+//     `src/lib/crypto/encrypted-columns.ts`.
+//     `tests/unit/encrypted-column-registry.test.ts` checks both directions and
+//     goes red if either half is missing.
+//
+//         /// @encrypted students.medical_remarks
+//         medicalRemarks String?
+//
+//     `columnId` is PERMANENT — it is bound into the AAD of every value ever
+//     written for that column — while `model` and `field` in the registry are
+//     ordinary mutable fields a rename edits (D-167). That is what makes a
+//     rename safe here where it used to read as tampering (F-136).
+//
+// DONE (phase 0.4b, retention half —
+// `docs/build/phase-0.4b-reach-and-retention-report.md`):
+//   - `RetentionPolicy`, one row per `DataClass` (D-065): purpose, proposed vs.
+//     organisation-confirmed lawful basis, trigger, `retainForDays`, `onExpiry`
+//     (`DELETE` | `ANONYMISE` | `REVIEW`). `src/lib/retention/catalogue.ts` is
+//     the shipped proposal set — every entry a PROPOSAL, never a seeded
+//     confirmation (F-27).
+//   - Every model in this file carries a `/// @dataClass <CLASS>` doc-comment
+//     binding it to its retention policy, checked bidirectionally against
+//     `src/lib/retention/data-class-registry.ts` — `CLAUDE.md` rule 5's "from
+//     the day it is created" as a forcing function, the same shape D-135
+//     already adopted for `@encrypted` (D-167).
+//   - The D-014 erasure registry, `src/lib/retention/erasure-registry.ts`:
+//     every `Person`-referencing table is `erase` or a named, dated
+//     `exempt(ground, until)` (D-154) — never a silent absence.
+//
+// STILL ABSENT, on purpose: the `erasePersonData` transaction that actually
+// walks the registry and performs the erasure. `02-security-privacy.md` §5.6
+// assigns that to R-25 alongside the retention scheduled job — v1 does not ship
+// the D-120 policy engine, so `onExpiry: REVIEW` today means "nothing happens
+// automatically" and is documented as such, not silently absent.
+//
+// PHASE 0.3 — the multi-tenant machinery (D-056) is being removed, one
+// reviewable commit at a time, with the suite green before and after each.
+// Done so far:
+//   - `PlatformRoleAssignment` deleted. There is no platform-wide grant.
+//   - `AuditEvent.organizationId` dropped, with the two indexes over it.
+//   - Every remaining `organizationId` column, foreign key and index dropped.
+//   - `OrganizationMembership` renamed to `Membership`.
+//   - `PlatformSettings` merged into `Organization`; `slug`, `status` and the
+//     `OrganizationStatus` enum dropped; the singleton enforced by a CHECK
+//     constraint at the database rather than by a constant in the code.
+// DONE. What remains under D-056 is a standing rule, not a task: no tenant id,
+// no platform namespace, no second organisation — ever.
+//
+// NOT EXTRACTED AT ALL (features, not foundation — see
+// `docs/build/phase-0.2-extraction-report.md`): uploads and assets, per-org
+// branding, the consent model, custom profile fields, the CMS, email templates,
+// maintenance jobs, IdP step-up, public self-registration, and invitations.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Design rules honoured here:
+//   - A person is not the same as a login account, and neither is the same as
+//     any functional role. Identity is split across tables; there is no
+//     oversized "user" table. D-053 extends this: `Person`, `StudentProfile`
+//     and `Membership` will be separate tables with different lifecycles and
+//     different retention, never one table with a flag.
+//   - Every identifier is English (D-159). `docs/glossary.md` is the Dutch
+//     translation record.
+//   - `Person` is the personal-data anchor. Foreign keys pointing at a `Person`
+//     or an `Organization` use `onDelete: Restrict` so history is never
+//     silently cascade-deleted; erasure must be a deliberate, reviewed
+//     operation. EXCEPTION: pure configuration carrying NO personal data
+//     cascades (Role↔Permission, AccessGroup↔Permission, Role↔AccessGroup, and
+//     org-owned configuration entities).
+
+generator client {
+  // Prisma 7 "prisma-client" generator (Rust-free query compiler). `output` is
+  // required. The client is imported from "<output>/client".
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  // Prisma 7 reads the connection string for the CLI (migrate/db) from
+  // prisma.config.ts (`datasource.url = env("DATABASE_URL")`). At runtime the
+  // client connects through the @prisma/adapter-pg driver adapter, also fed
+  // from env("DATABASE_URL"). Both resolve the same variable — see .env.example
+  // and D-037.
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserAccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// The granular axis of a grant (`02-security-privacy.md` §2.1). A grant is a
+/// permission PLUS a scope; this enum is the closed set of scope kinds, and
+/// `Reach` (D-147, `@/lib/authorization`) carries exactly one variant per member
+/// plus `NONE` and `UNION`. Adding a member here is a COMPILE ERROR in every
+/// repository that translates a `Reach` — deliberately (D-147's trade-off).
+///
+/// `tests/unit/authorization-vocabulary-sync.test.ts` asserts this enum and the TypeScript
+/// union in `@/lib/authorization/scope` are the same set, in both directions.
+///
+/// `RELATED` IS NOT HERE AND MUST NOT BE ADDED (OD-5, closed 2026-09-01, D-161).
+/// It was simultaneously mandated for v1, deferred to the guardian portal, and
+/// granted by the starter-role catalogue — an administrator could have assigned
+/// a scope whose enforcement nobody had written, and it would have looked like
+/// it worked. A guardian's consent authority is a `PersonRelationship` fact, not
+/// an authorization scope. The member returns with the portal that needs it.
+enum ScopeType {
+  /// The whole installation. Producible only by an organisation-scoped grant.
+  ORGANIZATION
+  /// One `OrganizationUnit` — FLAT, no descendant walk in v1 (D-121).
+  UNIT
+  /// One teaching group.
+  GROUP
+  /// One course across groups — which is why `COURSE` is NOT "below" `UNIT`
+  /// and why confinement is resource containment rather than a type ranking
+  /// (D-170).
+  COURSE
+  /// Participation in ONE scheduled session and its roster, for a bounded
+  /// window (D-068). Weekly machinery, not an exotic case: make-up guests,
+  /// substitutes and the aftest assessor all land here (D-179).
+  SESSION
+  /// The holder's own records, for the closed permission set of D-146. An
+  /// EXPLICIT seeded assignment — never an implicit match.
+  SELF
+}
+
+// ---------------------------------------------------------------------------
+// The organisation — an ENFORCED SINGLETON (D-027, D-056)
+// ---------------------------------------------------------------------------
+
+/// THE organisation this installation serves, and its configuration. One
+/// organisation per installation (D-162), so this table holds exactly one row
+/// and that is enforced BY THE DATABASE, not by convention: `id` is pinned to
+/// the constant `organization` by a CHECK constraint, and the primary key does
+/// the rest. Inserting a second organisation fails, whichever id it is given —
+/// `tests/integration/organization-singleton.test.ts` proves both directions.
+///
+/// The CHECK is hand-written in the migration because the Prisma DSL cannot
+/// express one, which makes it invisible in this file and easy to lose in a
+/// future "regenerate the migrations" tidy-up. It must not be lost: removing the
+/// tenant boundary rests on there being exactly one organisation.
+///
+/// It is a NAMED ENTITY and not a settings blob (D-027) — domain objects
+/// legitimately reference the organisation, since a certificate is issued by one
+/// — and it also carries this instance's configuration, because D-056 merges
+/// `PlatformSettings` into it rather than keeping a platform-versus-organisation
+/// settings duality that has no second side.
+///
+/// What went with the tenant boundary: `slug` (subdomain tenant resolution,
+/// D-015 withdrawn — each instance has its own domain, so there is nothing to
+/// resolve) and `status` with its `OrganizationStatus` enum (suspending or
+/// archiving a tenant is a control-plane action, and there is no control plane
+/// and no principal above the organisation to perform it).
+///
+/// PHASE 1: the setup wizard (D-039) UPDATES this row. It must never read the
+/// row's EXISTENCE as "already configured", because the read path creates it
+/// lazily; the boot state machine reads `InstallationBootstrap` (D-100) for
+/// that, and that model does not exist yet.
+/// @dataClass ORGANIZATION_SETTINGS
+model Organization {
+  /// Pinned to the constant `organization` by a CHECK constraint in the
+  /// migration. A well-known id rather than a cuid, so every future foreign key
+  /// to "the organisation" is a constant a human can read in a query.
+  id String @id @default("organization")
+
+  /// The organisation's name, and the portal's brand name — one organisation
+  /// means one name, so the inherited `PlatformSettings.displayName` merges into
+  /// this column rather than sitting beside it as a second thing to get out of
+  /// step. Plain text, no markup; length-bounded at the validation layer.
+  /// Injected over the `common.brand` message so every brand reference follows
+  /// it without per-component wiring.
+  name String @default("SplashTrack")
+
+  /// The configuration document — see `@/lib/settings/config.ts` for its shape,
+  /// its lenient read path and its strict write path. One VERSIONED,
+  /// server-validated JSON document, which is what lets a setting be added
+  /// without a migration per field. Null ⇒ nothing configured yet; the read path
+  /// coerces a complete, safe default.
+  ///
+  /// This is the mechanism D-036/D-037 rest on: every runtime setting is
+  /// database-backed and administrator-editable, and only the three bootstrap
+  /// values in `.env.example` are environment variables. The session idle and
+  /// absolute timeouts live in this document's `security` section, bounded, and
+  /// are enforced live in `@/lib/auth/session.ts` (D-173).
+  ///
+  /// The template additionally carried branding assets, theme configuration,
+  /// notification configuration, profile-field definitions and both identity
+  /// configurations on its settings singleton. None of those are extracted:
+  /// branding and uploads are phase-4 surfaces — and `03-deployment-model.md` §4
+  /// re-homes the theme tokens into a `Branding` singleton when they arrive,
+  /// rather than here — while the Entra/native-sign-in documents belong to the
+  /// IdP registry, which is out of v1.
+  config Json?
+
+  /// Who last changed the configuration. Nullable, `onDelete: SetNull` as
+  /// DEFENCE IN DEPTH: the erasure path severs this column explicitly before
+  /// deleting the Person row in the same transaction, so this action should
+  /// never fire — but a bare `Restrict` leaves the column as a live trap for any
+  /// other future Person-delete path that forgets the sever step. That trap
+  /// sprang once in the template: `OrganizationBranding.updatedByPersonId` was
+  /// `Restrict` with no sever step, and erasing its last editor raised a raw
+  /// FK-constraint error that rolled back an entire Article 17 erasure.
+  /// `SetNull` degrades a forgotten sever to "pointer silently nulled" instead.
+  updatedByPersonId String?
+  updatedBy         Person? @relation("OrganizationUpdatedBy", fields: [updatedByPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedByPersonId])
+}
+
+// ---------------------------------------------------------------------------
+// People and accounts
+// ---------------------------------------------------------------------------
+
+/// A human being. NOT necessarily a login user, and not a pupil: `leerling` is
+/// `StudentProfile`, a separate table with its own lifecycle (D-053, and see
+/// `docs/glossary.md`). This is the personal-data anchor — every erasure and
+/// every retention decision ultimately resolves here.
+///
+/// Kept minimal on purpose — `01-domain-model.md` §3.1's key fields and nothing
+/// else. Medical remarks, pastoral notes, guardianship EVIDENCE, assessment and
+/// attendance all belong to the modules that own their PURPOSE (D-058), each
+/// with its own retention policy from the day the column is created (D-065,
+/// D-014). What lives here is what identifies a human: their name, their date of
+/// birth, and the contact route the school reaches them by.
+///
+/// `email` IS NOT `UserAccount.email`, and the duplication is not accidental.
+/// `UserAccount.email` is a LOGIN IDENTIFIER — unique, Better-Auth-owned, and
+/// present only for the small minority of people who sign in. This column is a
+/// CONTACT address for a person who overwhelmingly has no account at all (a
+/// child, a guardian, an external examiner), it is not unique (two siblings
+/// share a parent's address, which is the ordinary case and not a data-entry
+/// error), and it is not an authentication input. Merging them would either make
+/// a contact address a credential or give every child a login.
+/// @dataClass PERSON_IDENTITY
+model Person {
+  id         String @id @default(cuid(2))
+  givenName  String
+  familyName String
+
+  /// Date of birth. NULLABLE, and that is D-172 rather than a relaxation of
+  /// §3.1's "non-optional".
+  ///
+  /// D-151 derives guardian authority expiry from this column against the
+  /// configured age of digital consent, evaluated at read time. D-172 then
+  /// settles what happens when the input is missing: a placeholder date is
+  /// FORBIDDEN OUTRIGHT — "it is indistinguishable from a real one the moment it
+  /// is written" — the importer REJECTS a row it cannot parse a date for, and
+  /// "where the column must accept null for an imported record, unknown date ⇒
+  /// authority treated as lapsed ⇒ the consent appears in the re-consent queue".
+  ///
+  /// A NOT NULL column cannot express that. It would force the one thing D-172
+  /// forbids: something plausible written into the column so the insert
+  /// succeeds. So the column is nullable and `resolveGuardianAuthority`
+  /// (`@/modules/people`) fails a null to LAPSED — the safe direction and, more
+  /// importantly, the VISIBLE one.
+  ///
+  /// Stored as a DATE, not a timestamp: a birthday is a calendar day, and giving
+  /// it a time zone makes a child sixteen at a different instant depending on
+  /// where the server is.
+  dateOfBirth DateTime? @db.Date
+
+  /// Contact email. NOT a credential and NOT unique — see the model comment.
+  email String?
+  /// Contact telephone number. Free text: international formats, extensions and
+  /// "bel oma op ..." all occur, and normalising them loses information the
+  /// person at the poolside needs.
+  phone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 0..1 login account (a Person may have no account — most people in this
+  // system, children especially, never will).
+  account UserAccount?
+
+  /// 0..1 pupil identity (D-053). A person who takes lessons here; most people
+  /// in the database have one and no `Membership`, which is §5.1's whole point.
+  studentProfile StudentProfile?
+
+  /// Relationships in which this person is the RELATIVE — the guardian, or the
+  /// emergency contact. `PersonRelationship.fromPersonId`.
+  relationshipsAsRelative PersonRelationship[] @relation("RelationshipFrom")
+  /// Relationships in which this person is the SUBJECT — the child who is
+  /// guarded, or the person the contact is for. `PersonRelationship.toPersonId`.
+  relationshipsAsSubject  PersonRelationship[] @relation("RelationshipTo")
+
+  memberships            Membership[]
+  /// Grants held BY this person — the only source `requirePermission` reads.
+  roleAssignments        RoleAssignment[]  @relation("RoleAssignmentSubject")
+  /// Grants ISSUED by this person. Accountability evidence for §2.6's
+  /// anti-amplification rule, severed (not deleted) on erasure.
+  grantsIssued           RoleAssignment[]  @relation("RoleAssignmentGranter")
+  /// The organisation singleton, when this person was the last to change its
+  /// configuration (0..1 — there is exactly one organisation).
+  organizationUpdates    Organization[]    @relation("OrganizationUpdatedBy")
+  /// Retention policies whose lawful basis this person confirmed on the
+  /// organisation's behalf (D-065, F-27). Accountability evidence; severed, not
+  /// deleted, on erasure — a confirmation stands after its confirmer leaves.
+  retentionConfirmations RetentionPolicy[] @relation("RetentionPolicyConfirmedBy")
+}
+
+/// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
+/// the credential and session material; this table is the application's
+/// representation linking an authenticatable identity to a `Person` and
+/// carrying application-level account state. It stores NO password or secret —
+/// password hashes live in `Account`.
+///
+/// Better Auth's "user" model is MAPPED onto this table (see `src/lib/auth`), so
+/// the columns split into two groups:
+///   - Application-owned: `personId`, `status`, `disabledAt`. Better Auth does
+///     not manage these. `personId` is injected when Better Auth creates an
+///     account (the `user.create.before` hook) so the Person↔account link holds.
+///   - Better-Auth-managed: `email`, `name`, `emailVerified`, `image`,
+///     `twoFactorEnabled`, `createdAt`, `updatedAt`. `name` is a login display
+///     name; structured names live on `Person`.
+/// @dataClass LOGIN_CREDENTIALS
+model UserAccount {
+  id         String            @id @default(cuid(2))
+  personId   String            @unique
+  email      String            @unique
+  status     UserAccountStatus @default(ACTIVE)
+  /// When the account was disabled; null while ACTIVE. Set by the disable
+  /// operation, which must also revoke the account's sessions.
+  disabledAt DateTime?
+
+  // --- Better Auth-managed identity fields ---
+  name             String
+  emailVerified    Boolean  @default(false)
+  image            String?
+  twoFactorEnabled Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Restrict: deleting a Person while an account exists must be deliberate.
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  // Session / credential / MFA material owned by Better Auth. These are
+  // auth-operational records, NOT the personal-data anchor, so they CASCADE
+  // when a UserAccount is (deliberately) hard-deleted — a stale session or
+  // password credential must never outlive the account it belongs to.
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+  passkeys   Passkey[]
+
+  @@index([personId])
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth tables (identity & session material)
+//
+// Managed by Better Auth's Prisma adapter (`src/lib/auth`). Field names/types
+// match what Better Auth expects for v1.6.x; do not rename columns without
+// updating the auth config's model/field mapping. These carry session tokens,
+// password hashes and TOTP secrets, which must NEVER be logged and must NOT be
+// serialized into any response.
+// ---------------------------------------------------------------------------
+
+/// A single authenticated session for a `UserAccount`. `token` is the opaque
+/// session identifier stored in the httpOnly, secure session cookie. Deleting a
+/// row revokes that session. Cascades when the account is hard-deleted.
+/// @dataClass LOGIN_CREDENTIALS
+model Session {
+  id        String   @id
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  /// Bumped by Better Auth's own sliding refresh (~`SESSION_REFRESH_AGE_SECONDS`,
+  /// see `@/lib/auth/auth.ts`) — the coarse "last active" proxy. `@updatedAt`
+  /// means Prisma auto-bumps this on ANY update to the row, not just ones that
+  /// set it explicitly, so `getCurrentSession()`'s `lastSeenAt` write pins it
+  /// back to its already-current value on every write. Without that pin, a
+  /// throttled bookkeeping write (as often as every 15-60s) would silently
+  /// shrink this column's documented ~5-minute resolution.
+  updatedAt DateTime @updatedAt
+
+  /// APP-OWNED last-activity timestamp. Deliberately NOT managed by Better Auth
+  /// (not declared in the `session` block of `@/lib/auth/auth.ts`) — its own
+  /// sliding-refresh mechanism overwrites `updatedAt` before
+  /// `auth.api.getSession()` ever returns it, which is exactly what made the
+  /// idle-timeout check unenforceable when it was written against `updatedAt`
+  /// (security review 2026-08-03, in the template's history). This column is
+  /// written ONLY by `getCurrentSession()`, throttled, and is what the live
+  /// idle check reads instead.
+  ///
+  /// Nullable with no default: null means "not yet tracked" (a session this
+  /// helper has not evaluated yet), handled as a one-time fallback there. It is
+  /// also the safe additive-migration shape — see
+  /// `tests/unit/migration-safety.test.ts`.
+  lastSeenAt DateTime?
+
+  /// SESSION-scoped MFA assurance evidence: "was a second factor proven for
+  /// THIS session?", not "does this account have one" (that is
+  /// `UserAccount.twoFactorEnabled`).
+  ///
+  /// Nullable with no default: null means NOT proven — fail toward strict. A
+  /// fresh password-only sign-in with no challenge to prove lands here as null
+  /// and is correctly treated as unproven.
+  ///
+  /// An ENUM rather than a bare boolean, and it RECORDS WHICH METHOD proved it.
+  /// Any step-up gate must treat every non-null value identically — callers
+  /// must never compare against a specific value. The method is still recorded
+  /// because it costs nothing at the write site (each already knows which
+  /// endpoint fired) and is a genuinely useful forensic signal: a session
+  /// proven by a BACKUP CODE is a recovery event, not routine possession of the
+  /// enrolled device.
+  ///
+  /// SECURITY-CRITICAL LOCKOUT LESSON (do not narrow this back to TOTP-only):
+  /// an earlier version of this column in the template was written ONLY for a
+  /// completed TOTP challenge. That reintroduced a hard lockout for exactly the
+  /// population backup codes exist to rescue — an administrator who lost their
+  /// authenticator, signs in with a backup code, then hits the step-up gate
+  /// with no working TOTP device and no way through. All three app-level second
+  /// factors must keep proving a session.
+  mfaEvidence SessionMfaEvidence?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Which second factor proved a session. The template additionally carried
+/// `IDP_PROVEN`, written by the Entra/Microsoft OAuth callback when the ID
+/// token's `amr` claim asserted MFA. SplashTrack v1 has no external identity
+/// provider (the IdP registry is out of v1), so that value — and the
+/// `entraAmrObservation` companion column — is not extracted. Adding it back is
+/// additive if an IdP ever arrives.
+enum SessionMfaEvidence {
+  TOTP_PROVEN
+  OTP_PROVEN
+  BACKUP_CODE_PROVEN
+}
+
+/// A credential record. For email+password auth exactly one row exists per
+/// account with `providerId = "credential"` and the password hash in
+/// `password` — the hash lives HERE, never on `UserAccount` or `Person`. The
+/// OAuth token columns are part of Better Auth's expected shape and stay unused
+/// while there is no social provider.
+///
+/// `issuer` is REQUIRED by Better Auth 1.7 and is NOT in the template's schema:
+/// the template pins `^1.6.23`, which today resolves to 1.7.2, and a fresh
+/// install of the template would break exactly as this did — sign-up threw
+/// `Unknown argument 'issuer'` from `prisma.account.create()`. Together with
+/// `accountId` it forms the stable provider-side key Better Auth recognizes an
+/// account by; local credentials get a synthetic `local:<providerId>` value.
+///
+/// This is why `better-auth` and `@better-auth/passkey` are pinned to an EXACT
+/// version in package.json rather than a caret range. The auth library owns the
+/// shape of four tables in this schema; a floating minor can therefore change
+/// the database contract silently, and it did.
+/// @dataClass LOGIN_CREDENTIALS
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  issuer                String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Short-lived verification tokens (password reset). Not linked by FK because an
+/// identifier may reference a not-yet-existing subject; rows are consumed and
+/// expired by Better Auth. Values are secrets — the auth config sets
+/// `verification.storeIdentifier: "hashed"` so the raw token is not the row
+/// identifier, and `@/lib/logging` redacts `Verification.value`.
+/// @dataClass LOGIN_CREDENTIALS
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+/// Fixed-window rate-limit counters (`@/lib/rate-limit`). Keys are HASHED
+/// identifiers, never a raw email or IP address.
+/// @dataClass RATE_LIMIT_COUNTERS
+model RateLimitCounter {
+  key         String   @id
+  windowStart DateTime
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-account two-factor (TOTP) enrolment, created by Better Auth's two-factor
+/// plugin. `secret` and `backupCodes` are encrypted/hashed MFA material — never
+/// logged, never returned to a client. Cascades with the account.
+///
+/// This makes MFA POSSIBLE per account. Enforcing "this permission requires
+/// MFA" is an authorization concern, and the set it keys on now exists —
+/// `HIGH_RISK_PERMISSIONS` / `holdsAnyHighRiskPermission()` in
+/// `@/lib/authorization` (phase 0.4b). §1.2 requires the mandate to be enforced
+/// TWICE: at login, and AT GRANT TIME, so granting a high-risk permission to an
+/// account with no verified factor fails rather than creating an unprotected
+/// administrator. Neither call site exists yet — the first needs the sign-in
+/// surface and the second needs the grant service's write path, both phase 1.
+/// The predicate is no longer the blocker; recorded in
+/// `docs/build/phase-0.4b-reach-and-retention-report.md` §5.
+/// @dataClass LOGIN_CREDENTIALS
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  userId                  String
+  verified                Boolean?  @default(true)
+  failedVerificationCount Int?      @default(0)
+  lockedUntil             DateTime?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+/// A WebAuthn passkey registered by a `UserAccount`, created and managed by the
+/// `@better-auth/passkey` plugin. Field names/types match what the plugin
+/// expects for v1.6.x — do not rename columns without updating the plugin's
+/// mapping in `src/lib/auth/auth.ts`.
+///
+/// Passkeys are in v1 deliberately (D-132): they are the best answer to "wet
+/// hands at the poolside". The corollary D-132 also fixes is that the WebAuthn
+/// relying-party id is set deliberately at setup — changing `BETTER_AUTH_URL`'s
+/// host invalidates EVERY passkey at once (FM-15) — and every account retains a
+/// password + TOTP fallback so that is recoverable rather than a lockout.
+///
+/// `publicKey` and `credentialID` are the PUBLIC halves of the credential (the
+/// private key never leaves the authenticator), but they are still
+/// auth-operational material and CASCADE when the account is hard-deleted.
+/// `aaguid` identifies the authenticator MODEL, not the device or the user.
+/// @dataClass LOGIN_CREDENTIALS
+model Passkey {
+  id           String   @id
+  /// Server-side backstop on the user-chosen label. The registration path
+  /// writes the name straight through the plugin, so this database-level bound
+  /// is the only server enforcement covering every write path. Deliberately
+  /// generous, so it never rejects a legitimate label — it only caps unbounded
+  /// storage from a crafted request.
+  name         String?  @db.VarChar(255)
+  publicKey    String
+  userId       String
+  credentialID String
+  counter      Int
+  deviceType   String
+  backedUp     Boolean
+  transports   String?
+  createdAt    DateTime @default(now())
+  aaguid       String?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([credentialID])
+}
+
+// ---------------------------------------------------------------------------
+// Membership — renamed from `OrganizationMembership` in phase 0.3 (D-056)
+// ---------------------------------------------------------------------------
+
+/// This person belongs to the organisation. There is only one organisation to
+/// be a member of, so the name no longer needs to say which
+/// (`01-domain-model.md` §1.1, D-056) and `personId` is the natural key.
+///
+/// THE NAME IS THE DOMAIN'S. `docs/glossary.md` fixes `Membership` as
+/// *lid / lidmaatschap* — club membership — and `01-domain-model.md` §3.1
+/// specifies it as `memberNumber` + `unitId?` with N `MembershipPeriod` rows,
+/// **one per person for life** (D-053, D-059).
+///
+/// PHASE 1.1 COMPLETED THE SHAPE. `memberNumber` and `MembershipPeriod` are
+/// here; the `people` module owns this table.
+///
+/// THERE IS NO `status` COLUMN AND THERE MUST NEVER BE ONE. The inherited flag
+/// and its `MembershipStatus` enum were removed in phase 0.3 rather than
+/// carried, because D-059 is explicit that belonging is a SET OF INTERVALS: a
+/// flag destroys the answer to "when were they a member?", which is the question
+/// contributions, insurance and retention are all decided from. Current
+/// membership is DERIVED — `isCurrentlyAMember` in `@/modules/people` — never
+/// read from a column. A forbidden column left lying in the schema is one
+/// somebody wires up later precisely because it is there.
+///
+/// Membership grants no authorization by itself and is never a prerequisite for
+/// a role (D-060) — permissions come from `RoleAssignment` alone. It is also not
+/// required to take lessons: the most common person in the database is a child
+/// with a `StudentProfile` and no membership at all (§5.1).
+/// @dataClass MEMBERSHIP_PERIODS
+model Membership {
+  id       String @id @default(cuid(2))
+  personId String @unique
+
+  /// The club's own member number — *lidnummer*. UNIQUE and STABLE ACROSS GAPS:
+  /// §3.1's "one per person, for life. The number stays the same across gaps" is
+  /// the reason leaving and returning may not create a second `Membership` row.
+  ///
+  /// A STRING, not an integer, and administrator-supplied where the club already
+  /// has a numbering scheme — clubs carry legacy numbers with prefixes, letters
+  /// and leading zeros, and an integer column silently destroys "0042". Left
+  /// blank, `allocateMemberNumber` issues the next `M-nnnnn`.
+  memberNumber String @unique
+
+  /// The organisational unit this member belongs to; null = unassigned. `UNIT`
+  /// is FLAT in v1 — there is no descendant walk (D-121) — and the club has one
+  /// location today, which confirms that choice rather than straining it.
+  ///
+  /// This is the column `unitOfPerson` resolves for `UNIT` coverage of a bare
+  /// `{ person }` reference (`@/lib/authorization/scope-relations`). A person
+  /// with no membership therefore has no unit and is DENIED under `UNIT` reach —
+  /// they are addressed as `{ student }` instead, which resolves through their
+  /// home unit.
+  unitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person  Person             @relation(fields: [personId], references: [id], onDelete: Restrict)
+  unit    OrganizationUnit?  @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  periods MembershipPeriod[]
+
+  @@index([unitId])
+}
+
+/// ONE INTERVAL OF BELONGING (D-059). Leave-and-return is a NEW ROW, never a
+/// mutated one and never a second `Membership`.
+///
+/// `01-domain-model.md` §3.1: *"Belonging is a set of intervals, not a status
+/// flag."* Everything follows from that:
+///   - "Is this person a member?" = does an OPEN period exist right now.
+///   - "When were they a member?" = the rows, all of them, forever.
+///   - Ending a membership CLOSES a period (`endedAt`, `endReason`). It never
+///     deletes one, and re-joining never reopens a closed one.
+///
+/// TWO HAND-WRITTEN CONSTRAINTS, because the Prisma DSL can express neither and
+/// `tests/integration/membership-periods.test.ts` names both:
+///   - `MembershipPeriod_window_order_check` — `endedAt > startedAt`. A period
+///     that ends before it starts is a data-entry accident that would otherwise
+///     read as a silently dead membership.
+///   - `MembershipPeriod_single_open_period_key` — a PARTIAL unique index on
+///     `membershipId WHERE "endedAt" IS NULL`. At most one open period per
+///     member. Without it, "start a membership" twice produces two overlapping
+///     open intervals and "are they a member?" quietly becomes a question with
+///     two answers — the exact failure mode the status flag had, one level down.
+///     Overlapping CLOSED periods are still permitted: a club that back-fills
+///     its paper history will produce them, and refusing legitimate history to
+///     enforce tidiness is how a status flag gets reinvented.
+///
+/// `endReason` is short free text, not an enum. The reasons a family leaves a
+/// swim club are open-ended (*"verhuisd"*, *"kosten"*, *"diploma C gehaald"*),
+/// and a closed vocabulary contains the reasons somebody thought of.
+/// @dataClass MEMBERSHIP_PERIODS
+model MembershipPeriod {
+  id           String @id @default(cuid(2))
+  membershipId String
+
+  /// When this interval of belonging began.
+  startedAt DateTime
+  /// When it ended. NULL = still a member. The ONLY current-membership signal.
+  endedAt   DateTime?
+  /// Why it ended, in the club's own words. Null while the period is open.
+  endReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// CASCADE, uniquely in this file, and deliberately. A period has no meaning
+  /// without its membership — it is not a separate relationship with the person,
+  /// it is one interval OF that relationship. `Membership` itself is `Restrict`
+  /// against `Person`, so an erasure still has to delete the membership
+  /// explicitly (`PERSON_REFERENCE_CLASSIFICATION` classifies it `HARD_DELETE`);
+  /// this cascade only decides what happens to the intervals when it does.
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  // The index the "is this person a member right now" derivation reads.
+  @@index([membershipId, endedAt])
+}
+
+// ---------------------------------------------------------------------------
+// The pupil, their lifecycle, and the people who answer for them
+// (phase 1.1, the `people` module — D-053, D-058, D-059, D-063, D-151)
+// ---------------------------------------------------------------------------
+
+/// *leerling* — THE PUPIL AS A LEARNER, and a table of its own (D-053).
+///
+/// NOT `Person` with a flag, and not `Membership`. Three different lifecycles:
+/// a member may leave while a diploma history is kept for ten years, a child
+/// taking lessons usually has no membership at all, and one retention policy
+/// cannot serve both. `docs/glossary.md` fixes the term.
+///
+/// **PERSISTENT.** Created once and never duplicated on return (D-059). A
+/// swimmer who leaves at seven and comes back at nine is the same profile with
+/// two more `StudentLifecycleEvent` rows — because their skills, their diplomas
+/// and their previous groups are the product's value, and a second profile
+/// fragments exactly that.
+///
+/// WHAT IS DELIBERATELY NOT HERE. §2.3 lists "medical remarks and internal
+/// notes" among a student profile's data; D-058 and D-148 override that reading
+/// and both are correct as later statements. Medical remarks are special
+/// category under `students.medical.*`, the `SafetyNote` free text is D-177 and
+/// the next pass, and pastoral notes are `students.notes.*` — all three
+/// encrypted, read-audited and export-excluded. Putting any of them on this row
+/// would drag that regime onto every read of a student number.
+/// @dataClass STUDENT_PROFILE
+model StudentProfile {
+  id       String @id @default(cuid(2))
+  personId String @unique
+
+  /// The club's own pupil number — *leerlingnummer*. Same shape and same reason
+  /// as `Membership.memberNumber`: a string, unique, administrator-supplied
+  /// where a scheme already exists, otherwise allocated as `L-nnnnn`.
+  ///
+  /// A SEPARATE NUMBERING SPACE from `memberNumber`, which is D-053's "different
+  /// numbering" made literal: a person who is both a member and a pupil has two
+  /// numbers, because the club's member register and its lesson administration
+  /// are two registers.
+  studentNumber String @unique
+
+  /// The pupil's HOME unit — which governs their PROFILE, whatever other units
+  /// they attend in (D-145's cross-unit rule). This is the column
+  /// `homeUnitOfStudent` resolves.
+  ///
+  /// NULLABLE, against §3.1's table, which writes it without a `?`. Nothing in
+  /// v1 creates an `OrganizationUnit`: there is no units module, no seeded unit,
+  /// and the club has exactly one location (`docs/glossary.md`, 2026-09-03). A
+  /// NOT NULL column would make it impossible to register a pupil at all until a
+  /// module that is not in this pass exists. Null DENIES `UNIT` reach rather
+  /// than widening it — `homeUnitOfStudent` returns null and every coverage rule
+  /// is a positive membership test — so the nullable column fails safe. Recorded
+  /// in `docs/build/phase-1.1-people-module-report.md`.
+  unitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  unit   OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  lifecycleEvents StudentLifecycleEvent[]
+
+  @@index([unitId])
+}
+
+/// The five lifecycle events of `01-domain-model.md` §3.1, and exactly those.
+///
+/// **`MOVED_GROUP` IS NOT HERE, AND ITS ABSENCE IS A DECISION.** The brief for
+/// this module lists "moved group" among the lifecycle events; §2.2 of the
+/// domain model gives group moves their own entity — `GroupMove >──
+/// StudentProfile (up or down, reason-carrying)` — owned by the `groups`
+/// module. Both cannot hold: D-134 allows a normative fact exactly one home, and
+/// "when did this child change group" recorded in two places drifts the first
+/// time one of them is written without the other. The owning module wins,
+/// because a group move needs the two group ids this table has nowhere to put.
+///
+/// THE DOMAIN CONSTRAINT THAT TRAVELS WITH IT (Jack, domain expert): **moving a
+/// child DOWN a level must be as ordinary in the history as moving up.** That is
+/// a rule about `GroupMove`, and it means no direction flag that reads as a
+/// failure, no "demotion" wording, and no screen that renders one direction in
+/// red. Written here because this is where the reader looking for "moved group"
+/// arrives.
+///
+/// `TRIAL_ATTENDED` is *proefzwemmen* — a trial lesson for a PROSPECTIVE pupil,
+/// an enrolment concept and not a rehearsal before an exam (`docs/glossary.md`,
+/// confirmed 2026-08-31 after an earlier draft had it backwards).
+enum StudentLifecycleEventType {
+  JOINED
+  PAUSED
+  LEFT
+  RETURNED
+  TRIAL_ATTENDED
+}
+
+/// APPEND-ONLY lifecycle history for one pupil (D-059, and D-005's rule applied
+/// to the same shape). Current student status is DERIVED from these rows; there
+/// is no status column, for the same reason `Membership` has no flag.
+///
+/// A correction is a NEW event, never an `UPDATE` of an old one — `CLAUDE.md`
+/// rule 4. The application has no update or delete path for this table.
+///
+/// `reason` is short free text and is NOT encrypted. That is a judgement, not an
+/// oversight: D-148's protected free-text class is medical remarks, pastoral
+/// notes, assessment remarks and `Inquiry` text, and a lifecycle reason
+/// (*"verhuisd"*, *"even te druk op school"*) is not in it. The risk that
+/// somebody types a medical fact here is real and is answered where the design
+/// answers it — a length bound, a purpose line at the capture point, and
+/// `students.notes.*` for anything that is actually a note about the child.
+/// Recorded in the phase 1.1 report so the next reviewer argues with a decision
+/// rather than discovering a gap.
+///
+/// There is no `recordedByPersonId`. WHO recorded the event is accountability
+/// evidence and its home is the append-only audit trail, which already carries
+/// `actorPersonId` for every write in this module (D-134: one home per fact). A
+/// person column here would be a second, mutable copy of it — and a further
+/// `Person` reference for the erasure registry to classify, for no fact the
+/// trail does not already hold.
+/// @dataClass STUDENT_PROFILE
+model StudentLifecycleEvent {
+  id               String @id @default(cuid(2))
+  studentProfileId String
+
+  type       StudentLifecycleEventType
+  /// WHEN IT HAPPENED, which is not when it was typed in. A club catches up on
+  /// Monday morning; `createdAt` beside it records the entry moment.
+  occurredAt DateTime
+  /// Short free text. Never a medical fact — see the model comment.
+  reason     String?
+
+  createdAt DateTime @default(now())
+
+  /// CASCADE from the profile, on the `MembershipPeriod` pattern: a lifecycle
+  /// event has no meaning without the pupil whose lifecycle it is. The profile
+  /// itself is `Restrict` against `Person`, so an erasure still deletes it
+  /// explicitly.
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@index([studentProfileId])
+  @@index([studentProfileId, occurredAt])
+}
+
+/// The two person-to-person relationships v1 records (`01-domain-model.md`
+/// §3.1).
+///
+/// `GUARDIAN_OF` carries consent authority; `EMERGENCY_CONTACT` never does, and
+/// the CHECK constraint in the migration enforces that rather than trusting a
+/// form.
+enum PersonRelationshipType {
+  GUARDIAN_OF
+  EMERGENCY_CONTACT
+}
+
+/// *ouder / voogd* — one person answering for another, with authority recorded
+/// as EVIDENCE OF A CLAIM rather than as legal fact (D-063).
+///
+/// DIRECTION, fixed once and never to be re-read: **`from` is the RELATIVE and
+/// `to` is the SUBJECT.** `fromPersonId` is the guardian or the emergency
+/// contact; `toPersonId` is the child, or the person the contact is for. Read it
+/// as the sentence the type spells: *from* is GUARDIAN_OF *to*.
+///
+/// WHY `authority` IS NOT AN AUTHORIZATION SCOPE. `RELATED` was removed from
+/// `ScopeType` and must not return (OD-5, D-161): an unimplemented but grantable
+/// scope is worse than an absent one. A guardian's consent authority is a FACT
+/// on this row, consulted by the consent module; it is not a grant, it reaches
+/// nothing, and holding it gives a person no read of anything.
+///
+/// **AUTHORITY IS NEVER "true" ON ITS OWN — IT IS DERIVED AT READ TIME (D-151).**
+/// This column records that authority was CLAIMED and evidenced. Whether it
+/// still HOLDS is computed by `resolveGuardianAuthority` (`@/modules/people`)
+/// from the SUBJECT's `dateOfBirth` against the configured age of digital
+/// consent, plus this row's own `validFrom`/`validTo`. Parental authority lapses
+/// by operation of law on a birthday, not on an administrator remembering to set
+/// a `validTo` — so nothing in this schema, and no scheduled job, marks it. A
+/// predicate cannot be behind schedule; a job can (the same argument D-144 makes
+/// for grant expiry). A NULL `dateOfBirth` derives to LAPSED (D-172).
+///
+/// THREE HAND-WRITTEN CONSTRAINTS, named by
+/// `tests/integration/person-relationship-constraints.test.ts`:
+///   - `PersonRelationship_evidence_required_check` — D-063: `evidence` is
+///     **non-optional where `authority = true`**. The application cannot verify
+///     guardianship; it can only record what it was told and HOW the claim was
+///     established, and an authority claim with no recorded basis is the false
+///     comfort D-063 exists to prevent in a custody dispute.
+///   - `PersonRelationship_authority_kind_check` — only `GUARDIAN_OF` may carry
+///     authority. An emergency contact is someone to telephone, not someone who
+///     may consent on a child's behalf, and the two get conflated at exactly the
+///     moment nobody is checking.
+///   - `PersonRelationship_window_order_check` — `validTo > validFrom`.
+///
+/// Plus `PersonRelationship_no_self_reference_check` (a person is not their own
+/// guardian) and a PARTIAL unique index forbidding two OPEN relationships of the
+/// same type between the same pair, on the `RoleAssignment_standing_grant_key`
+/// pattern: duplicate standing facts are noise, while closed historical ones are
+/// legitimate history.
+/// @dataClass PERSON_RELATIONSHIPS
+model PersonRelationship {
+  id String @id @default(cuid(2))
+
+  /// The RELATIVE — the guardian, or the emergency contact.
+  fromPersonId String
+  /// The SUBJECT — the child, or the person the contact is for.
+  toPersonId   String
+
+  type PersonRelationshipType
+
+  /// Does this relationship CLAIM authority to consent on the subject's behalf
+  /// (R-04, D-063)? Never `true` for `EMERGENCY_CONTACT`, and never sufficient on
+  /// its own — see the model comment on read-time derivation.
+  authority Boolean @default(false)
+
+  /// **HOW the claim was established**, in the words of whoever recorded it:
+  /// *"moeder, ingeschreven bij inschrijving 2024-09-01"*, *"beschikking
+  /// rechtbank gezien 2025-03-14"*. Mandatory where `authority = true`.
+  ///
+  /// THE FIRST PRODUCTION ENCRYPTED COLUMN IN THIS SCHEMA. It is free text about
+  /// a family's legal arrangements — D-063's own worked example is a custody
+  /// dispute — so it is written through the D-096/D-167 envelope and typed
+  /// `Sealed<"person_relationships.authority_evidence">` in the repository,
+  /// which makes handing it a plaintext a compile error rather than a review
+  /// miss. The `columnId` is PERMANENT and is bound into the AAD of every value
+  /// ever written here; the registry entry lives in
+  /// `src/lib/crypto/encrypted-columns.ts`.
+  /// @encrypted person_relationships.authority_evidence
+  evidence String?
+
+  /// When the relationship was recorded as beginning.
+  validFrom DateTime  @default(now())
+  /// When it was recorded as ending. NULL = standing. This is the ADMINISTRATIVE
+  /// end (the school was told), never the legal one — authority lapsing at the
+  /// age of digital consent is DERIVED and leaves this column alone (D-151).
+  validTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Restrict on BOTH sides. This row is personal data about two people at once,
+  /// and erasing either of them must be a deliberate, registered step rather
+  /// than a cascade nobody sees — `PERSON_REFERENCE_CLASSIFICATION` classifies
+  /// both columns `HARD_DELETE`.
+  fromPerson Person @relation("RelationshipFrom", fields: [fromPersonId], references: [id], onDelete: Restrict)
+  toPerson   Person @relation("RelationshipTo", fields: [toPersonId], references: [id], onDelete: Restrict)
+
+  @@index([fromPersonId])
+  @@index([toPersonId])
+  // The index the guardian-authority read and D-066's guardian source both use:
+  // "who answers for this child, right now".
+  @@index([toPersonId, type, validTo])
+}
+
+// ---------------------------------------------------------------------------
+// Authorization: roles group permissions; assignments are org-scoped
+//
+// The TABLES are extracted; the GUARD is not. `requirePermission` and
+// `resolveReach` with the opaque `Reach` type (D-147), and `coversResource()`
+// which the design names and does not define, are phase 0.4 — and they change
+// the signature of the guard every module calls, which is why no domain module
+// may be built before them (`06-delivery.md` §5, ranking item 3).
+// ---------------------------------------------------------------------------
+
+/// A named bundle of permissions. Business logic checks PERMISSIONS, never
+/// hardcoded role names (D-130) — the starter role catalogue is "a starting
+/// point, not a fixed object", and a school inventing its own role must not
+/// thereby fall off a security control. `isSystem` marks built-in roles that
+/// seeding manages.
+/// @dataClass ORGANIZATION_SETTINGS
+model Role {
+  id          String   @id @default(cuid(2))
+  /// Globally unique machine key. System roles use stable constants; org-owned
+  /// custom roles use an auto-generated unique key. `name` is the human label
+  /// and is NOT unique.
+  key         String   @unique
+  name        String
+  description String?
+  /// Marks a built-in role that seeding manages. The inherited
+  /// `organizationId` — null for a global role, set for an org-owned custom one
+  /// — is GONE (phase 0.3): with one organisation, every role belongs to it and
+  /// `isSystem` alone carries the distinction that mattered, "seeded" versus
+  /// "invented here".
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions           RolePermission[]
+  accessGroups          RoleAccessGroup[]
+  assignments           RoleAssignment[]
+  credentialAssignments CredentialRoleAssignment[]
+}
+
+/// A node in an organisation's unit tree — the within-organisation partition
+/// dimension. `path` is a materialized ancestor path so "this unit and its
+/// descendants" is a cheap prefix query.
+///
+/// NOTE for phase 0.4: `UNIT` is FLAT in v1 (D-121) — a child unit is OUTSIDE a
+/// `UNIT`-scoped principal's reach, and the scope-escape suite asserts exactly
+/// that (`06-delivery.md` §2.1). The `parentId`/`path`/`depth` columns are
+/// inherited tree machinery that v1 does not walk. Do not let their presence
+/// talk `resolveReach` into a descendant walk.
+/// @dataClass ORGANIZATION_SETTINGS
+model OrganizationUnit {
+  id        String   @id @default(cuid(2))
+  /// null → a root unit; else the parent unit's id.
+  parentId  String?
+  name      String
+  /// Materialized ancestor path, always beginning and ending with a slash.
+  path      String
+  /// 0 for a root unit; parent.depth + 1 otherwise.
+  depth     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   OrganizationUnit?  @relation("UnitTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children OrganizationUnit[] @relation("UnitTree")
+
+  // The `roleAssignments` / `credentialRoleAssignments` back-relations are GONE
+  // with `unitId` on those tables: a grant now names its referent through
+  // `(scopeType, scopeId)` with no foreign key, because the referent table
+  // depends on the type (D-147). "Which grants reach this unit" is therefore a
+  // query on `(scopeType = 'UNIT', scopeId = <id>)`, which the composite index
+  // on those two columns serves.
+  memberships     Membership[]
+  studentProfiles StudentProfile[]
+
+  @@index([path])
+}
+
+/// A named, admin-editable bundle of permissions — a reusable building block a
+/// custom role can include. Enforcement still resolves to atomic permissions.
+/// @dataClass ORGANIZATION_SETTINGS
+model AccessGroup {
+  id          String   @id @default(cuid(2))
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions AccessGroupPermission[]
+  roles       RoleAccessGroup[]
+}
+
+/// Join: which catalogue permissions an `AccessGroup` grants.
+/// @dataClass ORGANIZATION_SETTINGS
+model AccessGroupPermission {
+  accessGroupId String
+  permissionId  String
+  createdAt     DateTime @default(now())
+
+  accessGroup AccessGroup @relation(fields: [accessGroupId], references: [id], onDelete: Cascade)
+  permission  Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([accessGroupId, permissionId])
+  @@index([permissionId])
+}
+
+/// Join: which access groups a role is composed of. A role's effective
+/// permission set is the union of its direct `RolePermission` rows and its
+/// groups' permissions.
+/// @dataClass ORGANIZATION_SETTINGS
+model RoleAccessGroup {
+  roleId        String
+  accessGroupId String
+  createdAt     DateTime @default(now())
+
+  role        Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  accessGroup AccessGroup @relation(fields: [accessGroupId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, accessGroupId])
+  @@index([accessGroupId])
+}
+
+/// A single checkable permission from the catalogue, e.g. `exams.results.record`.
+/// @dataClass ORGANIZATION_SETTINGS
+model Permission {
+  id          String   @id @default(cuid(2))
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles        RolePermission[]
+  accessGroups AccessGroupPermission[]
+}
+
+/// Join table grouping permissions under roles. Pure configuration with no
+/// personal data, so deletes CASCADE.
+/// @dataClass ORGANIZATION_SETTINGS
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+/// Grants a `Role` to a `Person` AT A SCOPE, for a validity window, by a named
+/// granter. Restrict deletes, so a person's role history is never silently
+/// removed.
+///
+/// THIS IS THE ONLY GRANT TABLE FOR A PERSON. `PlatformRoleAssignment` is gone
+/// (phase 0.3), so `requirePermission` (D-147) resolves a principal's
+/// permissions from here and nowhere else — there is no second grant table to
+/// consult and no branch that bypasses the permission check.
+///
+/// THE TUPLE, AND WHY EACH COLUMN IS NOT A CONVENTION (D-144, completed by
+/// D-170). The inherited shape was `(personId, roleId, unitId?)` — two of the
+/// six scope types and no validity at all. As inherited, the external examiner
+/// who assessed one Saturday in March kept `exams.assess` and
+/// `exams.results.record` on that session FOREVER, and because results are
+/// append-only (D-062) an amendment they make years later becomes the effective
+/// result. Nobody at the swim school has any reason to look at that assignment
+/// again. Finding F-113.
+///
+/// `unitId` IS GONE, replaced by `(scopeType, scopeId)`. It was one scope type
+/// wearing the schema of all six, and keeping it BESIDE `scopeId` would have
+/// given "which unit does this grant reach" two homes (D-134). The cost is
+/// stated rather than hidden: `scopeId` carries NO foreign key, because its
+/// referent table depends on `scopeType` and four of the five referent tables do
+/// not exist yet. Referential integrity for a scope referent is therefore an
+/// application concern — the grant service resolves the referent through
+/// `@/lib/authorization` before writing, and a dangling `scopeId` resolves to
+/// NO coverage rather than to wide coverage, because every derived coverage rule
+/// is a positive membership test that a missing referent fails (§1.1 rule 2).
+///
+/// THREE CHECK CONSTRAINTS are hand-written in the migration, because the Prisma
+/// DSL cannot express any of them. They are invisible in this file and easy to
+/// lose in a future "regenerate the migrations" tidy-up, which is exactly why
+/// `tests/integration/role-assignment-constraints.test.ts` names each one:
+///   - `RoleAssignment_scope_shape_check` — `scopeId` is NULL for
+///     `ORGANIZATION` and `SELF` (both are implied by the row itself: the
+///     installation, and `personId`) and NOT NULL for the other four. A grant
+///     with a scope type and no referent would otherwise read as "everything of
+///     that kind".
+///   - `RoleAssignment_bounded_window_check` — `validUntil` is MANDATORY for
+///     `SESSION` and `COURSE`. D-144 makes it schema-mandatory for `SESSION`;
+///     D-170's ceiling table adds `COURSE` ("mandatory and bounded"), which is
+///     what §2.4's "Internal examiner, time-bounded" always meant. D-170
+///     completes D-144, so both are enforced here.
+///   - `RoleAssignment_window_order_check` — `validUntil > validFrom`. A
+///     zero-or-negative window is a data-entry accident that would otherwise
+///     read as a silently dead grant.
+///
+/// THE CEILINGS ARE NOT HERE, AND THAT IS NOT AN OVERSIGHT. D-170 bounds
+/// `SESSION` at the session's date + 7 days and `COURSE` at the course's end
+/// date + 7 days. Both ceilings are computed from a table that does not exist
+/// yet (`ScheduledSession`, `Course`), so they are enforced in the grant service
+/// (`assertGrantable`, `@/lib/authorization/grant`) against the scope-relation
+/// port, which DENIES when the referent cannot be resolved. When those tables
+/// arrive the ceiling should move here as a CHECK against a stored derived
+/// column, and `docs/build/phase-0.4b-reach-and-retention-report.md` §4 records
+/// that as the follow-up.
+///
+/// EXPIRY IS NEVER A CLEANUP JOB (D-144). `validUntil` is evaluated INSIDE
+/// `requirePermission` and `resolveReach`. A job that has not run yet is an open
+/// grant; a predicate cannot be behind schedule.
+/// @dataClass ROLE_ASSIGNMENTS
+model RoleAssignment {
+  id       String @id @default(cuid(2))
+  personId String
+  roleId   String
+
+  /// Which KIND of resource this grant reaches. See the `ScopeType` enum.
+  scopeType ScopeType
+  /// WHICH resource of that kind. NULL for `ORGANIZATION` and `SELF`; required
+  /// for `UNIT`, `GROUP`, `COURSE` and `SESSION`. No foreign key — see the
+  /// model comment.
+  scopeId   String?
+
+  /// When this grant begins. Evaluated live, never assumed to be the past.
+  validFrom  DateTime  @default(now())
+  /// When it ends. NULL = standing, permitted only for `GROUP`, `UNIT`,
+  /// `ORGANIZATION` and `SELF` (D-170's ceiling table) — these are standing
+  /// relationships, and a mandatory date on them produces a fake one.
+  validUntil DateTime?
+
+  /// Who issued this grant. What makes §2.6's anti-amplification rule auditable
+  /// AFTER the fact rather than only preventable in the moment. NULL for the
+  /// grants that come from outside the grant service and are host-access-proven
+  /// instead: seeding, the setup wizard (D-039) and the break-glass CLI (D-141).
+  ///
+  /// `onDelete: SetNull` as DEFENCE IN DEPTH, on the `Organization.updatedBy`
+  /// pattern: the erasure severs this column explicitly, and `SetNull` degrades
+  /// a FUTURE delete path that forgets the sever to "pointer silently nulled"
+  /// rather than to a raw FK error that rolls back an entire Article 17 erasure
+  /// — which is a thing that actually happened in the template.
+  grantedByPersonId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person    Person  @relation("RoleAssignmentSubject", fields: [personId], references: [id], onDelete: Restrict)
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  grantedBy Person? @relation("RoleAssignmentGranter", fields: [grantedByPersonId], references: [id], onDelete: SetNull)
+
+  // The inherited `@@unique([personId, roleId, unitId])` IS DELIBERATELY GONE.
+  // With validity windows it forbids the ordinary case: an external examiner
+  // graded Diploma B in March and grades it again in June, which is two grants
+  // over the same (person, role, scope) with different windows. A hard unique
+  // key would have made the second one a database error on an exam Saturday.
+  //
+  // What replaces it is a PARTIAL unique index, hand-written in the migration
+  // because the Prisma DSL cannot express a WHERE clause on an index:
+  //
+  //   CREATE UNIQUE INDEX "RoleAssignment_standing_grant_key"
+  //     ON "RoleAssignment" ("personId", "roleId", "scopeType", "scopeId")
+  //     NULLS NOT DISTINCT WHERE "validUntil" IS NULL;
+  //
+  // Duplicate STANDING grants are pure noise and are refused; overlapping
+  // BOUNDED grants are legitimate history and are allowed. `NULLS NOT DISTINCT`
+  // (Postgres 15+) is what makes the constraint bite for `ORGANIZATION` and
+  // `SELF`, whose `scopeId` is NULL — the inherited comment noted that Postgres
+  // treats NULLs as distinct and pushed the check into application code; the
+  // database can express it now, so it does.
+  @@index([personId])
+  @@index([roleId])
+  @@index([grantedByPersonId])
+  // The index `resolveReach` reads on every guarded call: a principal's live
+  // grants, narrowed by window.
+  @@index([personId, validFrom, validUntil])
+  @@index([scopeType, scopeId])
+}
+
+// `PlatformRoleAssignment` STOOD HERE AND IS GONE (phase 0.3, D-056).
+//
+// It granted a `Role` to a `Person` platform-wide — the storage behind
+// `platform.super_admin`. There is no platform in SplashTrack and therefore no
+// platform-wide grant: the highest authority is an administrator of THE
+// organisation, holding ordinary permissions (`00-overview.md` §5.1,
+// `02-security-privacy.md` §2.4).
+//
+// DONE (phase 0.4b): `requirePermission` and `resolveReach` resolve a
+// principal's permissions from `RoleAssignment` ALONE
+// (`src/lib/authorization/reach.ts`). There is no second grant table to consult
+// and no branch that bypasses the permission check — D-130 binds the MFA
+// mandate, the security alerts and the elevated idle window to PERMISSIONS
+// precisely because this role name cannot exist.
+
+// ---------------------------------------------------------------------------
+// API credentials — present and unused, deliberately (`05-technical.md` §4)
+// ---------------------------------------------------------------------------
+
+/// A machine caller. There is NO public API surface in v1 and no integration
+/// with any external system (D-163, OD-19) — `05-technical.md` §4 nevertheless
+/// keeps these scoped credentials "in place, unused", so that when an
+/// integration does exist it authenticates with one and never with a user's
+/// session token.
+///
+/// HASH-ONLY token storage: only `sha256(raw)` and a non-secret `tokenPrefix`
+/// are stored; the raw token is shown once at mint and is never recoverable.
+/// Lifecycle is revoke-based (`revokedAt`), never delete, so the audit trail
+/// keeps its referent.
+///
+/// No code in this repository reads or writes this table yet — the template's
+/// `api-credential.ts` and credential-auth path were not extracted. The table
+/// is here because the design says to keep it; the first integration brings the
+/// code.
+/// @dataClass API_CREDENTIALS
+model ApiCredential {
+  id String @id @default(cuid(2))
+
+  /// Human-readable label chosen at creation.
+  name String
+
+  /// sha256(rawToken), hex — the ONLY stored form of the secret.
+  tokenHash   String @unique
+  /// The non-secret leading characters of the raw token, so a credential is
+  /// identifiable in a list without revealing the secret.
+  tokenPrefix String
+
+  /// The administrator who minted the credential — accountability only.
+  /// Nullable and deliberately NO foreign key: on erasure of that person the
+  /// pointer is severed to null and the credential is retained as a live asset.
+  createdByPersonId String?
+
+  /// Optional expiry; null = non-expiring (revoke-only).
+  expiresAt  DateTime?
+  /// Set when revoked; a revoked credential fails verification forever.
+  revokedAt  DateTime?
+  /// Best-effort "last seen" stamp; never part of the auth decision.
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleAssignments CredentialRoleAssignment[]
+}
+
+/// Grants a `Role` to an `ApiCredential`. A dedicated grant table, not
+/// nullable-polymorphism on `RoleAssignment`.
+///
+/// IT CARRIES THE SAME TUPLE AS `RoleAssignment`, and that is deliberate rather
+/// than tidiness. There is no credential authentication path in v1 (D-163: no
+/// integration with any external system; `05-technical.md` §4 keeps these tables
+/// "in place, unused"), so nothing reads this table today. But "a grant" must
+/// have ONE shape: the day a credential path is written, `resolveReach` has to
+/// resolve a credential principal through the same six scope types and the same
+/// live validity as a person, or the machine caller becomes the one principal
+/// the scope model does not bind. Leaving `unitId` here would have made that a
+/// second grant shape to discover late.
+///
+/// It carries the same three CHECK constraints, hand-written in the same
+/// migration for the same reason.
+/// @dataClass ROLE_ASSIGNMENTS
+model CredentialRoleAssignment {
+  id           String @id @default(cuid(2))
+  credentialId String
+  roleId       String
+
+  scopeType ScopeType
+  scopeId   String?
+
+  validFrom  DateTime  @default(now())
+  validUntil DateTime?
+
+  /// The administrator who minted this grant. A plain token with NO foreign
+  /// key, matching `ApiCredential.createdByPersonId` beside it: the credential
+  /// is a live asset that outlives its creator's erasure, and the erasure severs
+  /// this pointer explicitly.
+  grantedByPersonId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  credential ApiCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  role       Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([credentialId])
+  @@index([roleId])
+  @@index([scopeType, scopeId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail (D-149)
+// ---------------------------------------------------------------------------
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+/// The tamper-EVIDENT, append-only audit trail. Distinct from the operational
+/// logger (`@/lib/logging`) — different required fields, different retention,
+/// different tamper-resistance. Written ONLY through the audit module's
+/// append-only service; there is no update or delete path (D-149).
+///
+/// Tamper-evidence: rows form a HASH CHAIN. Each row's `hash` = SHA-256 of
+/// `previousHash` + a canonical projection of the row's audited content; the
+/// first row chains from a fixed genesis constant. Appends are serialized on a
+/// Postgres advisory lock so the chain never forks.
+///
+/// This is tamper-EVIDENT, not tamper-PROOF, and the gaps are named rather than
+/// glossed: the chain is unkeyed, so an attacker with database write access
+/// could recompute it forward after an edit, and truncating the TAIL leaves an
+/// intact chain that still verifies.
+///
+/// CHECKPOINTING IS NOW IN PLACE (D-168, phase 0.4a): rows are deleted ONLY
+/// through the checkpointing retention path, which writes a signed
+/// `AuditCheckpoint` accounting for the deleted prefix in the same transaction.
+/// A deletion without a checkpoint is therefore the tampering signal — there is
+/// no other legitimate producer of a gap.
+///
+/// PHASE 0.4 — two things this model still does NOT have:
+///   - The insert-only database role. Today "append-only" is an application
+///     convention enforced by there being no other writer; D-149 makes it a
+///     `REVOKE UPDATE, DELETE` on the application's role. That is a DEPLOYMENT
+///     step, not a migration — the SQL and the reasoning are in
+///     `infra/audit-database-role.sql`.
+///   - `05-technical.md` §5 rule 7: ONE audit event per aggregate write, not per
+///     row. At 30 students a group registration would otherwise take 30 chained
+///     appends one at a time against a lock every other audit writer contends
+///     for. This must be decided before the attendance load test is written.
+///
+/// Content rule: this table holds NO passwords, secrets, tokens or raw
+/// personal-data VALUES — only actor/target IDENTIFIERS, the event type, an
+/// outcome, and (in `changedFields`) the NAMES of what changed. It deliberately
+/// carries NO foreign keys: the trail must OUTLIVE the entities it references,
+/// because an erasure deletes a Person and retains the accountability record.
+/// @dataClass AUDIT_EVENTS
+model AuditEvent {
+  id String @id @default(cuid(2))
+
+  /// Database-assigned monotonic insertion order — the sequence the chain is
+  /// walked in for verification. An autoincrement, not a timestamp or a cuid,
+  /// because it is the only reliable ordering key.
+  sequence Int @default(autoincrement())
+
+  /// Dotted event type, e.g. `exams.results.record`. A stable machine token.
+  eventType  String
+  /// When the audited action occurred.
+  occurredAt DateTime @default(now())
+
+  /// The acting person's id (null for a system or scheduled action).
+  actorPersonId     String?
+  /// The acting API credential's id, when authenticated by a credential rather
+  /// than a human session. Mutually exclusive with a human actor. A plain
+  /// identifier with no FK, like every other id here.
+  actorCredentialId String?
+  /// The authentication method behind the action where known, e.g. `session` /
+  /// `api_key`. Null when not applicable.
+  actorAuthMethod   String?
+
+  /// The kind of resource acted on, e.g. `person`, `attendance_event`.
+  targetType String?
+  /// The acted-on resource's id.
+  targetId   String?
+
+  /// The request correlation id (`@/lib/api/request-id`), when in a request.
+  requestId String?
+
+  outcome AuditOutcome
+
+  /// Small structured context — the NAMES of changed fields and non-sensitive
+  /// tokens. NEVER personal-data values, secrets or tokens.
+  changedFields Json?
+  /// Free-text reason where an action requires one. Kept minimal — never a
+  /// dumping ground for personal content.
+  reason        String?
+
+  /// Canonicalization version of this row's hashed content. Determines which
+  /// FIXED field array `canonicalizeAuditContent` digests, so old rows keep
+  /// verifying after a new field is added. `verifyAuditChain` canonicalizes each
+  /// row by its OWN version.
+  contentVersion Int @default(1)
+
+  /// The prior row's `hash`, or the genesis constant for the first row.
+  previousHash String
+  /// SHA-256 of `previousHash` + this row's canonical content. Unique: a
+  /// collision would indicate a duplicated or forged row.
+  hash         String @unique
+
+  @@index([actorPersonId])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@index([eventType, sequence])
+  @@index([actorPersonId, sequence])
+}
+
+/// The signed anchor a retention run leaves behind, so the audit chain still
+/// verifies across the gap that run made (D-168).
+///
+/// WHY THIS TABLE EXISTS. D-149 part 1 requires `audit:verify` and a
+/// chain-status line a human sees. D-149 part 3 makes audit retention
+/// configurable, and `01-domain-model.md` §5 gives the audit row
+/// `onExpiry: DELETE`. Those cannot both hold: verification walks from a known
+/// anchor forward, and deleting the oldest rows deletes the anchor. On the
+/// FIRST legitimate retention run — month 12 to 24 of the first instance —
+/// `audit:verify` would report a discontinuity, permanently, and the
+/// diagnostics chain-status line would go red and stay red. A tamper detector
+/// with a 100% false-positive rate from month twelve is worse than none: the
+/// volunteer reading diagnostics has been trained by a year of red to ignore
+/// it, and D-128's Article 33 assessment loses all discriminating power.
+/// Finding F-137.
+///
+/// THE RULES THIS TABLE ENFORCES:
+///   1. Deletion happens ONLY through the checkpointing path — the retention
+///      job writes the checkpoint and deletes the rows it accounts for in ONE
+///      transaction. A deletion without a checkpoint is the tampering signal;
+///      there is no other legitimate producer of a gap.
+///   2. PREFIX ONLY. An event is deletable only if every event at or below its
+///      sequence is deletable. That keeps segments contiguous, and it is why
+///      the retention floor is one instance-wide value: per-class expiry would
+///      delete a SPARSE interior subset, which no anchor can describe.
+///   3. Checkpoints are NEVER deleted. They are small, one per retention run,
+///      and they are the record of what the trail no longer contains.
+///
+/// WHAT `sequence` AND `chainHash` MEAN, PRECISELY — read this before changing
+/// either. They are the LAST PRUNED row and ITS hash: exactly the value the
+/// first surviving row carries in `previousHash`. Verification therefore
+/// resumes with `previousHash := chainHash` and walks forward, which is the
+/// same shape genesis has (`AUDIT_GENESIS_HASH` is likewise the `previousHash`
+/// of the first row, never a row's own hash). D-168 rule 5 requires exactly
+/// that — "genesis is treated as checkpoint zero, so verification has exactly
+/// one shape" — and it is why the first checkpoint's `previousCheckpointHash`
+/// IS the genesis constant.
+///
+/// D-168's record sketch calls `sequence` the "last SURVIVING" sequence. Taken
+/// literally that cannot work: a prefix prune deletes the anchor row of every
+/// earlier segment, so every earlier segment becomes unverifiable, and genesis
+/// would need a second, different shape. The rule wins over the sketch;
+/// `docs/build/phase-0.4a-crypto-and-audit-report.md` records the resolution
+/// and it is flagged for the register to be corrected.
+///
+/// WHAT THE MAC DOES AND DOES NOT DO. It binds each anchor to this instance's
+/// own key material, so an attacker with DATABASE WRITE ACCESS ONLY — the
+/// `$executeRaw` path, a stolen `DATABASE_URL`, an injection — cannot delete
+/// interior rows and forge a covering checkpoint. An attacker with HOST ACCESS
+/// holds `SECRET_KEY` and can forge one; nothing in an application can prevent
+/// that, and host access is already the boundary `13-…` §7 treats as proof of
+/// ownership. Saying so is the point: the control is real against the actor it
+/// names, and it is not magic.
+/// @dataClass AUDIT_EVENTS
+model AuditCheckpoint {
+  id String @id @default(cuid(2))
+
+  /// The LAST PRUNED `AuditEvent.sequence` — the anchor verification resumes
+  /// from. Unique and strictly increasing across checkpoints, which the prefix
+  /// rule guarantees. Always equal to `prunedToSequence`; both are stored
+  /// because they answer different questions (`sequence` is the anchor,
+  /// `prunedToSequence` is part of the accounting) and the MAC covers both.
+  sequence  Int    @unique
+  /// That row's `hash`. The first surviving row's `previousHash` must equal it.
+  chainHash String
+
+  /// First deleted sequence.        ┐ What this checkpoint accounts for, so a
+  prunedFromSequence Int //          │ gap in the trail is a STATED FACT rather
+  /// Last deleted sequence.         │ than an unexplained hole. `audit:verify`
+  prunedToSequence   Int //          │ reports "intact across N pruned
+  /// How many rows were deleted.    │ segments" from exactly these fields.
+  prunedCount        Int //          │
+  /// Earliest `occurredAt` deleted. │
+  prunedFrom         DateTime //     │
+  /// Latest `occurredAt` deleted.   ┘
+  prunedTo           DateTime
+
+  /// The previous checkpoint's `mac`, or `AUDIT_GENESIS_HASH` for the first —
+  /// genesis is checkpoint zero. Checkpoints are themselves chained, so
+  /// removing one from the middle is detectable.
+  previousCheckpointHash String
+
+  /// Canonicalization version of the MAC'd content, for the same reason
+  /// `AuditEvent.contentVersion` exists: the signed shape can grow without
+  /// invalidating checkpoints already written.
+  macVersion Int @default(1)
+
+  /// HMAC-SHA256 over the canonical content under
+  /// `HKDF(SECRET_KEY, info="audit-anchor-v1")`.
+  mac String
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// First-run record — the row the boot state machine reads on every start
+// ---------------------------------------------------------------------------
+
+/// The installation's first-run record (D-100), and the one row predicate 4 of
+/// the boot state machine reads (D-098, `13-configuration-and-setup.md` §6.1).
+/// Named `InstallationBootstrap` and NOT `PlatformBootstrap`: D-056 deletes the
+/// `Platform` namespace, and the model the state machine reads on every start is
+/// the worst possible place to leave a name meaning something the architecture
+/// no longer has.
+///
+/// AN ENFORCED SINGLETON, on the `Organization` pattern: `id` is pinned to the
+/// constant `installation` by a CHECK constraint hand-written in the migration,
+/// because the Prisma DSL cannot express one. Two bootstrap records would make
+/// "has setup completed" a question with two answers.
+///
+/// `completedAt` NULL means setup has not finished. That is deliberately NOT the
+/// same question as "does this row exist", and the difference is D-099's whole
+/// point: the gate on the only unauthenticated administrative surface must not
+/// be the presence of ONE DELETABLE ROW. The state machine therefore pairs "no
+/// completed bootstrap record" with three counts — zero `UserAccount`, zero
+/// `Person`, zero `RoleAssignment` — and calls that combination `PARTIAL`. The
+/// same missing record WITH data present is `TAMPERED`: refuse to serve, log
+/// loudly, break-glass CLI only.
+///
+/// THE ROW NOW HAS TWO LIVES, AND ITS EXISTENCE IS THE FIRST OF THEM (D-186).
+/// `setup:init` and `admin:create` create it with `completedAt` NULL, before
+/// they write anything else, so a row with no `completedAt` means "first-run
+/// setup is under way" — the D-185 window between `admin:create` and the
+/// browser enrolment that finishes it. That is what lets predicate 4 tell an
+/// unfinished install apart from a deleted record WITHOUT weakening D-099: no
+/// row at all with data present is still `TAMPERED`, and so is a row whose
+/// `completedAt` was cleared on an installation holding more than setup itself
+/// creates. There is deliberately no `startedAt` column — `createdAt` already
+/// answers when, and a second copy of it on the one table the boot state
+/// machine reads on every start is a copy free to drift.
+///
+/// `appVersion` records the version that completed setup. It is diagnostic, not
+/// a gate: the version comparison that refuses to start is `AHEAD`, and that is
+/// decided from `_prisma_migrations` against the image's own migrations
+/// directory, never from a version string a restore could carry.
+/// @dataClass ORGANIZATION_SETTINGS
+model InstallationBootstrap {
+  /// Pinned to the constant `installation` by a CHECK constraint in the
+  /// migration.
+  id String @id @default("installation")
+
+  /// When first-run setup completed. NULL while it has not. Setting it is what
+  /// closes setup mode, and it is set exactly once.
+  completedAt DateTime?
+
+  /// How setup was completed — `browser` today, written by the MFA enrolment
+  /// flow at the instant D-141's invariant first holds (D-185). `cli` is the
+  /// pre-D-185 value and still appears on installations created before it. The
+  /// in-app wizard (D-039) writes `wizard` when it exists and a restore writes
+  /// `restore` (D-046), so diagnostics can say which produced this
+  /// installation.
+  completedVia String?
+
+  /// `package.json` version of the image that completed setup. Diagnostic.
+  appVersion String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A break-glass CLI invocation that every administrator must be told about
+/// (`13-configuration-and-setup.md` §7): *"every invocation writes an audit
+/// event … and every invocation notifies all `ORGANIZATION`-scoped
+/// administrators"*.
+///
+/// WHY THIS IS A TABLE AND NOT A READ OF THE AUDIT TRAIL. The audit event is
+/// the RECORD; this is the NOTIFICATION, and the two have opposite mutability.
+/// A notification has to carry "has a human acknowledged this yet", and
+/// `AuditEvent` is append-only with no update path at all (D-149, D-168) — so
+/// the dismissal state cannot live there without breaking the one property the
+/// trail exists for.
+///
+/// DISMISSED BY SOMEBODY ELSE. There is deliberately no CLI command that
+/// dismisses one of these: the point of the banner is that host access — which
+/// the break-glass operator by definition has — is not enough to make the
+/// warning go away. It is dismissed by a signed-in `ORGANIZATION`-scoped
+/// administrator, and that dismissal is itself audited, which is where WHO
+/// dismissed it is recorded. That is also why this model carries no
+/// `dismissedByPersonId`: the accountability belongs on the trail, and a
+/// person column here would be a second, mutable copy of it.
+///
+/// `auditEventId` is a plain token and NOT a foreign key. `AuditEvent` rows
+/// leave legitimately through `pruneAuditEventPrefix` (D-168), and a `Restrict`
+/// foreign key from here would make a retention run fail on an old alert —
+/// a notification blocking retention on the trail it points at.
+/// @dataClass ORGANIZATION_SETTINGS
+model BreakGlassAlert {
+  id String @id @default(cuid(2))
+
+  /// The subcommand as invoked, e.g. `admin:create`. A fixed vocabulary from
+  /// this repository, never operator input.
+  command String
+
+  /// The `AuditEvent.id` this alert points at. Plain token — see above.
+  auditEventId String
+
+  /// Non-secret context for the banner: the host user and container id §7 asks
+  /// the audit actor to carry, and the target account's id where there is one.
+  /// NEVER a password, a TOTP secret, an enrolment URL or an email address.
+  context Json?
+
+  occurredAt DateTime @default(now())
+
+  /// Null until an administrator who is not the invoker has acknowledged it.
+  dismissedAt DateTime?
+
+  @@index([dismissedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Retention — policy-driven, per data class (D-065, replacing D-007)
+//
+// `CLAUDE.md` rule 5: consent, lawful basis and retention are COLUMNS, not a
+// later feature. Every personal-data table carries its retention policy from the
+// day it is created (D-065, D-014).
+//
+// WHERE THOSE COLUMNS ACTUALLY LIVE, because the phrasing invites the wrong
+// answer. D-065's model is a policy **per data class**, not per row: `purpose`,
+// `lawfulBasis`, `trigger`, `retainFor` and `onExpiry` are the same for every
+// attendance event ever written. Putting them on each row would be ~20 constant
+// columns across ~20 tables — the exact dead weight D-006 was WITHDRAWN for. So:
+//
+//   - the policy is a ROW here, one per data class;
+//   - a table is BOUND to its class by a `/// @dataClass <CLASS>` doc comment,
+//     with `src/lib/retention/data-class-registry.ts` as its other half and
+//     `tests/unit/data-class-registry.test.ts` checking both directions;
+//   - the binding is MANDATORY for any model referencing `Person`, which is the
+//     forcing function "from the day it is created" asks for: a new
+//     personal-data table without a class goes red before it can be merged.
+//
+// The per-ROW retention fact D-065 does describe — "the record is retained WITH
+// ITS GROUND RECORDED" for an individual record an erasure request could not
+// remove — belongs to the tables that carry such records, and none of them
+// exists yet. `docs/build/phase-0.4b-reach-and-retention-report.md` §3 records
+// this reading.
+// ---------------------------------------------------------------------------
+
+/// The data classes of `01-domain-model.md` §5, which is the register of lawful
+/// bases per purpose (D-110) and the table D-153's Article 15 annex is generated
+/// from.
+///
+/// Adding a member is adding a retention POLICY, so it is a reviewed change and
+/// not a convenience. Four members are NOT in §5's table and are recorded as
+/// additions rather than smuggled in — they are the classes this schema already
+/// has tables for and that chapter never listed. Each ships with
+/// `proposedLawfulBasis: UNRESOLVED`, which is D-110's own marker: *"where the
+/// entry reads unresolved, it is unresolved and must be settled before that
+/// default ships"* (F-128).
+enum DataClass {
+  /// `Person`. Trigger: the end of the LAST RELATIONSHIP OF ANY KIND (D-066).
+  PERSON_IDENTITY
+  /// Better Auth's credential and session material.
+  LOGIN_CREDENTIALS
+  /// `Membership` and its periods.
+  MEMBERSHIP_PERIODS
+  /// **Not in §5's table.** `PersonRelationship` — who answers for a child, and
+  /// the evidence behind that claim (D-063). It needed a class of its own for
+  /// the same reason `ROLE_ASSIGNMENTS` did: D-066 counts a guardian
+  /// relationship as one of the things that HOLDS a person, so it had to be a
+  /// classified table before it could be a relationship source. Folding it into
+  /// `PERSON_IDENTITY` would have put authority evidence — encrypted,
+  /// custody-relevant free text — under the identity policy's 24-month
+  /// `REVIEW`, which is a retention decision made by accident. Ships with
+  /// `proposedLawfulBasis: UNRESOLVED`, which is D-110's own marker.
+  PERSON_RELATIONSHIPS
+  /// **Not in §5's table.** Grants — who may do what, to whom, when, issued by
+  /// whom. D-066 counts a role assignment as a relationship that HOLDS a person,
+  /// so it needed a class before it could be one.
+  ROLE_ASSIGNMENTS
+  STUDENT_PROFILE
+  /// Special category, Art. 9. `DELETE` on expiry — never anonymise (D-176).
+  MEDICAL_NOTES
+  /// Special category by inference (D-148, D-087).
+  ASSESSMENT_REMARKS
+  /// `DELETE`, not anonymise — D-111/D-155, and the reason is in §5.3.
+  ATTENDANCE_EVENTS
+  SKILL_PROGRESS
+  ASSESSMENT_RESULTS
+  EXAM_RESULTS_AND_AWARDS
+  CHARGES
+  PAYMENTS
+  CONSENT_RECORDS
+  AUDIT_EVENTS
+  INQUIRIES
+  WAITLIST_ENTRIES
+  OPERATIONAL_LOGS
+  PRE_MIGRATION_BACKUPS
+  PUBLIC_PAGE_CONTENT
+  ORGANIZATION_SETTINGS
+  /// **Not in §5's table.** Rate-limit counters. Keys are HASHED identifiers,
+  /// never a raw email or IP, and they expire by their own window — but the
+  /// table exists and a class is what makes that statement checkable.
+  RATE_LIMIT_COUNTERS
+  /// **Not in §5's table.** The `ApiCredential` register. No integration exists
+  /// in v1 (D-163); the table does, and it names its creator.
+  API_CREDENTIALS
+}
+
+/// The Article 6 (and, for special category, Article 9) basis a class is held
+/// on.
+///
+/// `UNRESOLVED` is a real member and not an omission. §5.2 says the ground for
+/// an award register "must be identified per organisation" and §5.6's whole
+/// argument is that a diploma does not by itself create an Article 17 exception.
+/// A blank cannot be argued with; a proposal can, and an honest `UNRESOLVED`
+/// prints as unresolved on the diagnostics page and in the privacy screen
+/// (D-110, D-155).
+enum LawfulBasis {
+  CONSENT
+  /// Art. 9(2)(a) — the basis for medical remarks and for `SafetyNote` (D-177).
+  EXPLICIT_CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  LEGITIMATE_INTEREST
+  VITAL_INTERESTS
+  UNRESOLVED
+}
+
+/// What starts the retention clock. One per class, from §5's `Trigger` column.
+enum RetentionTrigger {
+  /// D-066: the end of the person's LAST relationship of any kind, not
+  /// membership. The most common person in the database — a child taking
+  /// lessons — has no membership at all, and neither do guardians or external
+  /// examiners; a membership-keyed rule would silently retain the majority
+  /// forever. A guardian is held only while the child they are guardian OF is
+  /// held, which follows from the rule rather than needing a special case.
+  LAST_RELATIONSHIP_END
+  LAST_ENROLMENT_END
+  LAST_MEMBERSHIP_PERIOD_END
+  ACCOUNT_CLOSED
+  SESSION_DATE
+  ASSESSMENT_DATE
+  ACHIEVEMENT_DATE
+  AWARD_ISSUE
+  CHARGE_DUE_DATE
+  PAYMENT_RECEIVED_DATE
+  CONSENT_WITHDRAWN_OR_PURPOSE_EXPIRED
+  EVENT_DATE
+  SUBMISSION
+  PLACEMENT_OR_WITHDRAWAL
+  MIGRATION_RUN
+  RECORD_CREATION
+  /// The class carries no personal data, so nothing expires. Paired with a null
+  /// `retainForDays` and `onExpiry: REVIEW`.
+  NOT_APPLICABLE
+}
+
+/// D-065's three actions, and there are exactly three.
+///
+/// `01-domain-model.md` §5 gives `Charge` and `Payment` a fourth,
+/// `PSEUDONYMISE` (D-092). It is NOT a member here, and the reasoning is
+/// D-154's own: it describes those two rows as an erasure EXEMPTION on a
+/// financial retention ground — *"the same shape already applies to `Charge` and
+/// `Payment` ... so this generalises an exemption the design had already
+/// accepted as a special case"*. Retention expiry and erasure exemption are two
+/// mechanisms; the fiscal ground belongs to the second. Adding a fourth value
+/// here would re-open the argument D-155 spends a page closing, that
+/// pseudonymisation does not end the obligation. Flagged for the register in
+/// `docs/build/phase-0.4b-reach-and-retention-report.md` §3.
+enum OnExpiry {
+  DELETE
+  /// D-155's ONE mechanical definition: destroy the row-level record and retain
+  /// only a PRE-COMPUTED aggregate at a granularity that cannot be reduced to an
+  /// individual — no identifier, no foreign key, no timestamp finer than the
+  /// window, small counts suppressed. An aggregate is kept because it was
+  /// computed and stored, NEVER because a row was stripped. A class that cannot
+  /// meet that bar may only be `DELETE` or `REVIEW`, and the CHECK constraint on
+  /// `anonymisedAggregate` is what stops the next class being decided by
+  /// intuition.
+  ANONYMISE
+  /// Nothing happens automatically. In v1 that is the honest state and not a
+  /// queue: D-120 moved the policy engine out, so `REVIEW` means "we do not
+  /// delete this automatically". What makes it visible rather than silent is
+  /// D-110's `unresolved` marker plus the count of overdue reviews on the
+  /// diagnostics page and the privacy screen.
+  REVIEW
+}
+
+/// The retention policy for one data class — purpose, lawful basis, trigger,
+/// duration and expiry action (D-065).
+///
+/// **Every default that ships is a PROPOSAL, not a rule we impose** (F-27). The
+/// organisation is the controller (D-064) and must decide its own grounds; the
+/// documentation ships sensible defaults *"clearly marked as requiring the
+/// organisation's own confirmation"*. That is why the basis is TWO columns and
+/// not one: `proposedLawfulBasis` is ours and always populated,
+/// `confirmedLawfulBasis` is theirs and is **empty until they confirm it**.
+/// Leaving the confirmation empty rather than asserting a basis is the whole
+/// point — a recorded confirmation nobody made is worth less than an honest
+/// blank, which is also why the setup wizard does NOT block on thirteen legal
+/// questions (§5.6's rejected reviewer proposal).
+///
+/// THREE CHECK CONSTRAINTS, hand-written in the migration because the Prisma DSL
+/// cannot express them, and named by
+/// `tests/integration/retention-policy-constraints.test.ts`:
+///   - `RetentionPolicy_anonymise_requires_aggregate_check` — `ANONYMISE`
+///     requires a named pre-computed aggregate (D-155). This is the constraint
+///     that would have caught the design's own mistake: attendance was
+///     prescribed `ANONYMISE` by stripping `studentProfileId` while keeping
+///     `sessionId` and timestamps, against twelve-child groups with retained
+///     time-bounded memberships and known session dates — re-identification by a
+///     join and a counting argument (F-123, D-111).
+///   - `RetentionPolicy_confirmation_shape_check` — the three confirmation
+///     columns are all null or all set, and a confirmation may not be
+///     `UNRESOLVED`. Half a confirmation is not a confirmation.
+///   - `RetentionPolicy_retain_for_check` — a stated duration is positive.
+///
+/// The PLATFORM MAXIMUM D-150 names is enforced in the write path rather than
+/// here (`src/lib/retention/policy.ts`), because it is a `bounded` setting's
+/// own schema doing its job and changing the ceiling must not need a migration.
+/// @dataClass ORGANIZATION_SETTINGS
+model RetentionPolicy {
+  /// One policy per class — the class IS the key, so a second policy for the
+  /// same class is impossible rather than merely discouraged.
+  dataClass DataClass @id
+
+  /// Why it is kept, in the words a privacy notice can reuse.
+  purpose String
+
+  /// OUR proposal. Always populated, possibly `UNRESOLVED`.
+  proposedLawfulBasis  LawfulBasis
+  /// THEIRS. Null until the organisation confirms, and null is the correct
+  /// shipped state (F-27).
+  confirmedLawfulBasis LawfulBasis?
+  confirmedAt          DateTime?
+  /// Who confirmed, for Art. 5(2) accountability. Severed, not deleted, on
+  /// erasure — the confirmation stands after its confirmer leaves.
+  confirmedByPersonId  String?
+
+  trigger       RetentionTrigger
+  /// Duration past the trigger. Null means "as long as needed for the purpose",
+  /// which is only honest with `onExpiry: REVIEW` — it contributes no floor to
+  /// D-168's computed audit retention floor, because a class that is never
+  /// deleted imposes no lower bound on anything.
+  retainForDays Int?
+
+  onExpiry OnExpiry
+
+  /// The pre-computed aggregate that survives, for `ANONYMISE` only — named, so
+  /// "anonymised" is a thing that exists rather than a claim.
+  anonymisedAggregate String?
+
+  /// Do audit events evidence changes to this class? Feeds D-168 rule 6's
+  /// computed audit retention floor, `max(12 months, the longest configured
+  /// retention among the classes these events evidence)`. An explicit flag
+  /// rather than an inference, because inferring it would silently change the
+  /// floor whenever a class was added.
+  evidencedByAudit Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  confirmedBy Person? @relation("RetentionPolicyConfirmedBy", fields: [confirmedByPersonId], references: [id], onDelete: SetNull)
+
+  @@index([confirmedByPersonId])
+}

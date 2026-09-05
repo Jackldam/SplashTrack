@@ -1,0 +1,240 @@
+{
+  "common": {
+    "brand": "SplashTrack",
+    "loading": "Bezig met laden…"
+  },
+  "landing": {
+    "title": "SplashTrack",
+    "tagline": "Leerlingvolgsysteem voor zwemscholen.",
+    "foundationNotice": "De basis staat. Er is nog geen functionaliteit — de eerste module volgt.",
+    "signedInAs": "Ingelogd als {email}.",
+    "toPeople": "Naar Mensen",
+    "enrolNotice": "Je hebt nog geen authenticator ingesteld. Tot dat gebeurt kan dit account niets anders.",
+    "toEnrolment": "Authenticator instellen"
+  },
+  "errors": {
+    "notFound": "Deze pagina bestaat niet.",
+    "unexpected": "Er ging iets mis. Probeer het opnieuw."
+  },
+  "setup": {
+    "title": "Deze installatie is nog niet ingericht",
+    "noAdministrator": "Er is nog geen beheerder. Richt deze installatie in via de wizard op /setup. Die vraagt om een eenmalige token, en die maak je aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
+    "pendingTitle": "Bijna klaar: de beheerder moet nog een authenticator instellen",
+    "pendingExplanation": "Het beheerdersaccount bestaat, maar heeft nog geen tweede factor. Zolang dat zo is, is de installatie niet ingericht en kan het account niets anders dan inloggen en de authenticator instellen.",
+    "pendingAction": "Log in met het wachtwoord dat je bij het aanmaken hebt gekozen. Je wordt daarna vanzelf naar de instelpagina gestuurd.",
+    "pendingSignIn": "Inloggen en authenticator instellen",
+    "noRegistration": "Zelfregistratie bestaat niet: accounts worden door een beheerder aangemaakt."
+  },
+  "setupWizard": {
+    "title": "SplashTrack instellen",
+    "subtitle": "Deze installatie is nog niet ingericht. Drie stappen, en daarna sluit deze pagina zichzelf voorgoed.",
+    "steps": {
+      "1": "Token",
+      "2": "Beheerder",
+      "3": "Authenticator"
+    },
+    "token": {
+      "heading": "Stap 1 — de eenmalige setup-token",
+      "explanation": "Wie bij de host kan, is de eigenaar van deze installatie. De token staat in een bestand op het datavolume van de container. Lees hem uit:",
+      "whyNotInTheLog": "De token staat bewust NIET in het containerlog. Logs worden geplakt in publieke issues, en wie deze token heeft wordt beheerder van deze installatie. Plak hem dus ook zelf nergens.",
+      "label": "Setup-token",
+      "help": "32 tekens. Streepjes, spaties en hoofd- of kleine letters maken niet uit.",
+      "submit": "Verder",
+      "errors": {
+        "MISMATCH": "Die token klopt niet. Controleer of je het hele bestand hebt overgenomen.",
+        "EXPIRED": "Die token is verlopen. Maak een nieuwe aan op de host: docker compose exec app splashtrack setup:token --new",
+        "ALREADY_USED": "Die token is al gebruikt. Een token werkt precies één keer. Maak een nieuwe aan: docker compose exec app splashtrack setup:token --new",
+        "NO_TOKEN_ISSUED": "Er is geen token uitgegeven. Maak er een aan op de host: docker compose exec app splashtrack setup:token --new",
+        "LOCKED_OUT": "Te veel mislukte pogingen. Probeer het over een kwartier opnieuw.",
+        "CLOSED": "Deze installatie vraagt niet meer om een token. Ververs de pagina."
+      }
+    },
+    "administrator": {
+      "heading": "Stap 2 — de organisatie en de eerste beheerder",
+      "explanation": "Hierna worden de database-migraties uitgevoerd en wordt de eerste beheerder aangemaakt. Dit account krijgt volledige zeggenschap over deze installatie.",
+      "organizationName": "Naam van de organisatie",
+      "organizationNameHelp": "De naam van je zwemschool of vereniging. Deze staat overal in de app en je kunt hem later wijzigen.",
+      "name": "Naam van de beheerder",
+      "email": "E-mailadres",
+      "password": "Wachtwoord",
+      "passwordHelp": "Minimaal {min} tekens. Kies iets dat je kunt onthouden of dat in je wachtwoordmanager staat — er is geen wachtwoordherstel per e-mail.",
+      "passwordConfirmation": "Wachtwoord nogmaals",
+      "thenMfa": "Daarna volgt meteen de laatste stap: een QR-code voor je authenticator. De installatie is pas ingericht als die tweede factor bevestigd is.",
+      "submit": "Beheerder aanmaken",
+      "working": "Bezig met inrichten…",
+      "errors": {
+        "organisation": "Vul een naam voor de organisatie in, van maximaal 120 tekens.",
+        "email": "Dat is geen geldig e-mailadres.",
+        "emailTaken": "Er bestaat al een account met dat e-mailadres.",
+        "password": "Het wachtwoord moet minimaal 12 en maximaal 128 tekens lang zijn.",
+        "passwordMismatch": "De twee wachtwoorden zijn niet gelijk.",
+        "closed": "Deze stap is niet meer beschikbaar. Ververs de pagina.",
+        "failed": "Het inrichten is mislukt. De reden staat in het containerlog: docker compose logs app"
+      }
+    },
+    "enrolment": {
+      "intro": "Stap 3 — laatste stap. Scan de QR-code met je authenticator-app en vul de zes cijfers in. Pas daarna is deze installatie ingericht en sluit /setup zichzelf."
+    }
+  },
+  "signIn": {
+    "title": "Inloggen",
+    "email": "E-mailadres",
+    "password": "Wachtwoord",
+    "submit": "Verder",
+    "code": "Zescijferige code",
+    "codePrompt": "Voer de code uit je authenticator-app in.",
+    "verify": "Bevestigen",
+    "startOver": "Opnieuw beginnen",
+    "badCredentials": "Inloggen is niet gelukt. Controleer je e-mailadres en wachtwoord.",
+    "badCode": "Die code klopt niet of is verlopen."
+  },
+  "breakGlass": {
+    "title": "Noodtoegang gebruikt",
+    "explanation": "Iemand met toegang tot de host heeft een break-glass-commando uitgevoerd. Controleer of dat klopte voordat je deze melding wegklikt.",
+    "dismiss": "Gezien"
+  },
+  "people": {
+    "title": "Mensen",
+    "subtitle": "Personen, lidmaatschappen en leerlingen. Drie aparte dingen — een kind kan lessen volgen zonder lid te zijn, en een lid hoeft nooit te zwemmen.",
+    "backToList": "Terug naar de lijst",
+    "backToPerson": "Terug naar de persoon",
+    "empty": "Geen mensen gevonden.",
+    "yes": "Ja",
+    "no": "Nee",
+    "save": "Opslaan",
+    "saved": "Opgeslagen.",
+    "unknownDateOfBirth": "Onbekend",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je hebt hier geen rechten voor. Vereist: {permission}. Vraag een beheerder om je rol uit te breiden."
+    },
+    "errors": {
+      "denied": "Je hebt geen rechten voor deze handeling.",
+      "validation": "De ingevoerde gegevens kloppen niet. Controleer de velden en probeer het opnieuw.",
+      "ALREADY_OPEN": "Dit lid heeft al een lopende lidmaatschapsperiode. Beëindig die eerst — zo blijft het gat tussen twee periodes zichtbaar.",
+      "NOT_OPEN": "Er is geen lopende lidmaatschapsperiode om te beëindigen. Terugkomen start een nieuwe periode; een afgesloten periode wordt nooit heropend.",
+      "ENDS_BEFORE_IT_STARTS": "Een lidmaatschapsperiode kan niet eindigen voordat die begonnen is."
+    },
+    "search": {
+      "label": "Zoeken",
+      "placeholder": "Naam, lidnummer of leerlingnummer",
+      "submit": "Zoeken"
+    },
+    "columns": {
+      "name": "Naam",
+      "dateOfBirth": "Geboortedatum",
+      "memberNumber": "Lidnummer",
+      "studentNumber": "Leerlingnummer",
+      "member": "Lid",
+      "studentState": "Leerling"
+    },
+    "fields": {
+      "givenName": "Voornaam",
+      "familyName": "Achternaam",
+      "dateOfBirth": "Geboortedatum",
+      "dateOfBirthHelp": "Laat leeg als je hem niet weet. Vul nooit een gok in: bij een onbekende geboortedatum vervalt het ouderlijk gezag automatisch en komt de toestemming in de wachtrij.",
+      "email": "E-mailadres",
+      "phone": "Telefoonnummer"
+    },
+    "create": {
+      "title": "Nieuwe persoon",
+      "submit": "Persoon aanmaken"
+    },
+    "sections": {
+      "identity": "Persoonsgegevens",
+      "membership": "Lidmaatschap",
+      "student": "Leerling",
+      "guardians": "Wie is verantwoordelijk voor deze persoon",
+      "dependants": "Voor wie is deze persoon verantwoordelijk"
+    },
+    "membership": {
+      "number": "Lidnummer",
+      "numberHelp": "Laat leeg om automatisch een nummer toe te kennen. Het lidnummer blijft hetzelfde, ook na een onderbreking.",
+      "startedAt": "Begonnen op",
+      "endedAt": "Beëindigd op",
+      "endReason": "Reden",
+      "open": "Lopend",
+      "create": "Lidmaatschap aanmaken",
+      "end": "Periode beëindigen",
+      "startAgain": "Nieuwe periode starten",
+      "returnHelp": "Terugkomen start een nieuwe periode. De oude periode blijft staan, zodat de vraag 'wanneer was deze persoon lid?' beantwoordbaar blijft."
+    },
+    "student": {
+      "number": "Leerlingnummer",
+      "numberHelp": "Laat leeg om automatisch een nummer toe te kennen. Los van het lidnummer: dat is een ander register.",
+      "occurredAt": "Wanneer",
+      "event": "Gebeurtenis",
+      "reason": "Toelichting",
+      "create": "Leerling aanmaken",
+      "record": "Vastleggen",
+      "reasonPurpose": "Korte toelichting bij deze gebeurtenis. Geen medische of gevoelige informatie — daar zijn de medische en pedagogische notities voor."
+    },
+    "lifecycle": {
+      "PROSPECTIVE": "Proefles",
+      "ACTIVE": "Actief",
+      "PAUSED": "Pauze",
+      "LEFT": "Vertrokken"
+    },
+    "lifecycleEvent": {
+      "JOINED": "Ingeschreven",
+      "PAUSED": "Pauze",
+      "LEFT": "Vertrokken",
+      "RETURNED": "Teruggekomen",
+      "TRIAL_ATTENDED": "Proefles gevolgd"
+    },
+    "relationshipType": {
+      "GUARDIAN_OF": "Ouder of voogd",
+      "EMERGENCY_CONTACT": "Noodcontact"
+    },
+    "relationships": {
+      "relative": "Persoon",
+      "subject": "Betreft",
+      "type": "Soort",
+      "authority": "Mag toestemming geven",
+      "validFrom": "Vanaf",
+      "validTo": "Tot",
+      "evidence": "Onderbouwing",
+      "evidencePurpose": "Leg vast hóe de relatie is vastgesteld — bijvoorbeeld 'moeder, opgegeven bij inschrijving 01-09-2024' of 'beschikking rechtbank gezien 14-03-2025'. Verplicht als deze persoon toestemming mag geven. Dit veld is versleuteld opgeslagen en elke keer dat iemand het opent wordt dat vastgelegd.",
+      "showEvidence": "Onderbouwing tonen",
+      "noEvidence": "Geen",
+      "end": "Beëindigen",
+      "addTitle": "Relatie toevoegen",
+      "add": "Relatie vastleggen",
+      "relativeId": "Id van de andere persoon",
+      "relativeIdHelp": "Kopieer het id uit de adresbalk op de pagina van die persoon.",
+      "noGuardians": "Niemand is vastgelegd als verantwoordelijke voor deze persoon.",
+      "noDependants": "Deze persoon is voor niemand vastgelegd als verantwoordelijke."
+    },
+    "authority": {
+      "ACTIVE": "Geldig",
+      "LAPSED_BY_AGE": "Vervallen — leeftijd bereikt",
+      "LAPSED_BY_RECORD": "Vervallen — relatie beëindigd",
+      "LAPSED_UNKNOWN_BIRTHDATE": "Vervallen — geboortedatum onbekend",
+      "NOT_CLAIMED": "Niet van toepassing",
+      "lapsesOn": "Vervalt op"
+    },
+    "evidence": {
+      "title": "Onderbouwing van de relatie",
+      "auditNotice": "Dat je dit hebt geopend is vastgelegd in het auditlogboek, met je naam en het moment.",
+      "none": "Er is geen onderbouwing vastgelegd bij deze relatie.",
+      "claimNotice": "Dit is wat de school is verteld en hoe dat is vastgesteld. Het is bewijs van een claim, geen juridische vaststelling van het gezag."
+    }
+  },
+  "mfaEnrolment": {
+    "title": "Authenticator instellen",
+    "intro": "Je bent ingelogd als {email}. Dit account kan pas iets doen als er een tweede factor is ingesteld.",
+    "whyPassword": "Voer je wachtwoord nog een keer in. Dat voorkomt dat iemand met een overgenomen sessie stiekem een eigen authenticator toevoegt.",
+    "start": "Toon de QR-code",
+    "badPassword": "Dat wachtwoord klopt niet.",
+    "unavailable": "De QR-code kon niet worden gemaakt. Probeer het opnieuw.",
+    "scan": "Scan deze code met je authenticator-app.",
+    "qrAlt": "QR-code voor je authenticator-app",
+    "manualKeyLabel": "Kan je niet scannen? Typ deze sleutel over:",
+    "manualKeyHelp": "Kies in je app \"handmatig invoeren\" of \"sleutel invoeren\". Hoofdletters en spaties maken niet uit.",
+    "backupCodesTitle": "Herstelcodes",
+    "backupCodesHelp": "Bewaar deze codes ergens veilig, buiten dit apparaat. Elke code werkt één keer en is je enige weg terug als je je authenticator kwijtraakt.",
+    "codeHelp": "De zes cijfers die je app nu toont.",
+    "verify": "Instellen afronden",
+    "reloadWarning": "Ververs deze pagina niet: de QR-code verdwijnt dan en je begint opnieuw met je wachtwoord."
+  }
+}
