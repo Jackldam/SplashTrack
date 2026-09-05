@@ -1020,12 +1020,30 @@ that cannot delete, and a retention floor the settings layer refuses to cross.**
    A `splashtrack audit:verify` command plus a chain-status line on the
    diagnostics page (`13-…` §8). A tamper-evident record nobody ever checks is
    tamper-*evident* in the same way an unwatched camera is.
-2. **A separate database role with `INSERT`-only grant on `AuditEvent`**,
-   `UPDATE` and `DELETE` revoked. The application writes audit events as that
-   role and everything else as its ordinary role. This composes with D-116 (the
-   application's role is not a superuser) — without D-116 the separation is
-   decorative, because a superuser can grant itself back. Deletion by the
-   retention job runs as a third, narrowly-scoped path with its own audit event.
+2. **The runtime role is the append-only writer — `SELECT, INSERT` on
+   `AuditEvent`, `UPDATE`/`DELETE` and `TRUNCATE` revoked — and it owns
+   nothing** (**D-182**, correcting this part as originally written). There is
+   **no separate append-only writer connection**: a second pool in the same Node
+   process is a diagram, not a boundary. Deletion belongs to a third role,
+   `splashtrack_retention`, which holds the only `DELETE` on audit rows and
+   records its own prune (D-168). The precondition this part was missing is the
+   load-bearing half: **an owner re-grants itself in one statement**, so the
+   revoke means nothing unless the runtime role also does not own the table —
+   which is what D-116, as amended by D-182, now says.
+
+   The role model is stated once, in full, in
+   `docs/adr/0002-database-roles-and-least-privilege.md` §7: four roles, two of
+   which appear in configuration. This chapter states the audit-integrity
+   property; it does not re-enumerate the roles (D-134).
+
+   **Why the correction, and where the truth was found.** The original text —
+   *"the application writes audit events as that role and everything else as its
+   ordinary role"* — describes a boundary the implementation deliberately does
+   not build, and the security review that produced D-182 explains why it would
+   not have been one. `src/lib/database/role-model.ts:237-239` is the shipped
+   rule: `REVOKE ALL ON TABLE "AuditEvent" FROM <app>` then
+   `GRANT SELECT, INSERT ON TABLE "AuditEvent" TO <app>`. **The code was right
+   and this section was wrong.**
 3. **A hard retention floor.** Audit retention is an organisation-configurable
    policy under D-065, so the cheapest way to destroy the evidence of an
    exfiltration is to set audit retention to one day and let the maintenance job
@@ -1036,10 +1054,13 @@ that cannot delete, and a retention floor the settings layer refuses to cross.**
 **Reason.** The three questions a breach requires (D-128) are all answered from
 the audit trail. If the actor who caused the breach can also edit it, the
 Article 33 assessment is built on evidence the suspect controls.
-**Trade-off.** A second database connection with different grants, and an
-operator pointing `DATABASE_URL` at a managed database must create two roles
-rather than one. The documentation gives the exact statements, as it already
-must for D-116.
+**Trade-off.** **Two** credentials in configuration rather than one —
+`DATABASE_URL` and `DATABASE_MAINTENANCE_URL`, the migration connection being
+derived from the second rather than a third variable — and an operator pointing
+`DATABASE_URL` at a managed database creates **three** roles rather than one
+(`infra/provision-roles.sql`; the fourth, the provisioning superuser, is not an
+application credential). The documentation gives the exact statements, as it
+already must for D-116.
 
 **One thing part 2 does not do, stated so nobody reads it as more than it is.**
 The retention path holds `DELETE` on `AuditEvent` and runs in the same process,
