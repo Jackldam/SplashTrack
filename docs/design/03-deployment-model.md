@@ -90,7 +90,7 @@ row that says "to build" against built work is how work gets done twice. Finding
 | **Health and readiness endpoints** so an operator's own monitoring works | **Built** — `src/app/api/health/route.ts`, `src/app/api/ready/route.ts` | — |
 | **Backup and restore commands shipped with the image**, because a self-hoster who cannot restore has no backups | **To build** — the export/restore engine is unbuilt, which is also why the wizard has no restore branch | `14-…` §3, §4 |
 
-**Status column re-run against the tree on 2026-09-05** (rev8 D-12/D-13). The
+**Status column re-run against the tree on 2026-09-05.** The
 column above had gone stale in the direction that costs the most: it described
 built work as *"to build"* and named `postgresql-client`'s absence as a gap when
 D-169 makes that absence the target. Evidence is

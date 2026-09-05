@@ -216,8 +216,21 @@ That is a genuine increase over the previous (non-functioning) design. It is
 accepted for three reasons: a holder of archive + token can already read every
 medical note, exam result and stored secret in the school, so the marginal
 capability is small; the token is revocable by re-wrapping (D-114), and the
-re-wrap now covers the whole key record, so a departing volunteer's copy is
-genuinely retired; and the alternative failure is total, silent and permanent.
+re-wrap now covers the whole key record, so a departing volunteer's copy of **the
+token** no longer opens the key record; and the alternative failure is total,
+silent and permanent.
+
+**What re-wrapping does *not* retire, stated because the previous wording
+implied otherwise.** It said a departing volunteer's copy is *"genuinely
+retired"*. That is true of a **token** holder and false of a **`SECRET_KEY`**
+holder: the master key is also derivable as
+`HKDF(SECRET_KEY, info="backup-master-v1")` (§2, `13-…` §3.1.1), so anyone who
+has ever held `SECRET_KEY` derives the master key of every archive, including
+archives written after a rotation, without touching the key record at all.
+Re-wrapping changes which token opens the record; it cannot revoke a derivation
+that bypasses the record. Recorded as **F-146**, which is open — the choice
+between dropping the derivation, per-archive keys the instance cannot re-derive,
+and accepting the boundary explicitly is a decision, not a repair.
 
 **What this obliges elsewhere:**
 

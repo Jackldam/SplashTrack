@@ -1512,3 +1512,69 @@ minimisation — and it is recorded as such rather than discovered later.
 **Still open, and it does not block the model:** whether the withdrawal of a
 safety consent should notify the instructors who had been relying on it. My
 instinct is yes and quietly; Jack decides.
+
+---
+
+### F-146 — `SECRET_KEY` alone unwraps every archive ever written, so backup-token rotation does not retire a copy
+
+**Severity: high.** Raised 2026-09-05 from `rev7-core-repairs.md`'s own
+*"adjacent, deliberately not taken"* list, where it is called **S-2** and *"the
+single largest remaining hole in the crypto envelope"*. It had never reached
+this file, so no register, chapter or phase knew about it.
+
+**The property.** `14-…` §2 states that the backup master key *"is also derivable
+as `HKDF(SECRET_KEY, info=\"backup-master-v1\")`"*, so that a fresh install has a
+master key before any archive exists. `backup-master-v1` is a live branch in
+`KEY_PURPOSES` (`src/lib/crypto/secret-key.ts`). The consequence is that
+**anyone who has ever held `SECRET_KEY` can derive the master key of every
+archive**, including archives written after a token rotation — and D-166 now
+places `SECRET_KEY` itself, wrapped, in every archive header.
+
+**Why it matters, precisely.** D-114's rotation story is *"the token can
+genuinely be rotated when someone leaves, which is the entire point"*. Against a
+holder of the **token only**, that holds. Against a holder of `SECRET_KEY` —
+which is every operator who has ever had host access, and is the artefact the
+Recovery Kit is built around — it does not: re-wrapping the key record changes
+which token opens the record, and changes nothing about the derivation that
+bypasses the record entirely.
+
+**Not a defect in the code.** The derivation is deliberate and D-166 is written
+so as not to depend on it. What was wrong is that the design asserted a
+revocation property stronger than the envelope supports, in `14-…` §2.3, and
+that the limitation appeared in no finding. §2.3 is corrected in the same pass;
+this finding is the record.
+
+**Open, and not resolved here.** Closing it means one of: dropping the
+`backup-master-v1` derivation and requiring the token for every archive (which
+reintroduces the bootstrap problem the derivation solves); or per-archive master
+keys that the running instance cannot re-derive; or accepting it explicitly as a
+decision, with the boundary stated wherever rotation is described. That is a
+decision for Jack, not a repair.
+
+### F-147 — **(RESOLVED before it was raised, verified 2026-09-05)** The D-096 envelope's `v1` tag collided with the inherited `secret-crypto.ts` `FORMAT = "v1"`
+
+**Severity: was high** (rev7 **B-20**). `rev8-verification.md` D-9 proposed
+raising this alongside F-146. It was checked against the tree first, and **there
+is no second party to the collision**: `secret-crypto.ts` does not exist in
+`src/` — the template's near-duplicate was removed at extraction (D-056).
+`src/lib/crypto/envelope.ts:79-83` owns the tag alone, as `FORMAT_VERSIONS` and
+`CURRENT_FORMAT`. Recorded rather than dropped so the report's proposal has a
+traceable outcome; nothing to do.
+
+### F-148 — **(RESOLVED before it was raised, verified 2026-09-05)** `appendAuditEvent` opened its own transaction, so an audit event could commit for a write that rolled back
+
+**Severity: was high** (rev7 **B-6**). Also proposed by `rev8-verification.md`
+D-9, and also already fixed:
+`src/modules/audit/infrastructure/audit-repository.ts:119-121` takes an optional
+`client`, so the append joins the caller's transaction and the record and the
+change commit together or neither does. The doc comment above it states both the
+failure mode and what the fix costs — `pg_advisory_xact_lock` is
+transaction-scoped, so the append lock is now held until the *caller's*
+transaction commits, which is the throughput constraint `05-technical.md` §5
+rule 7 is about. Nothing to do.
+
+**The general lesson, which is the reason both are recorded rather than
+deleted.** Two of the three defects a verification pass proposed raising had
+been fixed by the build in the days since the report they came from. A finding
+proposed from a report is a claim about a moment; check it against the tree
+before it becomes a work item.
