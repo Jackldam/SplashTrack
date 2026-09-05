@@ -2,6 +2,42 @@
  * The break-glass administrator commands (D-141, `13-…` §7).
  *
  * ─────────────────────────────────────────────────────────────────────────────
+ * `admin:create` IS BREAK-GLASS, NOT THE FRONT DOOR (D-187)
+ *
+ * A new installation is set up in a BROWSER, at `/setup`, gated by the one-time
+ * token D-101 puts on the data volume. That wizard names the organisation,
+ * creates the first administrator with a password typed TWICE, and enrols the
+ * authenticator in the same flow — which is what stops the account existing in
+ * a state its owner cannot enter.
+ *
+ * This command is what remains for the instance the wizard cannot finish: a
+ * password forgotten between step 2 and step 3, a data volume the operator
+ * cannot read, a browser they do not have. Its authority is unchanged and is
+ * §7's — host access, which is proof of ownership — and so are its obligations:
+ * an audit event with a `system:cli` actor, and a banner only somebody else can
+ * dismiss.
+ *
+ * ITS REACH IS UNCHANGED TOO, and that is deliberate. It still refuses on an
+ * installation that has COMPLETED setup, and the reason is the one already
+ * written below: a second, unaudited path to an `ORGANIZATION`-scoped account
+ * is what D-141's invariant exists to make unnecessary, and recovery on a live
+ * installation is `admin:grant-admin` or `admin:reset-mfa`. Demoting this
+ * command from "the documented first run" to "the recovery path" changes what
+ * it is FOR; widening what it can DO would be a different decision, and it is
+ * not this one.
+ *
+ * `--password-file` IS REMOVED from `admin:create` (see the call site). It
+ * survives on `admin:reset-mfa` alone, and the argument is D-141 rather than
+ * convenience: that command deletes a verified factor and re-enrols in the same
+ * transaction precisely so the invariant is never false across a browser
+ * round-trip, so it CANNOT hand the operator off to a browser the way
+ * `admin:create` now does. Its password is the account's EXISTING one, which
+ * already lives in that operator's password manager, and a temporary file is
+ * the only non-interactive way to feed a command that also blocks on a prompt
+ * for a six-digit code. Remove it there and the recovery command becomes
+ * interactive-only.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  * WHERE MFA IS ENROLLED, AND WHY IT IS NO LONGER HERE (D-185)
  *
  * The constraint has not changed: F-20 states as a design assumption that
@@ -43,10 +79,10 @@
  * usability defect it carries is bounded to a recovery command run by somebody
  * who already knows they are recovering.
  *
- * The password is read as before (`../prompt`): from a file the operator holds,
- * or from a TTY with echo disabled. No command here takes a password as a flag
- * value — a flag value is in the shell history and in `ps` for every user on
- * the host.
+ * Passwords are read through `../prompt`: from a TTY with echo disabled, or —
+ * for `admin:reset-mfa` alone — from a file the operator already holds. NO
+ * command here takes a password as a flag VALUE, because a flag value is in the
+ * shell history and in `ps` output for every user on the host.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -71,6 +107,8 @@ import { recordSetupStarted } from "@/lib/boot/setup-mode";
 import { detectBootState } from "@/lib/boot/state";
 import { prisma } from "@/lib/database";
 
+import { dataDir } from "@/lib/setup/data-dir";
+
 import { recordBreakGlassInvocation } from "../break-glass";
 import { resolveSecret, readSecretLine } from "../prompt";
 import type { CommandContext } from "../context";
@@ -80,17 +118,19 @@ import { migrateAndApplyRoleModel, reportResultingBootState } from "./setup";
 const GRANT_ADMIN_HOURS = 24;
 
 /**
- * Where the one-time enrolment artefact is written when `--out` is not given.
- * Relative to the process working directory, which in the image is `/app`, and
- * `/app/data` is the persistent volume the reference compose mounts.
+ * Where the one-time enrolment artefact is written when `--out` is not given:
+ * `$DATA_DIR`, which is `/app/data` in the image and the persistent volume the
+ * reference compose mounts there.
  *
- * NOT `$DATA_DIR`. D-101 names `$DATA_DIR/setup-token` for the setup token, and
- * `DATA_DIR` is a variable §3.1 permits — but it arrives with the wizard that
- * needs it, and reading it here would grow the environment surface for a path
- * the operator can simply pass. When the wizard lands, this default becomes
- * `$DATA_DIR` and the flag stays.
+ * IT USED TO BE A LOCAL `"data"` CONSTANT with a note saying it would become
+ * `$DATA_DIR` when the wizard landed. The wizard has landed (D-187), `DATA_DIR`
+ * exists, and there is now one home for "where does this instance keep state
+ * that cannot live in the database" — `@/lib/setup/data-dir.ts`. The `--out`
+ * flag still overrides it.
  */
-const DEFAULT_ARTEFACT_DIR = "data";
+function defaultArtefactDirectory(): string {
+  return dataDir();
+}
 
 // ── admin:create ────────────────────────────────────────────────────────────
 
@@ -157,10 +197,29 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
     );
   }
 
-  // Read the password BEFORE anything is written, so a mistyped confirmation
+  // `--password-file` IS GONE FROM THIS COMMAND (D-187). It was offered as the
+  // fix for a TTY that mangled the owner's input and it was rejected, in his
+  // words: *"Dit gaan we dus niet doen ik ga niet een wachtwoord in een bestand
+  // zetten met alle risico's van dien!"* A password written to disk — even
+  // briefly, even at 0600 — is exactly what this product refuses everywhere
+  // else, and a rejected pattern left in place is how it comes back. The FIX
+  // for the mangled prompt is the `/setup` wizard, where a browser echoes a
+  // confirmation field back; this command is the recovery path behind it.
+  //
+  // The password is read BEFORE anything is written, so a mistyped confirmation
   // aborts a command that has changed nothing.
+  if (ctx.flags["password-file"]) {
+    ctx.error(
+      "`--password-file` has been removed from `admin:create` (D-187). A " +
+        "password written to a file is what the /setup wizard exists to avoid. " +
+        "Type it at the prompt, or pipe it twice on stdin for automation:\n\n" +
+        '    printf \'%s\\n%s\\n\' "$PW" "$PW" | splashtrack admin:create --email …\n\n' +
+        "`admin:reset-mfa` keeps the flag; see the header of this file for why.",
+    );
+    return 2;
+  }
+
   const password = await resolveSecret({
-    file: ctx.flags["password-file"],
     prompt: "Password for the new administrator (not echoed): ",
     confirmPrompt: "Repeat the password: ",
   });
@@ -499,10 +558,9 @@ function writeEnrolmentArtefact(
   email: string,
   enrolment: { totpURI: string; backupCodes: string[] },
 ): string {
-  const directory = path.resolve(
-    process.cwd(),
-    ctx.flags.out ?? DEFAULT_ARTEFACT_DIR,
-  );
+  const directory = ctx.flags.out
+    ? path.resolve(process.cwd(), ctx.flags.out)
+    : defaultArtefactDirectory();
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const file = path.join(
     directory,

@@ -1,6 +1,12 @@
 /**
- * A new installation on a GENUINELY EMPTY database, end to end, as a
- * self-hoster runs it: `setup:init`, then `admin:create`.
+ * A new installation on a GENUINELY EMPTY database, end to end, driven from the
+ * HOST: `setup:init`, then `admin:create`.
+ *
+ * SINCE D-187 THIS IS THE RECOVERY PATH AND NOT THE FRONT DOOR. A self-hoster
+ * sets an instance up in a browser at `/setup`; these commands are what remains
+ * for an instance that wizard cannot finish. They are tested exactly as
+ * carefully as before, because a recovery path nobody exercises is a recovery
+ * path that does not work.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE DEFECT THIS PINS
@@ -106,7 +112,7 @@ async function createEmptyDatabase(suffix: string): Promise<string> {
  * is only visible if both streams are captured.
  */
 function runCli(database: string, ...args: string[]): string {
-  const result = runCliRaw(database, ...args);
+  const result = runCliRaw(database, args);
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   if (result.status !== 0) {
     throw new Error(
@@ -124,7 +130,8 @@ function runCli(database: string, ...args: string[]): string {
  */
 function runCliRaw(
   database: string,
-  ...args: string[]
+  args: string[],
+  stdinInput?: string,
 ): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(
     process.execPath,
@@ -139,6 +146,10 @@ function runCliRaw(
         DATABASE_URL: runtimeUrlFor(database),
         DATABASE_MAINTENANCE_URL: maintenanceUrlFor(database),
       },
+      // A here-doc, which since D-187 is the ONLY non-interactive way to give
+      // `admin:create` a password: `--password-file` was removed, because a
+      // password on disk is what the /setup wizard exists to avoid.
+      input: stdinInput,
       encoding: "utf8",
     },
   );
@@ -149,9 +160,35 @@ function runCliRaw(
   };
 }
 
+/** The password every case here uses. Never on a command line, never on disk. */
+const ADMIN_PASSWORD = "correct-horse-battery-staple";
+
+/**
+ * `admin:create`, driven the ONLY non-interactive way it still has (D-187).
+ *
+ * `--password-file` was removed: a password written to a file is exactly what
+ * the `/setup` wizard exists to avoid, and the owner rejected it in those
+ * terms. What remains for automation is a here-doc, and the command asks for
+ * the password TWICE — so two lines go in, and this is also what pins the
+ * shared-stdin reader in `src/cli/prompt.ts`, which could previously answer one
+ * prompt and never a second.
+ */
+function createAdministrator(database: string, ...args: string[]): string {
+  const result = runCliRaw(
+    database,
+    ["admin:create", ...args],
+    `${ADMIN_PASSWORD}\n${ADMIN_PASSWORD}\n`,
+  );
+  const output = `${result.stdout}${result.stderr}`;
+  if (result.status !== 0) {
+    throw new Error(`admin:create exited ${result.status}:\n${output}`);
+  }
+  return output;
+}
+
 /** `boot:state`'s machine line — `<STATE> <ACTION>` — and its exit code. */
 function bootState(database: string): { line: string; status: number | null } {
-  const result = runCliRaw(database, "boot:state");
+  const result = runCliRaw(database, ["boot:state"]);
   return { line: result.stdout.trim(), status: result.status };
 }
 
@@ -295,28 +332,17 @@ describe("admin:create on a migrated, seeded database", () => {
       const database = await createEmptyDatabase("admin");
       runCli(database, "setup:init");
 
-      // `--password-file` is the documented non-interactive path (see
-      // `src/cli/prompt.ts`); a flag VALUE would be in shell history and `ps`.
-      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
-      const passwordFile = path.join(workDirectory, "password");
-      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
-        mode: 0o600,
-      });
-
-      // THE DEFECT, AS A TEST. `stdio` is not a TTY and carries no input at
-      // all, so the old command — which blocked on "Six-digit code from your
-      // authenticator:" — could only have failed here. Completing is the
-      // proof: `runCli` throws on a non-zero exit and the case times out if
-      // the command ever waits for a human again.
-      const output = runCli(
+      // THE DEFECT, AS A TEST. Nothing here is a TTY, so the old command —
+      // which blocked on "Six-digit code from your authenticator:" — could
+      // only have failed. Completing is the proof: `createAdministrator`
+      // throws on a non-zero exit and the case times out if the command ever
+      // waits for a human again.
+      const output = createAdministrator(
         database,
-        "admin:create",
         "--email",
         "beheerder@example.org",
         "--name",
         "Eerste Beheerder",
-        "--password-file",
-        passwordFile,
       );
 
       expect(output).toContain("Administrator created: beheerder@example.org");
@@ -396,6 +422,55 @@ describe("admin:create on a migrated, seeded database", () => {
  * `bootstrap:clear-tampered`, and no step needs a human who already knows the
  * answer.
  */
+describe("the pattern the owner rejected", () => {
+  it(
+    "refuses `admin:create --password-file`, by name and with the way out",
+    { timeout: 120_000 },
+    async () => {
+      // NON-VACUOUS, AND THE POINT OF THE WHOLE CHANGE. Every other case in
+      // this file proves the command WORKS without a password file. This one
+      // proves the file path is GONE rather than merely unused — a rejected
+      // pattern left reachable is how it comes back on the next install guide
+      // somebody copies.
+      //
+      // The owner's words, 2026-09-04: *"Dit gaan we dus niet doen ik ga niet
+      // een wachtwoord in een bestand zetten met alle risico's van dien!"*
+      const database = await createEmptyDatabase("nopasswordfile");
+      runCli(database, "setup:init");
+
+      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
+      const passwordFile = path.join(workDirectory, "password");
+      writeFileSync(passwordFile, `${ADMIN_PASSWORD}\n`, { mode: 0o600 });
+
+      const result = runCliRaw(database, [
+        "admin:create",
+        "--email",
+        "beheerder@example.org",
+        "--password-file",
+        passwordFile,
+      ]);
+      const output = `${result.stdout}${result.stderr}`;
+
+      expect(result.status).toBe(2);
+      expect(output).toContain("`--password-file` has been removed");
+      // It names the replacement rather than only refusing.
+      expect(output).toContain("/setup");
+      expect(output).toContain("stdin");
+
+      // AND IT CHANGED NOTHING. The refusal happens before any write, so an
+      // operator who tries the old flag is not left with half an installation.
+      await asRuntime(database, async (client) => {
+        const accounts = await client.query('SELECT 1 FROM "UserAccount"');
+        expect(accounts.rowCount).toBe(0);
+      });
+      expect(bootState(database)).toEqual({
+        line: "PARTIAL SETUP_MODE",
+        status: 0,
+      });
+    },
+  );
+});
+
 describe("the first-run path, end to end", () => {
   it(
     "never leaves the installation in a state that refuses to start",
@@ -433,19 +508,10 @@ describe("the first-run path, end to end", () => {
       });
 
       // ── admin:create ──────────────────────────────────────────────────────
-      const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
-      const passwordFile = path.join(workDirectory, "password");
-      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
-        mode: 0o600,
-      });
-
-      const create = runCli(
+      const create = createAdministrator(
         database,
-        "admin:create",
         "--email",
         "beheerder@example.org",
-        "--password-file",
-        passwordFile,
       );
       expect(create).toContain("Boot state is now PENDING_ENROLMENT");
 
@@ -465,7 +531,7 @@ describe("the first-run path, end to end", () => {
       await asRuntime(database, (client) =>
         client.query('DELETE FROM "InstallationBootstrap"'),
       );
-      const tampered = runCliRaw(database, "boot:state");
+      const tampered = runCliRaw(database, ["boot:state"]);
       expect(tampered.stdout.trim()).toBe("TAMPERED REFUSE");
       expect(tampered.status).toBe(1);
       expect(tampered.stderr).toContain(
@@ -509,20 +575,19 @@ describe("admin:reset-mfa", () => {
       const database = await createEmptyDatabase("resetmfa");
       runCli(database, "setup:init");
 
+      createAdministrator(database, "--email", "beheerder@example.org");
+
+      // `--password-file` SURVIVES ON THIS COMMAND ALONE (D-187), and the
+      // argument is D-141 rather than convenience: `admin:reset-mfa` deletes a
+      // verified factor and re-enrols inside the same command, precisely so the
+      // invariant is never false across a browser round-trip — so it cannot
+      // hand the operator off to a browser the way `admin:create` now does, and
+      // it also blocks on a prompt for a six-digit code. A file is the only
+      // remaining non-interactive way to feed it. Remove it here and the
+      // recovery command becomes interactive-only.
       const workDirectory = mkdtempSync(path.join(tmpdir(), "splashtrack-"));
       const passwordFile = path.join(workDirectory, "password");
-      writeFileSync(passwordFile, "correct-horse-battery-staple\n", {
-        mode: 0o600,
-      });
-
-      runCli(
-        database,
-        "admin:create",
-        "--email",
-        "beheerder@example.org",
-        "--password-file",
-        passwordFile,
-      );
+      writeFileSync(passwordFile, `${ADMIN_PASSWORD}\n`, { mode: 0o600 });
 
       const artefactDirectory = path.join(workDirectory, "out");
       const child = spawn(

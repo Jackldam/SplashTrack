@@ -11,15 +11,25 @@
  * So:
  *   - a value read from a TTY is read with **echo disabled**, and nothing is
  *     written back to the terminal;
- *   - a value may instead be read from a **file** the operator already holds
- *     (`--password-file`), which is the documented path — a flag VALUE would
- *     land in shell history and in `ps` output for every user on the host;
+ *   - a non-TTY stdin is accepted (a here-doc, a pipe), because automation is
+ *     real and because it is now the only non-interactive path;
  *   - no command in this CLI takes a password as a flag value, and there is no
  *     code path that prints one.
  *
- * A non-TTY stdin is accepted (a here-doc, a pipe) because automation is real,
- * but it is not the documented path and the file form is what the report and
- * the entrypoint's messages name.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * `--password-file` IS GONE FROM `admin:create` (D-187), AND THE OWNER IS RIGHT
+ *
+ * It was offered as the fix for a TTY that mangled his input. His answer:
+ * *"Dit gaan we dus niet doen ik ga niet een wachtwoord in een bestand zetten
+ * met alle risico's van dien!"* A password written to disk — even briefly, even
+ * at 0600 — is exactly what this product refuses everywhere else, and a
+ * rejected pattern left in place is how it comes back. The FIX for the mangled
+ * prompt is the `/setup` wizard, where a browser can echo a confirmation field
+ * back; the prompt is the recovery path, not the front door.
+ *
+ * {@link readSecretFile} and `resolveSecret`'s `file` option SURVIVE, with
+ * exactly one caller: `admin:reset-mfa`. The argument for that one is in
+ * `./commands/admin.ts` and it is about D-141, not about convenience.
  */
 
 import { readFileSync } from "node:fs";
@@ -104,18 +114,30 @@ export async function resolveSecret(options: {
   return value;
 }
 
-/** One line from a pipe or here-doc, without the reader consuming the rest. */
-function readLineFromPipe(): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const rl = createInterface({ input: stdin, terminal: false });
-    let settled = false;
-    rl.once("line", (line) => {
-      settled = true;
-      rl.close();
-      resolve(line);
-    });
-    rl.once("close", () => {
-      if (!settled) reject(new Error("No input was supplied on stdin."));
-    });
-  });
+/**
+ * ONE reader over a non-TTY stdin, kept for the life of the process.
+ *
+ * WHY IT IS SHARED, AND WHY THAT IS LOAD-BEARING RATHER THAN TIDY. This used to
+ * open a fresh `readline` per call and close it after one line. A single read
+ * worked; a SECOND read did not, because closing the interface takes the
+ * underlying stream with it — so `resolveSecret`'s confirmation prompt could
+ * never be answered over a pipe at all.
+ *
+ * That became load-bearing the moment `--password-file` left `admin:create`
+ * (D-187): with the file path gone, a here-doc is the only non-interactive way
+ * to give that command a password, and the command asks for it TWICE. One
+ * shared iterator reads successive lines from the same stream, which is what a
+ * here-doc supplies.
+ */
+let pipeLines: AsyncIterator<string> | null = null;
+
+/** One line from a pipe or here-doc, leaving the rest for the next caller. */
+async function readLineFromPipe(): Promise<string> {
+  pipeLines ??= createInterface({ input: stdin, terminal: false })[
+    Symbol.asyncIterator
+  ]();
+
+  const next = await pipeLines.next();
+  if (next.done) throw new Error("No input was supplied on stdin.");
+  return next.value;
 }
