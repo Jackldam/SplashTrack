@@ -36,7 +36,7 @@
  * its own environment is also simply what the operator types.
  */
 
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -51,6 +51,8 @@ import {
   migrationUrlFrom,
   REFERENCE_OWNER_ROLE,
 } from "@/lib/database/role-model";
+
+import { runSplashtrackCli, runSplashtrackCliRaw } from "../support/cli-runner";
 
 /** Databases created here, dropped in `afterAll` whatever happens. */
 const created: string[] = [];
@@ -102,62 +104,32 @@ async function createEmptyDatabase(suffix: string): Promise<string> {
   return database;
 }
 
-/**
- * Runs the real CLI, with the environment pointed at one throwaway database,
- * and returns everything it said.
- *
- * `spawnSync` rather than `execFileSync` because every command in `src/cli`
- * logs to STDERR and reserves stdout for machine output (`boot:state` prints
- * `<STATE> <ACTION>` there) — so the operator-facing narrative this asserts on
- * is only visible if both streams are captured.
- */
-function runCli(database: string, ...args: string[]): string {
-  const result = runCliRaw(database, args);
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  if (result.status !== 0) {
-    throw new Error(
-      `splashtrack ${args.join(" ")} exited ${result.status}:\n${output}`,
-    );
-  }
-  return output;
+/** Both connection strings for one throwaway database, as the CLI takes them. */
+function cliEnv(database: string) {
+  return {
+    databaseUrl: runtimeUrlFor(database),
+    maintenanceUrl: maintenanceUrlFor(database),
+  };
 }
 
 /**
- * The same CLI invocation, WITHOUT the non-zero-exit throw — for the cases that
- * are about the exit code. `boot:state` returns 1 on a REFUSE state precisely so
- * a caller that forgets to branch still fails, and a test that could only ever
- * see 0 could not tell serving from refusing.
+ * The real CLI, in a child process, against one throwaway database.
+ *
+ * THE SPAWN ITSELF LIVES IN `tests/support/cli-runner.ts`, shared with
+ * `setup-wizard.test.ts` — two copies of "which streams to capture and how to
+ * feed stdin" is how the two drift apart, and the stdin half is load-bearing
+ * since D-187 removed `--password-file`.
  */
+function runCli(database: string, ...args: string[]): string {
+  return runSplashtrackCli(cliEnv(database), args);
+}
+
 function runCliRaw(
   database: string,
   args: string[],
   stdinInput?: string,
 ): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(
-    process.execPath,
-    [
-      path.resolve(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
-      path.resolve(process.cwd(), "scripts/cli-dev.ts"),
-      ...args,
-    ],
-    {
-      env: {
-        ...process.env,
-        DATABASE_URL: runtimeUrlFor(database),
-        DATABASE_MAINTENANCE_URL: maintenanceUrlFor(database),
-      },
-      // A here-doc, which since D-187 is the ONLY non-interactive way to give
-      // `admin:create` a password: `--password-file` was removed, because a
-      // password on disk is what the /setup wizard exists to avoid.
-      input: stdinInput,
-      encoding: "utf8",
-    },
-  );
-  return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
+  return runSplashtrackCliRaw(cliEnv(database), args, stdinInput);
 }
 
 /** The password every case here uses. Never on a command line, never on disk. */
