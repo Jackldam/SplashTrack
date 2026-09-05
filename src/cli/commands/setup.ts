@@ -50,6 +50,7 @@ import {
   SETUP_TOKEN_TTL_MINUTES,
   ensureSetupToken,
   issueSetupToken,
+  setupTokenPath,
   setupTokenStatus,
 } from "@/lib/setup/token";
 
@@ -89,10 +90,21 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
   ctx.log("");
   ctx.log(
     "Setup is NOT complete: there is no administrator yet, so the " +
-      "installation is still in setup mode. Finish with:",
+      "installation is still in setup mode. FINISH IT IN A BROWSER:",
   );
   ctx.log("");
-  ctx.log("    splashtrack admin:create --email you@example.org");
+  ctx.log(`    ${setupUrl()}`);
+  ctx.log("");
+  ctx.log(
+    "It asks for the one-time token, which is written to " +
+      `${setupTokenPath()} — read it with \`docker compose exec app cat ` +
+      "<that path>\`, or issue a new one with `splashtrack setup:token --new`.",
+  );
+  ctx.log("");
+  ctx.log(
+    "If you cannot use a browser: `splashtrack admin:create --email " +
+      "you@example.org` is the host path, and it is audited.",
+  );
   ctx.log("");
   await reportResultingBootState(ctx);
   return 0;
@@ -150,6 +162,17 @@ export async function migrateAndApplyRoleModel(
   ctx: CommandContext,
 ): Promise<void> {
   await migrateSchemaAndGrants((line) => ctx.log(line), ctx.flags.owner);
+}
+
+/**
+ * Where the wizard lives. `BETTER_AUTH_URL` is this instance's public origin and
+ * is required for the container to start at all, so in a real deployment it is
+ * always right. A bare checkout gets the honest placeholder rather than a
+ * guessed `localhost` that might send somebody to the wrong machine.
+ */
+function setupUrl(): string {
+  const base = process.env.BETTER_AUTH_URL?.trim().replace(/\/$/, "");
+  return base ? `${base}/setup` : "<this instance's address>/setup";
 }
 
 // ── setup:token ─────────────────────────────────────────────────────────────
