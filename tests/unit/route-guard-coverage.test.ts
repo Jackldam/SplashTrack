@@ -65,6 +65,16 @@ const MAY_USE_UNGUARDED_SESSION: ReadonlyMap<string, string> = new Map([
     "The enrolment Server Actions, for the same reason. They apply their own " +
       "refusal — a session that is NOT pending is sent away from them.",
   ],
+  [
+    "setup/page.tsx",
+    "The first-run wizard (D-187). Its LAST step is MFA enrolment, so the " +
+      "caller it exists for is precisely an account with no verified factor — " +
+      "the guard would bounce it to /mfa-enrolment, which is the step this " +
+      "page renders. Its own gate is STRICTER than the guard rather than " +
+      "weaker: the boot state decides whether the page exists at all, and the " +
+      "session is consulted only in PENDING_ENROLMENT, where an anonymous " +
+      "caller is sent to sign in. See src/lib/setup/gate.ts.",
+  ],
 ]);
 
 /** Every `.ts`/`.tsx` file under `src/app`, as paths relative to it. */

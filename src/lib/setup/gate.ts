@@ -53,6 +53,7 @@
  */
 
 import { detectBootState, type BootState } from "@/lib/boot";
+import { logger } from "@/lib/logging";
 
 import { hasWizardSession } from "./wizard-session";
 
@@ -121,11 +122,27 @@ export function decideWizardAccess(input: WizardAccessInput): WizardStage {
  */
 export async function resolveWizardAccess(options: {
   signedInPending: boolean;
-}): Promise<{ stage: WizardStage; state: BootState }> {
-  const [decision, hasWizardCookie] = await Promise.all([
-    detectBootState(),
-    hasWizardSession(),
-  ]);
+}): Promise<{ stage: WizardStage; state: BootState | "UNKNOWN" }> {
+  let decision;
+  try {
+    decision = await detectBootState();
+  } catch (error) {
+    // DENY BY DEFAULT, and note which direction that is. `isSetupIncomplete()`
+    // fails toward "not set up" because the safe thing there is to serve a
+    // notice instead of an application whose authorization tables may not
+    // exist. Here the safe thing is the opposite: an unreadable database must
+    // never be an argument for opening an unauthenticated administrative
+    // surface, so a detection failure closes the wizard. The cost is a 404 on a
+    // database blip mid-install, and the remedy is a reload.
+    logger.warn(
+      { event: "setup.wizard.state_unreadable", err: error },
+      "the boot state could not be read; the setup wizard is closed for this " +
+        "request",
+    );
+    return { stage: "CLOSED", state: "UNKNOWN" };
+  }
+
+  const hasWizardCookie = await hasWizardSession();
 
   return {
     state: decision.state,

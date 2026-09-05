@@ -36,10 +36,7 @@
  * at all.
  */
 
-import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
-import path from "node:path";
-
+import { migrateAndApplyRoleModel as migrateSchemaAndGrants } from "@/lib/boot/migrate";
 import { seedInstallation } from "@/lib/boot/seed";
 import { recordSetupStarted } from "@/lib/boot/setup-mode";
 import { detectBootState } from "@/lib/boot/state";
@@ -57,7 +54,6 @@ import {
 } from "@/lib/setup/token";
 
 import type { CommandContext } from "../context";
-import { applyRoleModelOrThrow } from "./database";
 
 export async function setupInit(ctx: CommandContext): Promise<number> {
   const decision = await detectBootState();
@@ -140,50 +136,20 @@ export async function reportResultingBootState(
 }
 
 /**
- * Migrates, then puts the ADR-0002 role model in force over what the migration
- * just created. NEVER one without the other.
+ * Migrates and re-applies the ADR-0002 role model, with the CLI's narration
+ * attached.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * WHY THE TWO ARE WELDED TOGETHER
- *
- * The migration runs as `splashtrack_owner` (prisma.config.ts derives that
- * connection), so every table it creates is owned by the owner role and carries
- * NO privileges for the runtime role at all. The runtime role only ever obtains
- * them from `ALTER DEFAULT PRIVILEGES` and the explicit grants in
- * `applyRoleModel`. Until those are applied the schema exists and the
- * application cannot read a byte of it.
- *
- * `setup:init` then seeds — as the RUNTIME role, which is what `@/lib/database`
- * connects as. Measured on a genuinely empty database, not reasoned about:
- * without this step the seed died on its first statement with
- *
- *     permission denied for table Organization
- *
- * and the operator's only way forward was to know that `db:apply-grants` had to
- * be run by hand between two steps of a command that presents itself as one
- * step. `docker-entrypoint.sh` already re-applies the model after every
- * migration it runs itself, for exactly this reason; this is the same rule for
- * the migrations the CLI runs, in the one place both callers pass through.
- *
- * `migrate deploy` and not `migrate dev`: it applies pending migrations and
- * never generates, resets or prompts, which are all things that must not happen
- * on a machine holding real data.
- *
- * Inherits stdio so Prisma's own output reaches the operator unfiltered — a
- * migration failure is the moment to see everything, and Prisma's messages name
- * the migration and the SQL statement that failed.
+ * THE SEQUENCE ITSELF LIVES IN `@/lib/boot/migrate.ts` and no longer here. It
+ * gained a second caller with D-187 — the `/setup` wizard runs exactly these
+ * two steps when the operator answers "this is a new installation" in a browser
+ * — and a Server Action reaching into `src/cli` would be the wrong direction
+ * for the dependency as well as a second copy of a sequence that must never
+ * come apart.
  */
 export async function migrateAndApplyRoleModel(
   ctx: CommandContext,
 ): Promise<void> {
-  execFileSync(process.execPath, [prismaCliPath(), "migrate", "deploy"], {
-    stdio: ["ignore", "inherit", "inherit"],
-    env: process.env,
-  });
-  ctx.log("Migrations applied.");
-
-  ctx.log("Re-applying the ADR-0002 role model over the new schema…");
-  await applyRoleModelOrThrow(ctx);
+  await migrateSchemaAndGrants((line) => ctx.log(line), ctx.flags.owner);
 }
 
 // ── setup:token ─────────────────────────────────────────────────────────────
@@ -275,20 +241,4 @@ export async function setupToken(ctx: CommandContext): Promise<number> {
   );
   ctx.log("");
   return 0;
-}
-
-/**
- * Where the Prisma CLI lives. `prisma` is a RUNTIME dependency of this
- * application, not a build tool: `migrate deploy` is what the boot state
- * machine runs on an `EXISTING` database, so an image without it could not
- * upgrade itself. Resolved rather than hardcoded so it works from the bundled
- * CLI in the image and from `tsx` in a checkout.
- */
-function prismaCliPath(): string {
-  const require = createRequire(import.meta.url);
-  try {
-    return require.resolve("prisma/build/index.js");
-  } catch {
-    return path.resolve(process.cwd(), "node_modules/prisma/build/index.js");
-  }
 }

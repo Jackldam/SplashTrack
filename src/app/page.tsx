@@ -1,32 +1,33 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { getCurrentSession } from "@/lib/auth/session";
 import { MFA_ENROLMENT_PATH } from "@/lib/auth/mfa-enrolment";
 import { resolveSetupStage } from "@/lib/boot";
+import { resolveWizardAccess } from "@/lib/setup";
 
 import { BreakGlassBanner } from "./break-glass-banner";
 
 /**
- * The landing page, which is also — until D-039's wizard exists — where an
- * unconfigured installation says so.
+ * The landing page.
  *
- * THE SETUP NOTICE IS NOT THE WIZARD. `13-…` §6 puts a browser wizard here that
- * asks the one question only the operator can answer ("new installation, or
- * restore from backup?") and then creates the first administrator. That is
- * phase 1. What this renders instead is the honest reduction: the question is
- * answered on the HOST, by `splashtrack admin:create`, which is the same
- * host-access-is-proof-of-ownership pattern D-101 and §7 already use for every
- * other privileged operation.
+ * SETUP MODE IS NO LONGER ITS JOB (D-187). `13-…` §6 says every request in
+ * setup mode goes to `/setup`, and now that the wizard exists this page sends
+ * them there rather than reproducing a shorter version of it. What survives
+ * below is the FALLBACK: the two notices for the cases in which the wizard is
+ * not open and the installation is still not set up.
  *
- * SINCE D-185 THE NOTICE HAS TWO UNFINISHED STATES, not one, because
- * `admin:create` no longer completes setup — enrolling the administrator's
- * second factor does, in the browser. Telling somebody to run `admin:create`
- * when they have already run it, and are one sign-in away from finishing, is
- * worse than saying nothing, so the two remedies are separate screens:
+ * There are genuinely two of those, and they have different remedies, so they
+ * are different screens (D-185/D-186):
  *
- *   NO_ADMINISTRATOR            the host command.
- *   ADMINISTRATOR_PENDING_MFA   a link to sign in, and what will happen next.
+ *   NO_ADMINISTRATOR            the wizard is unreachable — most likely a
+ *                               database that could not be read this request —
+ *                               so the notice names the host command that
+ *                               reopens the path.
+ *   ADMINISTRATOR_PENDING_MFA   an account exists and has not enrolled. This is
+ *                               reached when the wizard sent an anonymous
+ *                               caller to sign in and they came here instead.
  *
  * Phase 1.1 gives it its first domain link: the `people` register. There is
  * still deliberately little else — a landing page that lists modules nobody
@@ -39,6 +40,30 @@ export default async function LandingPage() {
     getCurrentSession(),
   ]);
 
+  // ── SETUP MODE BELONGS TO THE WIZARD NOW (D-187) ─────────────────────────
+  //
+  // `13-…` §6 says every request in setup mode goes to `/setup`, and since the
+  // wizard exists that is one redirect rather than a page of instructions.
+  //
+  // IT IS CONDITIONAL ON THE WIZARD ACTUALLY BEING OPEN, and that is not
+  // defensive padding: `resolveSetupStage()` fails toward `NO_ADMINISTRATOR` on
+  // an unreadable database, and `resolveWizardAccess()` fails toward `CLOSED`
+  // on the same. Redirecting unconditionally would bounce a blip into a 404
+  // with no explanation, so an un-open wizard falls through to the notices
+  // below — which are the honest description of every remaining case.
+  if (stage !== "COMPLETE") {
+    const { stage: wizard } = await resolveWizardAccess({
+      signedInPending: session?.mfaPending === true,
+    });
+    if (
+      wizard === "TOKEN" ||
+      wizard === "ADMINISTRATOR" ||
+      wizard === "ENROLMENT"
+    ) {
+      redirect("/setup");
+    }
+  }
+
   if (stage === "NO_ADMINISTRATOR") {
     return (
       <main className="container py-5">
@@ -48,8 +73,8 @@ export default async function LandingPage() {
           <p>{t("setup.noAdministrator")}</p>
           <pre className="mb-0">
             <code>
-              docker compose exec app splashtrack admin:create \{"\n"}
-              {"    "}--email you@example.org --name &apos;Your Name&apos;
+              docker compose exec app splashtrack setup:token --new{"\n"}
+              {"    "}# then open /setup and enter the token it writes
             </code>
           </pre>
         </div>

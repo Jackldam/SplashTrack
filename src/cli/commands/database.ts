@@ -40,90 +40,25 @@
  * role still holds a write on `AuditEvent`, or still owns it.
  */
 
-import { applyRoleModel } from "@/lib/database/apply-role-model";
-import {
-  REFERENCE_OWNER_ROLE,
-  roleNameFrom,
-  type RoleModelNames,
-} from "@/lib/database/role-model";
+import { applyRoleModelOrThrow as applyRoleModel } from "@/lib/boot/migrate";
 
 import type { CommandContext } from "../context";
 
 /**
- * Resolves the three role names.
- *
- * The two LOGIN roles are read from the connection strings rather than assumed,
- * because on a managed database they are the provider's names and not ours. The
- * owner cannot be read the same way — it is the one role that never appears in
- * a connection string, which is the whole point of it — so it defaults to the
- * name the reference provisioning creates and `--owner` overrides it.
- *
- * Exported because `setup:init` applies the same model to the same database
- * immediately after it migrates, and resolving the names a second way there is
- * how the two commands drift apart.
- */
-export function resolveRoleModelNames(ctx: CommandContext): {
-  names: RoleModelNames;
-  maintenanceUrl: string;
-} {
-  const runtimeUrl = process.env.DATABASE_URL;
-  const maintenanceUrl = process.env.DATABASE_MAINTENANCE_URL;
-
-  if (!runtimeUrl) throw new Error("DATABASE_URL is not set.");
-  if (!maintenanceUrl) {
-    throw new Error(
-      "DATABASE_MAINTENANCE_URL is not set.\n\n" +
-        "  It is the second of the two credentials ADR-0002 requires: the\n" +
-        "  retention role, which holds the only DELETE on AuditEvent and is a\n" +
-        "  member of the owner role that runs migrations. Without it this\n" +
-        "  installation cannot migrate, cannot prune, and cannot put D-149\n" +
-        "  part 2 in force.\n\n" +
-        "  See .env.example and docs/adr/0002-database-roles-and-least-privilege.md.",
-    );
-  }
-
-  return {
-    maintenanceUrl,
-    names: {
-      owner: ctx.flags.owner ?? REFERENCE_OWNER_ROLE,
-      app: roleNameFrom(runtimeUrl),
-      retention: roleNameFrom(maintenanceUrl),
-    },
-  };
-}
-
-/**
  * Applies the role model and THROWS on any failure.
  *
- * This is the form `setup:init` needs. `databaseApplyGrants` below reports a
- * failure as a non-zero exit code because it is a top-level command; a caller
- * that has just migrated a database and is about to write rows into it needs
- * the failure to abort its own sequence, not to be handed a number it might
- * forget to look at.
+ * THE RESOLUTION AND THE GRANTS THEMSELVES LIVE IN `@/lib/boot/migrate.ts`.
+ * They moved there when the `/setup` wizard became a second caller (D-187):
+ * migrating and re-granting is one sequence that must never come apart, and it
+ * cannot live under `src/cli` if a Server Action has to run it.
+ *
+ * This wrapper is what keeps the CLI's narration: the shared function takes a
+ * log callback, and `ctx.log` is it.
  */
 export async function applyRoleModelOrThrow(
   ctx: CommandContext,
 ): Promise<void> {
-  const { names, maintenanceUrl } = resolveRoleModelNames(ctx);
-
-  ctx.log("Applying the ADR-0002 role model:");
-  ctx.log(`  owner     ${names.owner}   (non-connecting)`);
-  ctx.log(`  runtime   ${names.app}`);
-  ctx.log(`  retention ${names.retention}`);
-
-  const outcome = await applyRoleModel(maintenanceUrl, names);
-  if (outcome.failures.length > 0) {
-    throw new Error(
-      "The ADR-0002 role model did NOT come into force:\n" +
-        outcome.failures.map((failure) => `  \u2717 ${failure}`).join("\n"),
-    );
-  }
-
-  ctx.log(`Applied as ${outcome.acting} (session ${outcome.session}).`);
-  ctx.log(
-    `D-149 part 2 is in force: ${names.app} holds SELECT and INSERT on ` +
-      "AuditEvent, owns nothing, and cannot grant itself more.",
-  );
+  await applyRoleModel((line) => ctx.log(line), ctx.flags.owner);
 }
 
 export async function databaseApplyGrants(

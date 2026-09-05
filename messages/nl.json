@@ -18,12 +18,63 @@
   },
   "setup": {
     "title": "Deze installatie is nog niet ingericht",
-    "noAdministrator": "Er is nog geen beheerder. Maak de eerste aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
+    "noAdministrator": "Er is nog geen beheerder. Richt deze installatie in via de wizard op /setup. Die vraagt om een eenmalige token, en die maak je aan vanaf de host — toegang tot de host is hier het eigendomsbewijs:",
     "pendingTitle": "Bijna klaar: de beheerder moet nog een authenticator instellen",
     "pendingExplanation": "Het beheerdersaccount bestaat, maar heeft nog geen tweede factor. Zolang dat zo is, is de installatie niet ingericht en kan het account niets anders dan inloggen en de authenticator instellen.",
-    "pendingAction": "Log in met het wachtwoord dat je bij `admin:create` hebt gekozen. Je wordt daarna vanzelf naar de instelpagina gestuurd.",
+    "pendingAction": "Log in met het wachtwoord dat je bij het aanmaken hebt gekozen. Je wordt daarna vanzelf naar de instelpagina gestuurd.",
     "pendingSignIn": "Inloggen en authenticator instellen",
     "noRegistration": "Zelfregistratie bestaat niet: accounts worden door een beheerder aangemaakt."
+  },
+  "setupWizard": {
+    "title": "SplashTrack instellen",
+    "subtitle": "Deze installatie is nog niet ingericht. Drie stappen, en daarna sluit deze pagina zichzelf voorgoed.",
+    "steps": {
+      "1": "Token",
+      "2": "Beheerder",
+      "3": "Authenticator"
+    },
+    "token": {
+      "heading": "Stap 1 — de eenmalige setup-token",
+      "explanation": "Wie bij de host kan, is de eigenaar van deze installatie. De token staat in een bestand op het datavolume van de container. Lees hem uit:",
+      "whyNotInTheLog": "De token staat bewust NIET in het containerlog. Logs worden geplakt in publieke issues, en wie deze token heeft wordt beheerder van deze installatie. Plak hem dus ook zelf nergens.",
+      "label": "Setup-token",
+      "help": "32 tekens. Streepjes, spaties en hoofd- of kleine letters maken niet uit.",
+      "submit": "Verder",
+      "errors": {
+        "MISMATCH": "Die token klopt niet. Controleer of je het hele bestand hebt overgenomen.",
+        "EXPIRED": "Die token is verlopen. Maak een nieuwe aan op de host: docker compose exec app splashtrack setup:token --new",
+        "ALREADY_USED": "Die token is al gebruikt. Een token werkt precies één keer. Maak een nieuwe aan: docker compose exec app splashtrack setup:token --new",
+        "NO_TOKEN_ISSUED": "Er is geen token uitgegeven. Maak er een aan op de host: docker compose exec app splashtrack setup:token --new",
+        "LOCKED_OUT": "Te veel mislukte pogingen. Probeer het over een kwartier opnieuw.",
+        "CLOSED": "Deze installatie vraagt niet meer om een token. Ververs de pagina."
+      }
+    },
+    "administrator": {
+      "heading": "Stap 2 — de organisatie en de eerste beheerder",
+      "explanation": "Hierna worden de database-migraties uitgevoerd en wordt de eerste beheerder aangemaakt. Dit account krijgt volledige zeggenschap over deze installatie.",
+      "organizationName": "Naam van de organisatie",
+      "organizationNameHelp": "De naam van je zwemschool of vereniging. Deze staat overal in de app en je kunt hem later wijzigen.",
+      "name": "Naam van de beheerder",
+      "email": "E-mailadres",
+      "password": "Wachtwoord",
+      "passwordHelp": "Minimaal {min} tekens. Kies iets dat je kunt onthouden of dat in je wachtwoordmanager staat — er is geen wachtwoordherstel per e-mail.",
+      "passwordConfirmation": "Wachtwoord nogmaals",
+      "thenMfa": "Daarna volgt meteen de laatste stap: een QR-code voor je authenticator. De installatie is pas ingericht als die tweede factor bevestigd is.",
+      "submit": "Beheerder aanmaken",
+      "working": "Bezig met inrichten…",
+      "errors": {
+        "organisation": "Vul een naam voor de organisatie in, van maximaal 120 tekens.",
+        "email": "Dat is geen geldig e-mailadres.",
+        "emailTaken": "Er bestaat al een account met dat e-mailadres.",
+        "password": "Het wachtwoord moet minimaal 12 en maximaal 128 tekens lang zijn.",
+        "passwordMismatch": "De twee wachtwoorden zijn niet gelijk.",
+        "closed": "Deze stap is niet meer beschikbaar. Ververs de pagina.",
+        "failed": "Het inrichten is mislukt. De reden staat in het containerlog: docker compose logs app"
+      }
+    },
+    "enrolment": {
+      "intro": "Stap 3 — laatste stap. Scan de QR-code met je authenticator-app en vul de zes cijfers in. Pas daarna is deze installatie ingericht en sluit /setup zichzelf."
+    }
   },
   "signIn": {
     "title": "Inloggen",

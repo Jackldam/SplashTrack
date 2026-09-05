@@ -18,12 +18,63 @@
   },
   "setup": {
     "title": "This installation is not set up yet",
-    "noAdministrator": "There is no administrator. Create the first one from the host — host access is the proof of ownership here:",
+    "noAdministrator": "There is no administrator yet. Set this installation up with the wizard at /setup. It asks for a one-time token, which you issue from the host — host access is the proof of ownership here:",
     "pendingTitle": "Almost there: the administrator still has to set up an authenticator",
     "pendingExplanation": "The administrator account exists but has no second factor yet. Until it does, this installation is not set up, and that account can do nothing but sign in and set up its authenticator.",
-    "pendingAction": "Sign in with the password you chose during `admin:create`. You will be taken to the setup page automatically.",
+    "pendingAction": "Sign in with the password you chose when the account was created. You are taken to the enrolment page automatically.",
     "pendingSignIn": "Sign in and set up your authenticator",
     "noRegistration": "There is no self-registration: accounts are created by an administrator."
+  },
+  "setupWizard": {
+    "title": "Set up SplashTrack",
+    "subtitle": "This installation has not been set up yet. Three steps, and then this page closes itself for good.",
+    "steps": {
+      "1": "Token",
+      "2": "Administrator",
+      "3": "Authenticator"
+    },
+    "token": {
+      "heading": "Step 1 — the one-time setup token",
+      "explanation": "Whoever can reach the host owns this installation. The token is in a file on the container's data volume. Read it:",
+      "whyNotInTheLog": "The token is deliberately NOT in the container log. Logs get pasted into public issues, and whoever holds this token becomes the administrator of this installation. So do not paste it anywhere either.",
+      "label": "Setup token",
+      "help": "32 characters. Dashes, spaces and letter case do not matter.",
+      "submit": "Continue",
+      "errors": {
+        "MISMATCH": "That token is not right. Check that you copied the whole value.",
+        "EXPIRED": "That token has expired. Issue a new one on the host: docker compose exec app splashtrack setup:token --new",
+        "ALREADY_USED": "That token has already been used. A token works exactly once. Issue a new one: docker compose exec app splashtrack setup:token --new",
+        "NO_TOKEN_ISSUED": "No token has been issued. Create one on the host: docker compose exec app splashtrack setup:token --new",
+        "LOCKED_OUT": "Too many failed attempts. Try again in fifteen minutes.",
+        "CLOSED": "This installation is no longer asking for a token. Reload the page."
+      }
+    },
+    "administrator": {
+      "heading": "Step 2 — the organisation and the first administrator",
+      "explanation": "This runs the database migrations and creates the first administrator. That account gets full control of this installation.",
+      "organizationName": "Organisation name",
+      "organizationNameHelp": "The name of your swim school or club. It appears throughout the application and you can change it later.",
+      "name": "Administrator's name",
+      "email": "Email address",
+      "password": "Password",
+      "passwordHelp": "At least {min} characters. Choose something you can remember or that lives in your password manager — there is no email password reset.",
+      "passwordConfirmation": "Password again",
+      "thenMfa": "The last step follows immediately: a QR code for your authenticator. This installation is not set up until that second factor is verified.",
+      "submit": "Create the administrator",
+      "working": "Setting up…",
+      "errors": {
+        "organisation": "Enter an organisation name of at most 120 characters.",
+        "email": "That is not a valid email address.",
+        "emailTaken": "An account already exists for that email address.",
+        "password": "The password must be between 12 and 128 characters.",
+        "passwordMismatch": "The two passwords do not match.",
+        "closed": "This step is no longer available. Reload the page.",
+        "failed": "Setting up failed. The reason is in the container log: docker compose logs app"
+      }
+    },
+    "enrolment": {
+      "intro": "Step 3 — the last one. Scan the QR code with your authenticator app and enter the six digits. Only then is this installation set up, and /setup closes itself."
+    }
   },
   "signIn": {
     "title": "Sign in",

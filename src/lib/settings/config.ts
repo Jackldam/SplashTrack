@@ -103,6 +103,41 @@ export const CONFIG_TEXT_MAX = {
   maintenanceMessage: 500,
 } as const;
 
+/**
+ * The organisation's name — `Organization.name`, not part of the config
+ * document, but bounded here because this file is where the settings layer's
+ * text bounds live and two homes for "how long may a name be" is one too many.
+ *
+ * The model's own doc comment promises *"plain text, no markup;
+ * length-bounded at the validation layer"*, and until the `/setup` wizard
+ * (D-187) there was no validation layer to bound it in — nothing could write
+ * the column at all. 120 characters comfortably holds the longest real Dutch
+ * swimming-club name and stops a name that would break every heading it is
+ * injected into (it replaces `common.brand` everywhere).
+ */
+export const ORGANIZATION_NAME_MAX = 120;
+
+/**
+ * Is this an acceptable organisation name? Trimmed, non-empty, within bounds,
+ * and free of control characters — the last because the name is rendered in
+ * page titles and headings, and a newline or a bidi override in a heading is a
+ * spoofing primitive rather than a typo.
+ *
+ * NOT an escaping control. React output-encodes everything this value reaches;
+ * this is about what is a sensible NAME.
+ */
+export function isValidOrganizationName(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= ORGANIZATION_NAME_MAX &&
+    // C0 and C1 control characters, DEL, and the bidirectional overrides — a
+    // newline or a right-to-left override inside a heading is a spoofing
+    // primitive rather than a typo.
+    !/[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E]/.test(trimmed)
+  );
+}
+
 /* ---------------------------------------------------------------------------
  * Session timeouts (D-173, superseding D-158).
  *
