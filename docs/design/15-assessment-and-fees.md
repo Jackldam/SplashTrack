@@ -182,12 +182,14 @@ fork, the divergence is a visible object with an owner.
 minor NRZ correction has to adopt a new version rather than patch one. That is
 the correct direction of friction.
 
-**Not yet verified, and blocking.** The concrete NRZ criteria, their codes and
-their thresholds are **not confirmed**. Everything above is the shape of the
-catalogue, not its contents. **No catalogue may be seeded until the criteria are
-confirmed with the domain expert**, and a seed containing invented swimming
-requirements would be worse than an empty one — it would look authoritative.
-Recorded as **F-44**.
+**(Resolved) F-44 — dissolved rather than answered.** The concrete NRZ
+criteria, their codes and their thresholds were never confirmed, and now never
+need to be: Jack's answer was that the NRZ requirements are reference
+material, not content to ship, and that an administrator authors the
+catalogue inside the application instead (D-164), through a form editor and an
+equivalent JSON document over the same model (D-188). No catalogue is ever
+seeded, so the fear this item raised — invented requirements that look
+authoritative — cannot occur. See `10-findings.md` F-44.
 
 ### 2.6 One criterion catalogue, not two
 
@@ -585,16 +587,21 @@ credential.
 1. **(Resolved) D-085 depended on `SESSION` participation reach.** Decided as
    **D-068** in `02-security-privacy.md` §2.1–2.2 — no longer proposed. The
    four-eyes gate is implementable.
-2. **No scheme catalogue may be seeded until the NRZ criteria and thresholds are
-   confirmed with the domain expert** (§2.5, F-44). Still open — a question for
-   Jack, not an architecture decision.
+2. **(Resolved) F-44 — no scheme catalogue may be seeded until the NRZ criteria
+   and thresholds are confirmed with the domain expert.** Dissolved rather than
+   answered: the catalogue is authored in the application by an administrator,
+   never seeded from source (D-164), through a form editor and an equivalent
+   JSON document over the same model (D-188). The NRZ requirements are
+   reference material, not content to ship, so the dependency this item
+   described no longer exists.
 3. **(Resolved) The `Certificate` → `Award` rename (D-082)** is applied
    throughout `01-domain-model.md` and `04-ux.md` — neither chapter uses
    `Certificate` as an entity name any longer.
 4. **(Resolved) D-086's exception to the thirty-second doctrine** is now stated
    both here and where the doctrine itself lives: `04-ux.md` §4.7 and the
    product-thesis qualification in `00-overview.md` §1.
-5. **(Open — OD-17, `08-open-decisions.md`)** The grade scale is assumed to be
-   the five ordinal values given. Whether a school may ever define its own
-   scale is supported by the model (`GradeScale` is org-owned) and unasked as a
-   requirement.
+5. **(Resolved) OD-17 — the grade scale.** Closed 2026-09-02: `onvoldoende /
+   matig / voldoende / goed / zeer goed` is the scale, and it is the only one
+   seeded (D-160). Whether a school may ever define its own scale stays
+   supported by the model regardless — `GradeScale` is generic and org-owned —
+   but remains unasked as a requirement.
