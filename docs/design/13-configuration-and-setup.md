@@ -130,6 +130,28 @@ SECRET_KEY  (32 random bytes, operator-held, supplied via SECRET_KEY_FILE)
    └─ HKDF-SHA256(info="backup-master-v1")  → backup master key (14 §2, D-114)
 ```
 
+**The five above are D-112's own branches. The vocabulary is not five, and this
+section does not own it.** The authoritative list is `KEY_PURPOSES` in
+`src/lib/crypto/secret-key.ts` — one exported, frozen array — and it currently
+holds nine labels: the five above plus
+
+| Label | What it derives | Decided in |
+|---|---|---|
+| `audit-anchor-v1` | The audit checkpoint MAC | D-168, `02-…` §3.2.1 |
+| `relationship-evidence-v1` | `PersonRelationship.evidence` — *not* `medical-v1`, because guardian evidence is sensitive free text but not special category, and one branch for two lawful bases is the collapse `BETTER_AUTH_SECRET` performed one layer down | D-063, phase 1.1 |
+| `setup-session-v1` | A MAC key for the setup wizard's short-lived cookie — a label of its own so a wizard cookie is not forgeable in Better Auth's session key space | D-101/D-187, phase 1.5 |
+| `fixture-v1` | The committed golden vectors only; never a real column, and the registry sync test enforces that | D-097 |
+
+**Why the list lives in code and this section points at it.** A label is
+permanent: editing or removing one orphans every value ever written under it, so
+the vocabulary is frozen against change and *additive* by design — a new
+protected column adds a branch. A closed diagram in a chapter therefore goes
+stale by the ordinary operation of the rule it describes, and it did: this tree
+closed with `└─` after five labels while the code had nine, in a section headed
+*"the single authoritative statement"*. **The rule this section owns is the
+derivation** — one root, HKDF per purpose, the purpose recorded in the envelope.
+**The list of purposes has one home and it is `KEY_PURPOSES`** (D-134).
+
 Every application envelope uses `HKDF(SECRET_KEY, info=<purpose>)` and records
 the purpose in the envelope itself (§5.1, D-096). Deriving the auth signing
 secret means restore reproduces it **identically**, so sessions, TOTP enrolments
