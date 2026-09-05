@@ -468,7 +468,18 @@ someone who has never seen this product.
 
 ---
 
-### OD-16 — **(CLOSED 2026-09-02)** Does a digital pupil list exist anywhere at all?
+### OD-16 — **(CLOSED 2026-09-02, re-confirmed 2026-09-05)** Does a digital pupil list exist anywhere at all?
+
+**Re-confirmed after a wording collision, 2026-09-05.** A stale reminder asked
+this question again as though it were open. Jack answered *"nee"* — reading
+"leerlingenlijst" as a list of *swimming pupils*, which the membership system
+does not hold as such. Asked the answerable form instead — *can you get a file
+out of it with the children who take lessons: names, dates of birth, contact
+details?* — the answer is **yes, and he will produce that export**.
+
+Both answers were true of different questions, which is exactly why the entry
+below states the answerable form rather than the intuitive one. Nothing changes:
+R-29, D-157 and OD-18 all stand.
 
 **Answer, from Jack: yes. The club runs a commercial membership administration
 system, and it offers export.**
