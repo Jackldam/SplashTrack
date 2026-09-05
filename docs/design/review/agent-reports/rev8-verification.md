@@ -459,3 +459,126 @@ contradicted by code that is green, tested and right. **Where the document and
 the implementation disagree, the implementation is correct in every case found.**
 That is a good sign about the build and a bad one about the chapters: they are no
 longer the place to learn how this system works.
+
+---
+
+## rev8 repair pass — what was closed, 2026-09-05
+
+Appended by the author acting on this report, on `build/v1-foundation` from
+HEAD `aea1d68`. **No application code was changed**; `npm test` reports
+**42 files, 505 tests passed** before and after, which is the intended signal.
+
+### All seven HIGH findings closed
+
+| # | What was done | Commit |
+|---|---|---|
+| **D-1** | `15-…` §2.5 rewritten around **D-164**. D-083 marked *(Superseded by D-164)* in the register and retained in §2.5 as history — because the **fork rule and the `source` label survive it**: that argument never depended on where the first version came from. §2.6's *"one catalogue to seed"* → *"to author"* | `21dc87c` |
+| **D-2** | New `15-…` §2.7 specifies **D-188**: one aggregate, two surfaces, the same validator, whole-file rejection, export/re-import round-trip as the drift test | `21dc87c` |
+| **D-3** | **`CriterionSet` wins.** New **D-189** makes `docs/glossary.md` the tie-breaker under D-159 and applies it: `AssessmentScheme` → `CriterionSet`, `SchemeCriterion` → `Criterion`, `schemeId` → `criterionSetId`, across `01-…`, `15-…`, `10-…` and four register rows | `21dc87c` |
+| **D-4** | **D-116 amended** in `14-…` §4.2.1 to D-182's model — the runtime role owns *nothing*, a non-connecting `splashtrack_owner` owns the schema. `03-…` §1.2 reduced to a pointer (D-134); the full role model left to ADR-0002 §7 | `d34ddc4` |
+| **D-5** | `13-…` §6.1 gains `PENDING_ENROLMENT` (predicate 4 splits three ways, eight states); §6.2 replaced with **D-186**'s two conditions verbatim, including the UAT measurement; §6.3 restated as the three built steps with 0/4/5 marked pending the export and mail engines | `4f4d131` |
+| **D-6** | `02-…` §3.2 part 2 replaced with **D-182**: the runtime role *is* the append-only writer, there is no separate writer connection. Trade-off count corrected to three roles / two credentials | `cde8729` |
+| **D-7** | `01-…` §3.5's `ExamAssessor` row cites **D-068** and `SESSION` (rev7 **C-11**) | `d2d6db0` |
+
+### Also closed
+
+**D-8** (`13-…` §3.1.1) — the tree now points at `KEY_PURPOSES` as the single
+home and tabulates the four missing labels with their decisions. A closed
+diagram goes stale by the ordinary operation of the rule it describes.
+**D-9** — see the correction below. **D-10** — `PRE_EXAM` adopted (folded into
+D-189). **D-11** — was already closed by `5f11a00`/`aea1d68` before this pass
+began. **D-12/D-13** — `03-…` §1.2's status column re-run against the tree and
+**dated**; `postgresql-client` restated as deliberately absent (D-169).
+**D-14** — `onExpiry` has three values; see the correction below. **D-16** —
+`Inquiry` gets an entity row and an ER-diagram edge. **L-1** rule 7 → 6.
+**L-2** — six commands added to §7, marked as the host path D-187 demotes.
+**L-3** — `courseLevelId?`. **L-4** — the range dropped rather than updated.
+
+### Two places the report's own instruction would have documented a stale defect
+
+Both were caught by checking the tree before writing, which is this pass's own
+version of the lesson the report is about.
+
+- **D-9 proposed raising S-2, B-20 and B-6 as F-146–F-148. Only S-2 is real.**
+  **B-20** — there is no second party to the `v1` tag collision:
+  `secret-crypto.ts` does not exist in `src/`, removed at extraction (D-056).
+  **B-6** — `appendAuditEvent` already takes an optional `client`
+  (`audit-repository.ts:119-121`) and joins the caller's transaction. Both are
+  recorded as **F-147** and **F-148** with that outcome, rather than raised as
+  defects. **S-2 is raised as F-146 and is open**: `SECRET_KEY` alone derives
+  the master key of every archive, so token rotation does not retire a
+  `SECRET_KEY` holder's copy — and `14-…` §2.3's *"genuinely retired"* is now
+  bounded to what the envelope supports. **Closing F-146 is a decision for
+  Jack, not a repair.**
+- **D-14's proposed fix was to add `PSEUDONYMISE` to the enum or express D-092
+  as `REVIEW`. The code had already reasoned it out**, and better than either:
+  `prisma/schema.prisma`'s `enum OnExpiry` says *"Retention expiry and erasure
+  exemption are two mechanisms; the fiscal ground belongs to the second."* So
+  `onExpiry` is `REVIEW` and D-092's pseudonymisation stays in the D-014
+  erasure registry, which is also the shape D-154 generalises. Adopted as
+  written there.
+
+### Deferred, with the reason
+
+**D-15 — the D-174–D-188 propagation pass. Deferred, and the measurement is why.**
+The report scopes this as fifteen decisions. Checking every register row's
+`Where` column against the chapter it names finds **42 mismatches**, and most
+predate D-174 entirely — D-007, D-086, D-120 through D-138, D-158 through
+D-165. This is not rev8-era debt; it is the standing condition of the `Where`
+column. Writing eight of the fifteen into chapters would leave the class open
+and the count roughly where it started.
+
+What this pass **did** propagate is everything the high findings required plus
+D-15's own highest item: D-164, D-177 (the missing `SafetyNote` retention row —
+`01-…` §5 is the table's only home), D-180, D-182, D-185, D-186, D-187, D-188
+and the new D-189. **Still unpropagated: D-174, D-175, D-176, D-178, D-179,
+D-181, D-183, D-184.** The rest is a scoped pass of its own, and it should
+start from the 42, not the 15.
+
+### Integrity checks, re-run
+
+```text
+=== 1. DEFINITIONS AND DUPLICATE NUMBERS ===
+  D    174 defined   174 unique  duplicates: NONE
+  F    108 defined   108 unique  duplicates: NONE
+  OD    19 defined    19 unique  duplicates: NONE
+  R     38 defined    38 unique  duplicates: NONE
+
+=== 2. DANGLING REFERENCES ===
+  live design set (docs/, excluding review archives):
+    none
+```
+
+**A note on scoping check 2, because this report's own "zero dangling" claim
+depends on it.** Canonical ids are zero-padded — `D-001`…`D-189`, `F-01`…`F-148`,
+`R-01`…`R-38`. The reports under `docs/design/review/` use their own *local*
+single-digit labels for their own findings (this report's `D-1`…`D-16`, rev7's
+`R-1`…`R-9`, the staging files' `F-50`…`F-64`), and those are not register ids.
+A checker that does not require the canonical width reports ~55 false
+positives. Within the live design set — everything under `docs/` except the
+review archives — **zero dangling references**, and no duplicate `D-`, `F-`,
+`R-` or `OD-` number anywhere.
+
+The review archives still cite `D-069`, `D-070`, `D-071`, `D-079`, `D-117`,
+`D-119`, `D-137` and eighteen superseded staging `F-` numbers. Those are frozen
+historical documents citing unallocated numbers and renumbered staging
+findings; they are correct as history and were not touched.
+
+```text
+Test Files  42 passed (42)
+     Tests  505 passed (505)
+```
+
+### Where the code turned out to be right — every time, again
+
+D-4, D-5, D-6, D-8, D-9 and D-14 all resolved in the code's favour, and in two
+of them (`enum OnExpiry`, `appendAuditEvent`) the code had already written down
+the reasoning the chapter was missing. **No case was found where the code was
+wrong and the chapter right.** The nearest thing to one is F-146, and it is not
+that: the `backup-master-v1` derivation is deliberate and correct: what was
+wrong was `14-…` §2.3 claiming a revocation property the derivation does not
+support.
+
+The report's closing judgement — *"they are no longer the place to learn how
+this system works"* — is less true of chapters 02, 03, 13, 14 and 15 than it
+was this morning, and still true of the `Where` column.

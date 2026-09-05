@@ -446,6 +446,12 @@ This *removes* a table rather than adding one — and D-164 removes the seed
 catalogue as well: v1 ships an empty one and an authoring surface (`15-…` §2.5,
 §2.7).
 
+**The names are the glossary's, under D-189.** This section and `15-…` §2 used
+`AssessmentScheme` and `SchemeCriterion`; `docs/glossary.md` — the D-159
+authority — says `CriterionSet` and `Criterion`, as does every decision from
+D-160 onward. D-189 makes the glossary the tie-breaker and this is the applied
+case.
+
 | Entity | Key fields | Relations | Notes |
 |---|---|---|---|
 | `CriterionSet` | awardTypeId, version, source, status, effectiveFrom, effectiveTo?, passFloorGradeId | 1 `AwardType`, N `Criterion` | The versioned *eisenpakket* — `docs/glossary.md`, D-160. **Authored in the application, never seeded** (D-164); `source` is the provenance label an administrator sets (`15-…` §2.5) |

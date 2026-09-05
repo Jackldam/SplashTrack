@@ -59,6 +59,14 @@ CriterionWaiver              assessmentId, criterionId, reason, grantedByPersonI
 PersonQualification          personId, type, validFrom, validTo?
 ```
 
+**The identifiers above come from `docs/glossary.md`, which is the authority
+under D-159 and the tie-breaker under D-189.** This chapter used
+`AssessmentScheme`/`SchemeCriterion` until 2026-09-05, while the glossary and
+every decision from D-160 onward said `CriterionSet`/`Criterion`. The glossary
+won, for the reasons in D-189 — chiefly that neither spelling exists in `src/`
+or `prisma/` yet, so it cost a find-and-replace rather than a migration through
+the D-167 encrypted-column registry. Do not reintroduce the old spelling.
+
 `PersonQualification` is the model of *"een leraar die **bevoegd** is binnen de
 vereniging"*. In reality a swimming qualification is a licence with renewal
 requirements and a national register; one table with a type and two dates is the
