@@ -1088,8 +1088,14 @@ typed by an operator.**
 
 ```text
 AuditCheckpoint
-  sequence              last SURVIVING AuditEvent.sequence at this checkpoint
-  chainHash             that row's hash — the anchor verification restarts from
+  sequence              last PRUNED AuditEvent.sequence — always equal to
+                        prunedToSequence; both are stored because they answer
+                        different questions (this one is the anchor, that one
+                        is part of the accounting) and the MAC covers both
+  chainHash             that row's hash — the anchor verification resumes from,
+                        and exactly the previousHash the first SURVIVING row
+                        carries, so genesis and a checkpoint are the same kind
+                        of value and one verification shape covers both
   prunedFromSequence    first deleted sequence      ┐ what this checkpoint
   prunedToSequence      last deleted sequence       │ accounts for, so a gap
   prunedCount           rows deleted                │ is a stated fact rather
@@ -1098,6 +1104,15 @@ AuditCheckpoint
   createdAt
   mac                   HMAC-SHA256 under HKDF(SECRET_KEY, info="audit-anchor-v1")
 ```
+
+**Corrected 2026-09-03.** This block originally anchored on the last *surviving*
+sequence and its hash, which contradicted rule 2 below: `AUDIT_GENESIS_HASH` is
+a `previousHash` — the value the first row *carries* — never any row's own hash,
+so anchoring on a surviving row would make a checkpoint a different kind of
+value from genesis and need two verification shapes. Worse, a prefix prune
+deletes the anchor row of every earlier segment, so every segment but the newest
+would become unverifiable. Found during implementation; the implementation is
+correct and this block was wrong. The full account is on D-168's register row.
 
 **The rules.**
 
