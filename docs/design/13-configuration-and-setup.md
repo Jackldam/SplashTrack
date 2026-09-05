@@ -442,7 +442,7 @@ that value inside the same migration.**
   migration that changes a row's primary key, splits a table, or moves an
   encrypted value to another row must decrypt with the old `(columnId, pk)` and
   re-encrypt with the new one, in the same migration.** This is added to
-  `05-technical.md` §5 as rule 7, next to the retention-impact rule, because the
+  `05-technical.md` §5 as rule 6, next to the retention-impact rule, because the
   PR description is where it will be checked.
 - **A migration touching an encrypted column declares it.** The migration-safety
   test already blocks one class of unsafe migration; this adds a second
@@ -602,16 +602,36 @@ data-critical cannot be specified in prose. These predicates are evaluated **in
 order, against one connection**, and the first that matches wins.
 
 **Decision D-098 — The boot states are the following ordered predicates, and a
-sixth state, `FAILED`, is added.**
+sixth state, `FAILED`, is added.** **(Extended by D-186: predicate 4 splits
+three ways rather than two, adding `PENDING_ENROLMENT`.)**
 
 | # | Predicate | State | Action |
 |---|---|---|---|
 | 1 | `_prisma_migrations` absent **and** zero other tables | **EMPTY** | Setup mode |
 | 2 | `_prisma_migrations` holds a `migration_name` not present in the image's migrations directory | **AHEAD** | Refuse to start; name the version required (D-043) |
 | 3 | Any row with `finished_at IS NULL` **or** `rolled_back_at IS NOT NULL` | **FAILED** | Refuse to start; name the pre-migration backup |
-| 4 | No `InstallationBootstrap` row with `completedAt` | **PARTIAL** or **TAMPERED** — see D-099 | Setup mode, or refuse |
+| 4a | No `InstallationBootstrap` row with `completedAt`, and the installation holds no `Person`, `UserAccount` or `RoleAssignment` row | **PARTIAL** | Setup mode |
+| 4b | No completed record, data present, **an `InstallationBootstrap` row exists** with `completedAt` NULL, **and** the data is only what setup itself creates | **PENDING_ENROLMENT** (D-186) | Setup mode |
+| 4c | No completed record, data present, and either of 4b's two conditions fails | **TAMPERED** — see D-099 as corrected by D-186 | Refuse |
 | 5 | An image migration is missing from `_prisma_migrations` | **EXISTING** | Pre-migration backup (D-044) → `migrate deploy` |
 | 6 | Otherwise | **CURRENT** | Serve |
+
+**Eight states, seven predicates.** The enum is `BootState` in
+`src/lib/boot/state.ts:72-80`, and the state → action mapping is the exported
+`ACTION_BY_STATE` table beside it, so "which states may migrate" is one object a
+test can assert over rather than a property inferred from whichever branches
+happen to be written. `SETUP_MODE` is reachable from **three** states — `EMPTY`,
+`PARTIAL` and `PENDING_ENROLMENT` — and `MIGRATE_THEN_SERVE` from exactly one.
+
+**One reading predicate 4 needs and D-098 never stated.** Predicate 4 asks about
+a *row* in `InstallationBootstrap`; it presumes the *table*. On a schema older
+than the migration that creates that table the question is unanswerable, and
+answering it "false" would classify every pre-`InstallationBootstrap`
+installation as `TAMPERED` and refuse the upgrade predicate 5 exists for. So:
+table absent **and** migrations pending ⇒ `EXISTING`. Table absent with nothing
+pending falls through to the counts, because a schema claiming to be current
+while missing a table this image's own migrations create is not a state to
+migrate (`src/lib/boot/state.ts:436-460`).
 
 **`FAILED` exists because a claim in `14-backup-restore-upgrade.md` §5 was
 untrue.** That section said a failed migration leaves the database "at its
@@ -644,43 +664,125 @@ of children's records into unauthenticated setup mode**. D-039's claim that the
 wizard self-destructs once the first administrator exists was false as
 specified: it self-destructed once a *row* existed. Finding **F-98**.
 
-**Decision D-099 — Setup mode requires **all** of: no bootstrap record, zero
-`UserAccount` rows, zero `Person` rows and zero `RoleAssignment` rows. Data
-present with the bootstrap record missing is not `PARTIAL`; it is `TAMPERED`.**
+**Decision D-099 — Setup mode requires an empty installation, not a missing
+bootstrap record. Data present with no completed record is not `PARTIAL`; it is
+`TAMPERED` unless D-186's two conditions both hold.**
 
-`TAMPERED` refuses to serve any request, logs at high severity, writes an audit
-event, and can be cleared only from the host via the break-glass CLI (§7) — the
-same host-access proof of ownership everything else in this chapter rests on.
+**Decision D-186 corrects D-099's predicate. The rule above is unchanged and is
+not weakened.** Setup mode may open on a database holding data **only** when
+both of these hold:
+
+1. **The installation says setup started.** An `InstallationBootstrap` row
+   exists with `completedAt` NULL. `setup:init` and `admin:create` write that
+   row *before* either creates anything (`recordSetupStarted` in
+   `src/lib/boot/setup-mode.ts`), so the row's **existence** is the record that
+   first-run setup is under way. **No row at all with data present is still
+   `TAMPERED`** — on a pending installation exactly as on a finished one, so the
+   deletion primitive F-98 is about still fires.
+2. **The data is only what setup itself creates.** Every `Person` has a
+   `UserAccount`, every `RoleAssignment` names one of those people, and **no
+   account holds an MFA factor**. That is byte-for-byte what `admin:create`
+   leaves behind, and it is nothing like a running installation, where D-141
+   requires a verified factor at all times and where the person rows are mostly
+   children who will never have an account.
+
+That combination is its own state, **`PENDING_ENROLMENT`**, action `SETUP_MODE`.
+Anything else with no completed record is `TAMPERED`. `TAMPERED` refuses to
+serve any request, logs at high severity, writes an audit event, and can be
+cleared only from the host via the break-glass CLI (§7) — the same host-access
+proof of ownership everything else in this chapter rests on. **The entrypoint
+reads the STATE, not only the action**, so it can print the remedy that matches:
+telling an operator to run `admin:create` when they have already run it is the
+failure D-186 was written after.
+
+**Why the predicate had to change, and it is not a softening.** D-099 was
+written before D-185 existed, and there was then exactly one reading of "no
+record, and data present": somebody removed the record to reopen the
+unauthenticated setup surface. D-185 created a second, legitimate reading and
+did not revisit this section. **Measured on the UAT instance on 2026-09-04:**
+`admin:create` succeeded, leaving one person, one account, two grants and no
+completed record; the container was restarted and refused to serve with *"the
+installation holds data (1 person row(s), 1 account(s), 2 role assignment(s))"* —
+the product refusing the one page that could finish its own install.
+
+Condition 2 is what keeps this from being weaker than a single deletable row. An
+attacker who can `UPDATE` — a strictly stronger primitive than the `DELETE` F-98
+describes — cannot reopen setup mode by clearing `completedAt` on a real
+installation: the enrolled factors and the unaccounted people are still there,
+and they are not one statement to remove.
+
+**And the serving path repairs the one state this cannot classify.** An
+installation where D-141's invariant already holds but no record was written —
+`verifyEnrolment` flips the factor and writes the record in two steps that
+cannot be one transaction, because the flip belongs to Better Auth — has
+`resolveSetupStage` write the record and answer `COMPLETE`, once, inside a
+request.
 
 **Reason.** The gate on an unauthenticated administrative surface must be a
-property of the *installation*, not the presence of one deletable row. Four
-counts and one lookup are cheap; they run once per boot.
+property of the *installation*, not the presence of one deletable row. The
+counts and lookups are cheap; they run once per boot.
 **Trade-off.** An operator who genuinely wants to reset a populated instance to
 factory state must do it deliberately from the host rather than by deleting a
-row. That is the correct amount of friction. `TAMPERED` is added as a case in
-D-055's test matrix alongside the six states above.
+row. That is the correct amount of friction. `TAMPERED` and `PENDING_ENROLMENT`
+are both cases in D-055's test matrix alongside the states above.
+
+**This section was rewritten on 2026-09-05 because the code was right and it was
+not.** `src/lib/boot/state.ts:436-545` implements D-186; `src/lib/setup/gate.ts`
+quoted this chapter back and noted it was stale. A source file that has to warn
+the reader about the specification is the specification's problem.
 
 ### 6.3 The setup wizard
 
-Reachable **only** in `SETUP MODE` (states EMPTY and PARTIAL as redefined by
-D-099), so it cannot be re-opened once an installation holds any data:
+**The wizard is the primary first-run path and the break-glass CLI is recovery**
+(D-187). It is reachable **only** in `SETUP_MODE` — states `EMPTY`, `PARTIAL`
+and `PENDING_ENROLMENT` (D-099 as corrected by D-186) — so it cannot be
+re-opened once an installation holds data that setup did not create.
+
+**The three steps that are built:**
 
 ```text
-0. New installation, or restore from backup?
-1. Organisation name, locale, timezone
-2. First administrator account (email, password or passkey)
-3. MFA enrolment — forced, not offered
-4. Recovery token shown once, with a required "I have stored this" step (D-040)
-5. Email settings (optional, with a test-send button)
-6. Done → bootstrap record written, /setup permanently closed
+1. The one-time setup token (D-101) — host access as proof of ownership
+2. Organisation name, and the first administrator: email, name,
+   and a password ENTERED TWICE (D-187)
+3. MFA enrolment, with the QR code, in the same flow (D-185)
+   → verifying the factor writes the bootstrap record; /setup closes
 ```
 
-Step 4's recovery token is a **passphrase over the archive's key record**, not
-the bootstrap secret itself — see `14-backup-restore-upgrade.md` §2 (D-114,
-D-166). The wizard displays the token; it never displays `SECRET_KEY`. The
-acknowledgement text states what the token recovers: the archive **and** the
-instance's own key material, so the operator understands that the two artefacts
-they were told to keep are genuinely sufficient and genuinely necessary.
+**Setup completes when that administrator holds a *verified* second factor, and
+not before** (D-185). Step 3 is not a formality at the end: it is the step that
+writes `InstallationBootstrap`, and `PENDING_ENROLMENT` is the boot state
+between steps 2 and 3 — reused rather than duplicated. The wizard is gated on
+**both** sides: the token at the front, the boot state at the back.
+`decideWizardAccess` is total over `BootState`, and `CURRENT` and `TAMPERED`
+answer `404` — not a redirect, which would tell a stranger the route is there —
+to a caller holding a valid wizard cookie *and* a signed-in pending session
+(`src/lib/setup/gate.ts`). In `PENDING_ENROLMENT` the surface is
+**authenticated**: the token has been consumed, so a signed-in pending session
+is required. There is no state in which an anonymous caller reaches an
+administrative step on a database holding rows.
+
+**Three steps are specified and deliberately not built, because the engine
+behind each does not exist.** Naming them is how that stays a decision rather
+than an oversight; `src/app/setup/page.tsx:31-48` records the same list:
+
+| Step | Why it is absent |
+|---|---|
+| **0. New installation, or restore from backup?** | There is no restore. D-095/D-169 make a backup a structured export the application writes and reads itself, `pg_dump` is out of v1 scope, and the export engine is unbuilt. A question with one answer is not a question, and a dead "restore" branch is worse than its absence |
+| **4. Recovery token, shown once with an "I have stored this" step (D-040)** | It is a passphrase over the archive's key record (D-114, D-166), so it needs the same missing engine |
+| **5. Email settings, optional, with a test-send button** | There is no mail transport yet |
+
+They belong here when those engines land. When step 4 does land: the token is a
+**passphrase over the archive's key record**, not the bootstrap secret itself —
+see `14-backup-restore-upgrade.md` §2. The wizard displays the token; it never
+displays `SECRET_KEY`. The acknowledgement text states what the token recovers —
+the archive **and** the instance's own key material — so the operator
+understands that the two artefacts they were told to keep are genuinely
+sufficient and genuinely necessary.
+
+**This subsection was rewritten on 2026-09-05 against the built wizard** (phases
+1.3–1.5). It previously listed seven steps of which three do not exist, and said
+the bootstrap record is written at a step 6 "Done" when D-185 writes it on MFA
+verification. The code was right.
 
 **Decision D-100 — The first-run record is `InstallationBootstrap`, not
 `PlatformBootstrap`.** The template's enforced-singleton record is reused, but
@@ -752,8 +854,32 @@ docker compose run  --rm app splashtrack secret:init --out …    (D-112)
 docker compose run  --rm app splashtrack secret:recover --file … --token … --out …
                                                                 (14 §4.2.2, D-166)
 docker compose exec app splashtrack key:rotate                  (§5.3)
-docker compose exec app splashtrack bootstrap:clear-tampered    (D-099)
+docker compose exec app splashtrack bootstrap:clear-tampered    (D-099/D-186)
 ```
+
+**The host path the wizard replaced, kept for the instance the wizard cannot
+finish** (D-187 demotes these *"in the usage text and the documentation"*, and
+this is the documentation):
+
+```bash
+docker compose exec app splashtrack setup:init                  (D-187)
+docker compose exec app splashtrack admin:create --email …      (D-185, D-187)
+                                — no --password-file; D-187 removed it
+```
+
+**Diagnostics, which are read-only and answer "why is this instance behaving
+like that":**
+
+```bash
+docker compose exec app splashtrack boot:state                  (§6.1, D-098/D-186)
+docker compose exec app splashtrack audit:verify                (D-149, D-168)
+docker compose exec app splashtrack audit:grants                (D-182)
+docker compose exec app splashtrack db:apply-grants             (D-182)
+```
+
+`db:apply-grants` is the only one of the four that writes: it re-applies the
+audit grants of `src/lib/database/role-model.ts` as the owner, idempotently,
+which is what a migration adding a table needs afterwards.
 
 `admin:grant-admin` issues a **time-limited grant (24 hours)**, not a permanent
 one: the use case is recovery, not provisioning. The recovered administrator
