@@ -30,13 +30,21 @@ import { prisma } from "@/lib/database";
 import { recordAuditEvent } from "@/modules/audit";
 
 import {
+  DuplicateNumberError,
+  isDuplicateNumber,
   nextAllocatedNumber,
   normaliseSuppliedNumber,
   STUDENT_NUMBER_PREFIX,
 } from "../domain/numbering";
 import type { StudentLifecycleEventType } from "../domain/student-lifecycle";
 import { ensurePeopleRegistrations } from "../infrastructure/registrations";
-import { optionalDate, optionalText, requiredEnum, TEXT_MAX } from "./input";
+import {
+  optionalDate,
+  optionalText,
+  requiredEnum,
+  requiredText,
+  TEXT_MAX,
+} from "./input";
 import type { ActorContext } from "./people-service";
 
 /** The five types, as a value the form and the validator both read. */
@@ -135,6 +143,86 @@ export async function createStudentProfile(
       studentNumber: profile.studentNumber,
     };
   });
+}
+
+export interface UpdateStudentProfileInput {
+  studentNumber: unknown;
+}
+
+/**
+ * Corrects the pupil number — the one column `createStudentProfile` writes by
+ * hand and this file otherwise never lets anyone touch again.
+ *
+ * THE OPERATION THAT WAS MISSING (`create-correction-pairing.test.ts`):
+ * `studentNumber` is administrator-supplied the same way `memberNumber` is
+ * (`prisma/schema.prisma`), and until now had no way back from a typo short
+ * of editing the database directly.
+ *
+ * `students.update`, over `{ student: studentProfileId }` — once the profile
+ * exists everything about it is guarded through the profile itself (see
+ * `people-service.ts`'s header), which is the same reference
+ * `recordLifecycleEvent` already checks. Not `{ person: personId }`: that
+ * reference is only honest before the profile exists, which is exactly the
+ * `createStudentProfile` case and not this one.
+ *
+ * Nothing is written when the number did not actually change.
+ */
+export async function updateStudentProfile(
+  actor: ActorContext,
+  studentProfileId: string,
+  input: UpdateStudentProfileInput,
+): Promise<void> {
+  ensurePeopleRegistrations();
+  const at = actor.at ?? new Date();
+
+  await requirePermission(
+    actor.principal,
+    "students.update",
+    { student: studentProfileId },
+    { at },
+  );
+
+  const studentNumber = normaliseSuppliedNumber(
+    "studentNumber",
+    requiredText("studentNumber", input.studentNumber, 32),
+  );
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const profile = await tx.studentProfile.findUnique({
+        where: { id: studentProfileId },
+        select: { studentNumber: true },
+      });
+      if (!profile) {
+        throw new Error("That pupil profile does not exist.");
+      }
+      if (profile.studentNumber === studentNumber) return;
+
+      await tx.studentProfile.update({
+        where: { id: studentProfileId },
+        data: { studentNumber },
+      });
+
+      await recordAuditEvent(
+        {
+          eventType: "people.student_profile.corrected",
+          outcome: "SUCCESS",
+          actorPersonId: actor.principal.personId,
+          actorAuthMethod: "session",
+          targetType: "student_profile",
+          targetId: studentProfileId,
+          requestId: actor.requestId ?? null,
+          changedFields: { fields: "studentNumber" },
+        },
+        tx,
+      );
+    });
+  } catch (error) {
+    if (isDuplicateNumber(error)) {
+      throw new DuplicateNumberError("studentNumber", studentNumber);
+    }
+    throw error;
+  }
 }
 
 /**

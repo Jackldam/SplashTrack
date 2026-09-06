@@ -30,12 +30,16 @@ export {
   createMembership,
   endMembershipPeriod,
   startMembershipPeriod,
+  updateMembership,
+  type UpdateMembershipInput,
 } from "./application/membership-service";
 
 export {
   createStudentProfile,
   recordLifecycleEvent,
+  updateStudentProfile,
   LIFECYCLE_EVENT_TYPES,
+  type UpdateStudentProfileInput,
 } from "./application/student-service";
 
 export {
@@ -79,6 +83,7 @@ export {
   STUDENT_NUMBER_PREFIX,
   nextAllocatedNumber,
   normaliseSuppliedNumber,
+  DuplicateNumberError,
   InvalidNumberError,
 } from "./domain/numbering";
 

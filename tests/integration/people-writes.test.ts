@@ -1,19 +1,24 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import { PermissionDeniedError } from "@/lib/authorization";
 import { keyIdOf } from "@/lib/crypto";
 import { prisma } from "@/lib/database";
 import {
   createMembership,
   createPerson,
   createStudentProfile,
+  DuplicateNumberError,
   endMembershipPeriod,
+  InvalidNumberError,
   isCurrentlyAMember,
   MembershipPeriodError,
   recordLifecycleEvent,
   recordRelationship,
   revealRelationshipEvidence,
   startMembershipPeriod,
+  updateMembership,
   updatePerson,
+  updateStudentProfile,
   type ActorContext,
 } from "@/modules/people";
 
@@ -520,6 +525,158 @@ describe("people writes (real database, real services)", () => {
           },
         }),
       ).rejects.toThrow(/PersonRelationship_no_self_reference_check/);
+    });
+  });
+
+  // ── Correcting a member number or a pupil number ─────────────────────────
+  //
+  // `create-correction-pairing.test.ts`'s defect: `memberNumber` and
+  // `studentNumber` are administrator-supplied and, until `updateMembership`
+  // and `updateStudentProfile` existed, a typo made at creation had no way
+  // back short of editing the database directly.
+
+  describe("correcting a member number or a pupil number", () => {
+    it("corrects the member number, audits it, and skips a no-op resave", async () => {
+      const personId = await newPerson("Typo", "Lidnummer");
+      const { membershipId } = await createMembership(actor, personId, {
+        memberNumber: "M-oops",
+      });
+
+      await updateMembership(actor, personId, { memberNumber: "M-fixed" });
+
+      const membership = await prisma.membership.findUnique({
+        where: { id: membershipId },
+        select: { memberNumber: true },
+      });
+      expect(membership?.memberNumber).toBe("M-fixed");
+      expect(
+        (await auditFor(membershipId)).map((event) => event.eventType),
+      ).toEqual(["people.membership.created", "people.membership.corrected"]);
+
+      // Resaving the SAME number writes no second event — nothing changed.
+      await updateMembership(actor, personId, { memberNumber: "M-fixed" });
+      expect((await auditFor(membershipId)).length).toBe(2);
+    });
+
+    it("corrects the pupil number the same way", async () => {
+      const personId = await newPerson("Typo", "Leerlingnummer");
+      const { studentProfileId } = await createStudentProfile(
+        actor,
+        personId,
+        { studentNumber: "L-oops" },
+      );
+
+      await updateStudentProfile(actor, studentProfileId, {
+        studentNumber: "L-fixed",
+      });
+
+      const profile = await prisma.studentProfile.findUnique({
+        where: { id: studentProfileId },
+        select: { studentNumber: true },
+      });
+      expect(profile?.studentNumber).toBe("L-fixed");
+      expect(
+        (await auditFor(studentProfileId)).map((event) => event.eventType),
+      ).toEqual([
+        "people.student_profile.created",
+        "people.student_profile.corrected",
+      ]);
+    });
+
+    it("refuses a member number that is not a usable shape", async () => {
+      const personId = await newPerson("Formaat", "Lidnummer");
+      await createMembership(actor, personId, {});
+
+      await expect(
+        updateMembership(actor, personId, { memberNumber: "bad number!" }),
+      ).rejects.toBeInstanceOf(InvalidNumberError);
+    });
+
+    it("refuses a pupil number that is not a usable shape", async () => {
+      const personId = await newPerson("Formaat", "Leerlingnummer");
+      const { studentProfileId } = await createStudentProfile(
+        actor,
+        personId,
+        {},
+      );
+
+      await expect(
+        updateStudentProfile(actor, studentProfileId, {
+          studentNumber: "bad number!",
+        }),
+      ).rejects.toBeInstanceOf(InvalidNumberError);
+    });
+
+    it("refuses a member number already in use by someone else", async () => {
+      const personId = await newPerson("Dubbel", "LidEen");
+      const other = await newPerson("Dubbel", "LidTwee");
+      const { memberNumber: otherNumber } = await createMembership(
+        actor,
+        other,
+        {},
+      );
+      await createMembership(actor, personId, {});
+
+      await expect(
+        updateMembership(actor, personId, { memberNumber: otherNumber }),
+      ).rejects.toBeInstanceOf(DuplicateNumberError);
+    });
+
+    it("refuses a pupil number already in use by someone else", async () => {
+      const personId = await newPerson("Dubbel", "LeerlingEen");
+      const other = await newPerson("Dubbel", "LeerlingTwee");
+      const { studentNumber: otherNumber } = await createStudentProfile(
+        actor,
+        other,
+        {},
+      );
+      const { studentProfileId } = await createStudentProfile(
+        actor,
+        personId,
+        {},
+      );
+
+      await expect(
+        updateStudentProfile(actor, studentProfileId, {
+          studentNumber: otherNumber,
+        }),
+      ).rejects.toBeInstanceOf(DuplicateNumberError);
+    });
+
+    it("refuses a role that may only CREATE a membership or pupil record, not correct one", async () => {
+      const personId = await newPerson("Geen", "Correctierecht");
+      await createMembership(actor, personId, {});
+      const { studentProfileId } = await createStudentProfile(
+        actor,
+        personId,
+        {},
+      );
+
+      const limitedPersonId = await makePerson("limited_corrector");
+      const limitedRoleId = await makeRole("role_create_only", [
+        "people.create",
+        "students.create",
+      ]);
+      await grantTo({
+        personId: limitedPersonId,
+        roleId: limitedRoleId,
+        scopeType: "ORGANIZATION",
+      });
+      const limitedActor: ActorContext = {
+        principal: { personId: limitedPersonId },
+        at: NOW,
+      };
+
+      await expect(
+        updateMembership(limitedActor, personId, {
+          memberNumber: "M-99999",
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        updateStudentProfile(limitedActor, studentProfileId, {
+          studentNumber: "L-99999",
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
     });
   });
 

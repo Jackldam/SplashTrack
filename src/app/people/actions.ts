@@ -37,13 +37,17 @@ import {
   createMembership,
   createPerson,
   createStudentProfile,
+  DuplicateNumberError,
   endMembershipPeriod,
   endRelationship,
+  InvalidNumberError,
   MembershipPeriodError,
   recordLifecycleEvent,
   recordRelationship,
   startMembershipPeriod,
+  updateMembership,
   updatePerson,
+  updateStudentProfile,
   type ActorContext,
 } from "@/modules/people";
 
@@ -75,6 +79,12 @@ function refusal(error: unknown, back: string): never {
   }
   if (error instanceof MembershipPeriodError) {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
+  }
+  if (error instanceof InvalidNumberError) {
+    redirect(`${back}?error=invalidNumber`);
+  }
+  if (error instanceof DuplicateNumberError) {
+    redirect(`${back}?error=duplicateNumber`);
   }
   if (error instanceof ApiError) {
     actionLogger.debug(
@@ -153,6 +163,19 @@ export async function createMembershipAction(
   redirect(`/people/${personId}?saved=membership`);
 }
 
+export async function updateMembershipAction(
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get("personId") ?? "");
+  await run(`/people/${personId}`, async () => {
+    await updateMembership(await actor(), personId, {
+      memberNumber: formData.get("memberNumber"),
+    });
+  });
+  revalidatePath(`/people/${personId}`);
+  redirect(`/people/${personId}?saved=membership`);
+}
+
 export async function startMembershipPeriodAction(
   formData: FormData,
 ): Promise<void> {
@@ -189,6 +212,20 @@ export async function createStudentProfileAction(
       studentNumber: formData.get("studentNumber"),
       openingEvent: formData.get("openingEvent"),
       occurredAt: formData.get("occurredAt"),
+    });
+  });
+  revalidatePath(`/people/${personId}`);
+  redirect(`/people/${personId}?saved=student`);
+}
+
+export async function updateStudentProfileAction(
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get("personId") ?? "");
+  const studentProfileId = String(formData.get("studentProfileId") ?? "");
+  await run(`/people/${personId}`, async () => {
+    await updateStudentProfile(await actor(), studentProfileId, {
+      studentNumber: formData.get("studentNumber"),
     });
   });
   revalidatePath(`/people/${personId}`);

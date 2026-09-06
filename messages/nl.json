@@ -116,7 +116,9 @@
       "validation": "De ingevoerde gegevens kloppen niet. Controleer de velden en probeer het opnieuw.",
       "ALREADY_OPEN": "Dit lid heeft al een lopende lidmaatschapsperiode. Beëindig die eerst — zo blijft het gat tussen twee periodes zichtbaar.",
       "NOT_OPEN": "Er is geen lopende lidmaatschapsperiode om te beëindigen. Terugkomen start een nieuwe periode; een afgesloten periode wordt nooit heropend.",
-      "ENDS_BEFORE_IT_STARTS": "Een lidmaatschapsperiode kan niet eindigen voordat die begonnen is."
+      "ENDS_BEFORE_IT_STARTS": "Een lidmaatschapsperiode kan niet eindigen voordat die begonnen is.",
+      "invalidNumber": "Dit nummer is niet bruikbaar. Het moet 1-32 tekens zijn: letters, cijfers, punt, underscore, schuine streep of koppelteken, beginnend met een letter of cijfer.",
+      "duplicateNumber": "Dit nummer is al in gebruik bij iemand anders."
     },
     "search": {
       "label": "Zoeken",
@@ -158,6 +160,7 @@
       "endReason": "Reden",
       "open": "Lopend",
       "create": "Lidmaatschap aanmaken",
+      "correct": "Opslaan",
       "end": "Periode beëindigen",
       "startAgain": "Nieuwe periode starten",
       "returnHelp": "Terugkomen start een nieuwe periode. De oude periode blijft staan, zodat de vraag 'wanneer was deze persoon lid?' beantwoordbaar blijft."
@@ -169,6 +172,7 @@
       "event": "Gebeurtenis",
       "reason": "Toelichting",
       "create": "Leerling aanmaken",
+      "correct": "Opslaan",
       "record": "Vastleggen",
       "reasonPurpose": "Korte toelichting bij deze gebeurtenis. Geen medische of gevoelige informatie — daar zijn de medische en pedagogische notities voor."
     },

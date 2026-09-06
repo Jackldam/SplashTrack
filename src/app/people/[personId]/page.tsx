@@ -21,7 +21,9 @@ import {
   recordLifecycleEventAction,
   recordRelationshipAction,
   startMembershipPeriodAction,
+  updateMembershipAction,
   updatePersonAction,
+  updateStudentProfileAction,
 } from "../actions";
 import { formatCalendarDate, toDateInputValue } from "../format";
 
@@ -225,10 +227,30 @@ export default async function PersonDetailPage({
         <h2 className="h4">{t("people.sections.membership")}</h2>
         {person.membership ? (
           <>
-            <p>
-              {t("people.membership.number")}:{" "}
-              <strong>{person.membership.memberNumber}</strong>
-            </p>
+            <form
+              action={updateMembershipAction}
+              className="row g-2 align-items-end"
+            >
+              <input type="hidden" name="personId" value={person.id} />
+              <div className="col-auto">
+                <label className="form-label" htmlFor="memberNumber">
+                  {t("people.membership.number")}
+                </label>
+                <input
+                  className="form-control"
+                  id="memberNumber"
+                  name="memberNumber"
+                  defaultValue={person.membership.memberNumber}
+                  required
+                  maxLength={32}
+                />
+              </div>
+              <div className="col-auto">
+                <button className="btn btn-outline-secondary" type="submit">
+                  {t("people.membership.correct")}
+                </button>
+              </div>
+            </form>
             <table className="table table-sm align-middle">
               <thead>
                 <tr>
@@ -357,10 +379,35 @@ export default async function PersonDetailPage({
         <h2 className="h4">{t("people.sections.student")}</h2>
         {person.studentProfile ? (
           <>
-            <p>
-              {t("people.student.number")}:{" "}
-              <strong>{person.studentProfile.studentNumber}</strong>
-            </p>
+            <form
+              action={updateStudentProfileAction}
+              className="row g-2 align-items-end"
+            >
+              <input type="hidden" name="personId" value={person.id} />
+              <input
+                type="hidden"
+                name="studentProfileId"
+                value={person.studentProfile.id}
+              />
+              <div className="col-auto">
+                <label className="form-label" htmlFor="studentNumber">
+                  {t("people.student.number")}
+                </label>
+                <input
+                  className="form-control"
+                  id="studentNumber"
+                  name="studentNumber"
+                  defaultValue={person.studentProfile.studentNumber}
+                  required
+                  maxLength={32}
+                />
+              </div>
+              <div className="col-auto">
+                <button className="btn btn-outline-secondary" type="submit">
+                  {t("people.student.correct")}
+                </button>
+              </div>
+            </form>
             <table className="table table-sm align-middle">
               <thead>
                 <tr>

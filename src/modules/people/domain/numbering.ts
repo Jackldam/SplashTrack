@@ -51,6 +51,34 @@ export function normaliseSuppliedNumber(field: string, value: string): string {
 }
 
 /**
+ * A correction collided with another person's number — `Membership.memberNumber`
+ * and `StudentProfile.studentNumber` are both `@unique`, and the person typing
+ * the correction gets a sentence rather than the unique-index violation.
+ */
+export class DuplicateNumberError extends Error {
+  constructor(
+    public readonly field: string,
+    value: string,
+  ) {
+    super(`"${value}" is already in use by someone else.`);
+    this.name = "DuplicateNumberError";
+  }
+}
+
+function prismaErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+/** Prisma's unique-constraint code, translated where a correction can hit it. */
+export function isDuplicateNumber(error: unknown): boolean {
+  return prismaErrorCode(error) === "P2002";
+}
+
+/**
  * The next allocated number after `existing`, given a prefix.
  *
  * PURE, and takes the existing numbers rather than reading them, so the rule is

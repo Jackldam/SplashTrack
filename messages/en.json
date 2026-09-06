@@ -116,7 +116,9 @@
       "validation": "The submitted details are not valid. Check the fields and try again.",
       "ALREADY_OPEN": "This member already has an open membership period. End that one first, so the gap between two periods stays visible.",
       "NOT_OPEN": "There is no open membership period to end. Returning starts a new period; a closed period is never reopened.",
-      "ENDS_BEFORE_IT_STARTS": "A membership period cannot end before it started."
+      "ENDS_BEFORE_IT_STARTS": "A membership period cannot end before it started.",
+      "invalidNumber": "That number is not usable. It must be 1-32 characters of letters, digits, dot, underscore, slash or hyphen, starting with a letter or a digit.",
+      "duplicateNumber": "That number is already in use by someone else."
     },
     "search": {
       "label": "Search",
@@ -158,6 +160,7 @@
       "endReason": "Reason",
       "open": "Open",
       "create": "Create membership",
+      "correct": "Save",
       "end": "End period",
       "startAgain": "Start a new period",
       "returnHelp": "Returning starts a new period. The old period stays, so 'when was this person a member?' remains answerable."
@@ -169,6 +172,7 @@
       "event": "Event",
       "reason": "Note",
       "create": "Create pupil record",
+      "correct": "Save",
       "record": "Record",
       "reasonPurpose": "A short note about this event. No medical or sensitive information — the medical and pastoral notes exist for that."
     },

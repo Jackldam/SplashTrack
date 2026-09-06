@@ -37,12 +37,20 @@ import {
   type MembershipInterval,
 } from "../domain/membership";
 import {
+  DuplicateNumberError,
+  isDuplicateNumber,
   MEMBER_NUMBER_PREFIX,
   nextAllocatedNumber,
   normaliseSuppliedNumber,
 } from "../domain/numbering";
 import { ensurePeopleRegistrations } from "../infrastructure/registrations";
-import { optionalDate, optionalText, requiredDate, TEXT_MAX } from "./input";
+import {
+  optionalDate,
+  optionalText,
+  requiredDate,
+  requiredText,
+  TEXT_MAX,
+} from "./input";
 import type { ActorContext } from "./people-service";
 
 /**
@@ -128,6 +136,92 @@ export async function createMembership(
       memberNumber: membership.memberNumber,
     };
   });
+}
+
+export interface UpdateMembershipInput {
+  memberNumber: unknown;
+}
+
+/**
+ * Corrects the member number — the one column `createMembership` writes by
+ * hand and this file otherwise never lets anyone touch again.
+ *
+ * THE OPERATION THAT WAS MISSING (`create-correction-pairing.test.ts`):
+ * `memberNumber` is "administrator-supplied" (`prisma/schema.prisma`'s own
+ * comment on the column), typed once at creation, and until now had no way
+ * back from a typo short of editing the database directly.
+ *
+ * `people.update`, over `{ person: personId }` — the same permission and the
+ * same resource reference `createMembership` itself checks (see this file's
+ * header for why membership operations are gated there rather than on an
+ * invented `membership.manage`), so a correction never needs more reach than
+ * the original entry did.
+ *
+ * Nothing is written when the number did not actually change, for the same
+ * reason `updatePerson` and `updatePool` skip a no-op write: an audit trail
+ * with an entry for every unchanged save is one nobody reads.
+ */
+export async function updateMembership(
+  actor: ActorContext,
+  personId: string,
+  input: UpdateMembershipInput,
+): Promise<void> {
+  ensurePeopleRegistrations();
+  const at = actor.at ?? new Date();
+
+  await requirePermission(
+    actor.principal,
+    "people.update",
+    { person: personId },
+    { at },
+  );
+
+  const memberNumber = normaliseSuppliedNumber(
+    "memberNumber",
+    requiredText("memberNumber", input.memberNumber, 32),
+  );
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const membership = await tx.membership.findUnique({
+        where: { personId },
+        select: { id: true, memberNumber: true },
+      });
+      if (!membership) {
+        throw new Error(
+          "This person has no Membership. There is nothing to correct.",
+        );
+      }
+      if (membership.memberNumber === memberNumber) return;
+
+      await tx.membership.update({
+        where: { id: membership.id },
+        data: { memberNumber },
+      });
+
+      await recordAuditEvent(
+        {
+          eventType: "people.membership.corrected",
+          outcome: "SUCCESS",
+          actorPersonId: actor.principal.personId,
+          actorAuthMethod: "session",
+          targetType: "membership",
+          targetId: membership.id,
+          requestId: actor.requestId ?? null,
+          // The field NAME only — the number itself is the club's own
+          // administrative key, but it is still an identifier of a person, so
+          // it follows the same rule every other write in this file does.
+          changedFields: { personId, fields: "memberNumber" },
+        },
+        tx,
+      );
+    });
+  } catch (error) {
+    if (isDuplicateNumber(error)) {
+      throw new DuplicateNumberError("memberNumber", memberNumber);
+    }
+    throw error;
+  }
 }
 
 /**
