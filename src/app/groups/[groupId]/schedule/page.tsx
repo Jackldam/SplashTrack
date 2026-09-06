@@ -20,6 +20,7 @@ import {
   generateSessionsAction,
   setRecurrenceLanesAction,
   updateClosureAction,
+  updateRecurrenceAction,
 } from "../../actions";
 import {
   formatCalendarDate,
@@ -78,6 +79,9 @@ export default async function GroupSchedulePage({
     generated?: string;
     planned?: string;
     skipped?: string;
+    updated?: string;
+    onClosure?: string;
+    movedTo?: string;
     from?: string;
     to?: string;
   }>;
@@ -189,6 +193,37 @@ export default async function GroupSchedulePage({
           })}
         </div>
       ) : null}
+      {/* WHAT AN EDIT TO A SERIES ACTUALLY DID, in counts. The form shows four
+          fields; the write reaches every lesson that has not happened yet, and
+          none of them is on this person's screen at the moment they press save.
+          A lesson that has just been moved ONTO a closure is the one that costs
+          somebody a drive to the pool, so it is called out separately rather
+          than folded into the total. */}
+      {query.updated !== undefined ? (
+        <div className="alert alert-info" role="status">
+          {t("schedule.recurrences.updated", { moved: query.updated })}
+          {query.onClosure && query.onClosure !== "0" ? (
+            <>
+              {" "}
+              <strong>
+                {t("schedule.recurrences.updatedOnClosure", {
+                  onClosure: query.onClosure,
+                })}
+              </strong>
+            </>
+          ) : null}
+          {query.movedTo ? (
+            <>
+              {" "}
+              {t("schedule.recurrences.updatedStartsOn", {
+                date: formatCalendarDate(
+                  new Date(`${query.movedTo}T00:00:00Z`),
+                ),
+              })}
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <h2 className="h5 mt-4">{t("schedule.recurrences.title")}</h2>
       {!recurrences.ok || recurrences.value.length === 0 ? (
@@ -253,6 +288,137 @@ export default async function GroupSchedulePage({
                     </form>
                   ) : null}
                 </div>
+
+                {/* ── correcting the season itself ───────────────────────────
+                    *"Ook een lesreeks die is aangemaakt, kan ik niet meer
+                    bewerken."* — Jack, 2026-09-06. Phase 1.7 recorded that as
+                    answered by stopping the rule and making another, and it is
+                    not: stopping leaves every lesson the rule already produced
+                    on the timetable, and the unique index that makes generation
+                    idempotent is `(recurrenceId, occursOn)` — per RULE — so the
+                    replacement series does not deduplicate against them. The
+                    club would get two lessons that evening, one at the wrong
+                    time.
+
+                    The fields are the four that describe the slot. The season's
+                    WINDOW is deliberately not among them, and the note under
+                    the form says why rather than leaving a person to wonder:
+                    a form with a hole in it teaches that the product is broken,
+                    one that explains the hole teaches how it works. */}
+                <details className="mt-2">
+                  <summary>{t("schedule.recurrences.edit")}</summary>
+                  <form
+                    action={updateRecurrenceAction}
+                    className="row g-2 mt-2"
+                  >
+                    <input type="hidden" name="groupId" value={group.id} />
+                    <input type="hidden" name="recurrenceId" value={rule.id} />
+                    <div className="col-md-3">
+                      <label
+                        className="form-label"
+                        htmlFor={`ruleWeekday-${rule.id}`}
+                      >
+                        {t("schedule.fields.weekday")}
+                      </label>
+                      <select
+                        className="form-select"
+                        id={`ruleWeekday-${rule.id}`}
+                        name="weekday"
+                        defaultValue={rule.weekday}
+                        required
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                          <option key={day} value={day}>
+                            {formatWeekday(day)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-2">
+                      <label
+                        className="form-label"
+                        htmlFor={`ruleStart-${rule.id}`}
+                      >
+                        {t("schedule.fields.startTime")}
+                      </label>
+                      <input
+                        className="form-control"
+                        id={`ruleStart-${rule.id}`}
+                        name="startTime"
+                        type="time"
+                        defaultValue={formatMinuteOfDay(rule.startMinuteOfDay)}
+                        required
+                      />
+                    </div>
+                    <div className="col-md-2">
+                      <label
+                        className="form-label"
+                        htmlFor={`ruleDuration-${rule.id}`}
+                      >
+                        {t("schedule.fields.duration")}
+                      </label>
+                      <input
+                        className="form-control"
+                        id={`ruleDuration-${rule.id}`}
+                        name="durationMinutes"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        defaultValue={rule.durationMinutes}
+                        required
+                      />
+                    </div>
+                    <div className="col-md-5">
+                      <label
+                        className="form-label"
+                        htmlFor={`rulePool-${rule.id}`}
+                      >
+                        {t("schedule.fields.pool")}
+                      </label>
+                      {/* THE RULE'S OWN POOL IS ALWAYS AN OPTION, even when it
+                          has been taken out of use. Offering only active pools
+                          would leave this `<select>` with no option matching its
+                          current value, and a browser then selects the first —
+                          so saving a change of TIME would silently move the
+                          series out of its pool. Inactive pools are still not
+                          offered as a destination. */}
+                      <select
+                        className="form-select"
+                        id={`rulePool-${rule.id}`}
+                        name="poolId"
+                        defaultValue={rule.poolId ?? ""}
+                      >
+                        <option value="">{t("schedule.noPool")}</option>
+                        {(pools.ok ? pools.value : [])
+                          .filter(
+                            (pool) => pool.active || pool.id === rule.poolId,
+                          )
+                          .map((pool) => (
+                            <option key={pool.id} value={pool.id}>
+                              {poolOptionLabel(pool)}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="col-12">
+                      <button
+                        className="btn btn-outline-secondary btn-sm"
+                        type="submit"
+                      >
+                        {t("schedule.recurrences.save")}
+                      </button>
+                    </div>
+                    <p className="form-text mb-0">
+                      {t("schedule.recurrences.editNote")}
+                    </p>
+                    <p className="form-text mb-0">
+                      {t("schedule.recurrences.editPoolNote")}
+                    </p>
+                    <p className="form-text mb-0">
+                      {t("schedule.recurrences.editWindowNote")}
+                    </p>
+                  </form>
+                </details>
 
                 {/* ── the season's lanes ─────────────────────────────────────
                     Checkboxes and not a multi-`<select>`: many-to-many is the

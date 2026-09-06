@@ -65,6 +65,7 @@ import {
   updateClosure,
   updateLane,
   updatePool,
+  updateRecurrence,
 } from "@/modules/sessions";
 
 const actionLogger = logger.child({ component: "groups.actions" });
@@ -305,6 +306,44 @@ export async function generateSessionsAction(
 }
 
 /**
+ * Corrects a season's weekday, time, length or pool.
+ *
+ * THE COUNTS TRAVEL BACK, for the same reason `generateSessionsAction`'s do:
+ * this edit rewrites lessons the person cannot see from the form, and *"twaalf
+ * lessen verschoven, één ervan op de kerstsluiting"* is the only way to learn
+ * that before somebody drives to the pool. They are integers and a date about a
+ * timetable, so a URL is a safe place for them.
+ */
+export async function updateRecurrenceAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  let moved = 0;
+  let onClosure = 0;
+  let movedTo = "";
+  await run(`/groups/${groupId}/schedule`, async () => {
+    const report = await updateRecurrence(
+      await actor(),
+      String(formData.get("recurrenceId") ?? ""),
+      {
+        poolId: formData.get("poolId"),
+        weekday: formData.get("weekday"),
+        startTime: formData.get("startTime"),
+        durationMinutes: formData.get("durationMinutes"),
+      },
+    );
+    moved = report.moved;
+    onClosure = report.onClosure;
+    movedTo = report.startsOn ?? "";
+  });
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(
+    `/groups/${groupId}/schedule?updated=${moved}&onClosure=${onClosure}` +
+      `&movedTo=${encodeURIComponent(movedTo)}`,
+  );
+}
+
+/**
  * Stops a rule producing new lessons.
  *
  * The service has existed since phase 1.6 and no screen called it, so a
@@ -312,6 +351,12 @@ export async function generateSessionsAction(
  * cancelling every lesson it produced, one at a time, with a reason each. It
  * DEACTIVATES rather than deletes — see `deactivateRecurrence` for why the
  * generated lessons make deletion the wrong operation.
+ *
+ * IT IS NOT HOW A MISTYPED RULE IS CORRECTED, and never was: deactivating
+ * leaves every lesson the rule already produced on the timetable, so a
+ * replacement series generates its own beside them and the club gets two
+ * lessons that evening. `updateRecurrence` is the correction; this is for a
+ * series the club has genuinely finished with.
  */
 export async function deactivateRecurrenceAction(
   formData: FormData,

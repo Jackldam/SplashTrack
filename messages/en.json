@@ -280,7 +280,9 @@
       "facilityNotFound": "That pool or lane no longer exists.",
       "laneNotInPool": "That lane is not in this lesson's pool. Choose a lane in this pool.",
       "laneWithoutPool": "Choose a pool first. A lane is inside a pool; without one there is nothing to choose.",
-      "laneUnknown": "The lanes chosen are not valid."
+      "laneUnknown": "The lanes chosen are not valid.",
+      "poolNotFound": "That pool no longer exists, or has been taken out of use. Choose another one.",
+      "laneOverrideBlocksPool": "One or more lessons still to come have lanes of their own. Those lanes are in the current pool, so the series' pool cannot move yet. Return those lessons to following the series first."
     },
     "saved": {
       "group": "Group saved.",
@@ -391,7 +393,15 @@
       "line": "Every {weekday} at {start}, {duration} minutes, in {pool}",
       "inactive": "stopped",
       "stop": "Stop recurrence",
-      "stopNote": "Stopping leaves the lessons it already generated in place; it only stops new ones being added. A lesson that is not going ahead is cancelled on the lesson itself."
+      "stopNote": "Stopping leaves the lessons it already generated in place; it only stops new ones being added. A lesson that is not going ahead is cancelled on the lesson itself.",
+      "edit": "Edit recurrence",
+      "save": "Save recurrence",
+      "editNote": "The weekday, time, length and pool of the whole series. Lessons still to come move with it; lessons that have already happened stay exactly as they were taught, and a lesson you cancelled stays cancelled.",
+      "editWindowNote": "'Runs from' and 'runs until' are not fields here. They decide what still gets generated, not what time the lesson is — and moving the weekday carries 'runs from' with it, so there are not two places stating the same thing. A series that should run earlier or longer is a second series.",
+      "editPoolNote": "Another pool clears the series' lanes — a lane is a place inside a pool, so that choice is made again. Lessons that have already happened keep the lanes they were swum in.",
+      "updated": "Recurrence updated. {moved} lesson(s) still to come moved with it; lessons that have already happened are exactly as they were.",
+      "updatedOnClosure": "Note: {onClosure} of those now fall inside a closure. Check them — a lesson that is not going ahead is cancelled on the lesson itself.",
+      "updatedStartsOn": "The series now runs from {date}. The lessons before that stay as the record of what was taught; the series does not create them again."
     },
     "closures": {
       "title": "Closures and holidays",

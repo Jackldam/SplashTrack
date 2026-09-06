@@ -280,7 +280,9 @@
       "facilityNotFound": "Dat bad of die baan bestaat niet (meer).",
       "laneNotInPool": "Die baan ligt niet in het bad van deze les. Kies een baan uit dit bad.",
       "laneWithoutPool": "Kies eerst een bad. Een baan ligt in een bad; zonder bad is er niets te kiezen.",
-      "laneUnknown": "De gekozen banen kloppen niet."
+      "laneUnknown": "De gekozen banen kloppen niet.",
+      "poolNotFound": "Dat bad bestaat niet meer, of is uit gebruik genomen. Kies een ander bad.",
+      "laneOverrideBlocksPool": "Een of meer lessen die nog moeten komen hebben eigen banen. Die banen liggen in het huidige bad, dus het bad van de reeks kan nu niet wijzigen. Zet die lessen eerst terug op 'weer de lesreeks volgen'."
     },
     "saved": {
       "group": "Groep opgeslagen.",
@@ -391,7 +393,15 @@
       "line": "Elke {weekday} om {start}, {duration} minuten, in {pool}",
       "inactive": "gestopt",
       "stop": "Reeks stoppen",
-      "stopNote": "Stoppen laat de lessen die al gegenereerd zijn staan; er komen alleen geen nieuwe meer bij. Een les die niet doorgaat las je af bij de les zelf."
+      "stopNote": "Stoppen laat de lessen die al gegenereerd zijn staan; er komen alleen geen nieuwe meer bij. Een les die niet doorgaat las je af bij de les zelf.",
+      "edit": "Lesreeks bewerken",
+      "save": "Reeks opslaan",
+      "editNote": "Dag, tijd, duur en bad van de hele reeks. Lessen die nog moeten komen schuiven mee; lessen die al geweest zijn blijven staan zoals ze gegeven zijn, en een les die je hebt afgelast blijft afgelast.",
+      "editWindowNote": "'Loopt vanaf' en 'loopt tot' staan hier niet. Die bepalen wat er nog gegenereerd wordt, niet hoe laat de les is — en bij het verzetten van de dag schuift 'loopt vanaf' zelf mee, zodat er niet twee plekken zijn die hetzelfde vastleggen. Een reeks die eerder of langer moet lopen: maak een tweede reeks.",
+      "editPoolNote": "Een ander bad wist de banen van de reeks — een baan ligt in een bad, dus die keuze maak je opnieuw. Lessen die al geweest zijn houden de banen waarin ze gezwommen zijn.",
+      "updated": "Lesreeks bijgewerkt. {moved} les(sen) die nog moesten komen zijn meeverschoven; lessen die al geweest zijn staan er nog precies zo bij.",
+      "updatedOnClosure": "Let op: {onClosure} daarvan valt nu binnen een sluiting. Loop die na — een les die niet doorgaat las je af bij de les zelf.",
+      "updatedStartsOn": "De reeks loopt nu vanaf {date}. De lessen van daarvoor blijven staan als verslag van wat er gegeven is; de reeks maakt ze niet opnieuw aan."
     },
     "closures": {
       "title": "Sluitingen en vakanties",

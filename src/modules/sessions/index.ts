@@ -45,11 +45,14 @@ export {
   listClosuresForGroup,
   listRecurrencesForGroup,
   updateClosure,
+  updateRecurrence,
   type ClosureView,
   type CreateClosureInput,
   type CreateRecurrenceInput,
+  type RecurrenceUpdateReport,
   type RecurrenceView,
   type UpdateClosureInput,
+  type UpdateRecurrenceInput,
 } from "./application/recurrence-service";
 
 export {

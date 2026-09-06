@@ -748,6 +748,14 @@ export interface RecurrenceView {
   readonly startsOn: Date;
   readonly endsOn: Date | null;
   readonly active: boolean;
+  /**
+   * The pool's ID as well as its name, because the screen that NAMES the pool
+   * is now also the screen that changes it: a `<select>` whose current value is
+   * not among its options silently selects the first one, so an edit form that
+   * only knew the name would quietly clear the pool of a series whose pool has
+   * been taken out of use.
+   */
+  readonly poolId: string | null;
   readonly poolName: string | null;
   /**
    * THE LANES THIS SEASON USES, and every lane it could use.
@@ -792,6 +800,7 @@ export async function listRecurrencesForGroup(
       startsOn: true,
       endsOn: true,
       active: true,
+      poolId: true,
       pool: {
         select: {
           name: true,
@@ -815,6 +824,7 @@ export async function listRecurrencesForGroup(
     startsOn: row.startsOn,
     endsOn: row.endsOn,
     active: row.active,
+    poolId: row.poolId,
     poolName: row.pool?.name ?? null,
     lanes: row.lanes
       .map((entry) => entry.lane)
