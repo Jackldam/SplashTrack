@@ -133,9 +133,18 @@ export default async function LandingPage() {
                rather than pretending it does not exist. Hiding it would also be
                the wrong lesson: a volunteer who cannot see the link cannot ask
                for the grant. */
-            <Link className="btn btn-primary" href="/people">
-              {t("landing.toPeople")}
-            </Link>
+            /* Every module gets an entry here. `groups` shipped without one
+               and was unreachable from anywhere a signed-in user could get to:
+               the only links to it lived inside its own pages. A module with no
+               way in is not shipped, whatever the route table says. */
+            <div className="d-flex gap-2 flex-wrap">
+              <Link className="btn btn-primary" href="/people">
+                {t("landing.toPeople")}
+              </Link>
+              <Link className="btn btn-primary" href="/groups">
+                {t("landing.toGroups")}
+              </Link>
+            </div>
           )}
         </>
       ) : (

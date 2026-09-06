@@ -10,7 +10,8 @@
     "signedInAs": "Signed in as {email}.",
     "toPeople": "Go to People",
     "enrolNotice": "You have not set up an authenticator yet. Until you do, this account can do nothing else.",
-    "toEnrolment": "Set up your authenticator"
+    "toEnrolment": "Set up your authenticator",
+    "toGroups": "Go to groups"
   },
   "errors": {
     "notFound": "This page does not exist.",

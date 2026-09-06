@@ -10,7 +10,8 @@
     "signedInAs": "Ingelogd als {email}.",
     "toPeople": "Naar Mensen",
     "enrolNotice": "Je hebt nog geen authenticator ingesteld. Tot dat gebeurt kan dit account niets anders.",
-    "toEnrolment": "Authenticator instellen"
+    "toEnrolment": "Authenticator instellen",
+    "toGroups": "Naar groepen"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
