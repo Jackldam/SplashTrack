@@ -18,6 +18,7 @@ import {
   createRecurrenceAction,
   deactivateRecurrenceAction,
   generateSessionsAction,
+  setRecurrenceLanesAction,
   updateClosureAction,
 } from "../../actions";
 import {
@@ -48,6 +49,23 @@ import {
  * formatter, so the page cannot show a lesson at 18:00 that the generator
  * created for 19:00 — which is exactly what a server rendering in UTC would do
  * for half the year.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * LANES ARE CHOSEN ON THE RULE THAT EXISTS, NOT ON THE FORM THAT CREATES ONE
+ *
+ * *"Vaak ligt het het seizoen vast"* (D-190), so a season's lanes belong on the
+ * `SessionRecurrence` — and the lanes a person may choose are the lanes of THAT
+ * rule's pool. The create form has no pool yet: it has a `<select>` the person
+ * is about to use, and narrowing a lane list to it without client JavaScript is
+ * not possible. The alternative is to offer every lane in the club and refuse
+ * the wrong ones after the submit, which is a refusal the person did nothing to
+ * earn.
+ *
+ * So the lane form lives on each recurrence in the list above, where the pool is
+ * a fact rather than an intention, and it is exact: it offers that pool's lanes
+ * and nothing else. Creating a rule and then choosing its lanes is two steps —
+ * and the second step is the one that has to exist anyway, because the whole
+ * reason lanes are on the recurrence is that they change once a season.
  */
 export default async function GroupSchedulePage({
   params,
@@ -179,47 +197,126 @@ export default async function GroupSchedulePage({
         <>
           <ul className="list-group mb-3">
             {recurrences.value.map((rule) => (
-              <li
-                className="list-group-item d-flex justify-content-between align-items-center gap-2"
-                key={rule.id}
-              >
-                <span>
-                  {t("schedule.recurrences.line", {
-                    weekday: formatWeekday(rule.weekday),
-                    start: formatMinuteOfDay(rule.startMinuteOfDay),
-                    duration: rule.durationMinutes,
-                    pool: rule.poolName ?? t("schedule.noPool"),
-                  })}
-                  <span className="text-muted">
-                    {" "}
-                    — {formatCalendarDate(rule.startsOn)}
-                    {rule.endsOn ? ` … ${formatCalendarDate(rule.endsOn)}` : ""}
-                  </span>
-                  {!rule.active ? (
-                    <span className="badge text-bg-secondary ms-2">
-                      {t("schedule.recurrences.inactive")}
+              <li className="list-group-item" key={rule.id}>
+                <div className="d-flex justify-content-between align-items-center gap-2">
+                  <span>
+                    {t("schedule.recurrences.line", {
+                      weekday: formatWeekday(rule.weekday),
+                      start: formatMinuteOfDay(rule.startMinuteOfDay),
+                      duration: rule.durationMinutes,
+                      pool: rule.poolName ?? t("schedule.noPool"),
+                    })}
+                    <span className="text-muted">
+                      {" "}
+                      — {formatCalendarDate(rule.startsOn)}
+                      {rule.endsOn
+                        ? ` … ${formatCalendarDate(rule.endsOn)}`
+                        : ""}
                     </span>
+                    {!rule.active ? (
+                      <span className="badge text-bg-secondary ms-2">
+                        {t("schedule.recurrences.inactive")}
+                      </span>
+                    ) : null}
+                    {/* THE SEASON'S LANES, ON THE LINE THAT NAMES THE SEASON.
+                        Under the fold they would be invisible on the screen
+                        that decides where a group swims, which is the same
+                        defect a lane that reached no screen at all had. */}
+                    <div className="text-muted">
+                      {t("schedule.lanes.title")}:{" "}
+                      {rule.lanes.length === 0
+                        ? t("schedule.lanes.none")
+                        : rule.lanes.map((lane) => lane.name).join(", ")}
+                    </div>
+                  </span>
+                  {/* A RULE TYPED WITH THE WRONG WEEKDAY HAD NO REPAIR PATH.
+                    The service could stop one since phase 1.6 and no screen
+                    called it, so the only way out was cancelling every lesson
+                    it made, one at a time, each with a reason. It stops the
+                    rule and leaves the timetable alone — see
+                    `deactivateRecurrence` for why deleting it would orphan and
+                    then duplicate the lessons it already produced. */}
+                  {rule.active ? (
+                    <form action={deactivateRecurrenceAction}>
+                      <input type="hidden" name="groupId" value={group.id} />
+                      <input
+                        type="hidden"
+                        name="recurrenceId"
+                        value={rule.id}
+                      />
+                      <button
+                        className="btn btn-outline-secondary btn-sm"
+                        type="submit"
+                      >
+                        {t("schedule.recurrences.stop")}
+                      </button>
+                    </form>
                   ) : null}
-                </span>
-                {/* A RULE TYPED WITH THE WRONG WEEKDAY HAD NO REPAIR PATH. The
-                  service could stop one since phase 1.6 and no screen called
-                  it, so the only way out was cancelling every lesson it made,
-                  one at a time, each with a reason. It stops the rule and
-                  leaves the timetable alone — see `deactivateRecurrence` for
-                  why deleting it would orphan and then duplicate the lessons
-                  it already produced. */}
-                {rule.active ? (
-                  <form action={deactivateRecurrenceAction}>
-                    <input type="hidden" name="groupId" value={group.id} />
-                    <input type="hidden" name="recurrenceId" value={rule.id} />
-                    <button
-                      className="btn btn-outline-secondary btn-sm"
-                      type="submit"
-                    >
-                      {t("schedule.recurrences.stop")}
-                    </button>
-                  </form>
-                ) : null}
+                </div>
+
+                {/* ── the season's lanes ─────────────────────────────────────
+                    Checkboxes and not a multi-`<select>`: many-to-many is the
+                    real shape (a group can use two lanes at once), and a
+                    multiple-select on a phone at the poolside is a control
+                    almost nobody operates correctly.
+
+                    The options are THIS rule's pool's lanes, so every choice on
+                    offer is one `setRecurrenceLanes` accepts. No pool, or a
+                    pool with no lanes, says so instead of showing an empty
+                    form — the second sends the person to the screen that fixes
+                    it. */}
+                <details className="mt-2">
+                  <summary>{t("schedule.lanes.recurrenceTitle")}</summary>
+                  {rule.poolLanes.length === 0 ? (
+                    <p className="form-text mb-0">
+                      {rule.poolName === null
+                        ? t("schedule.lanes.recurrenceNoPool")
+                        : t("schedule.lanes.recurrenceNoLanes")}
+                    </p>
+                  ) : (
+                    <form action={setRecurrenceLanesAction} className="mt-2">
+                      <input type="hidden" name="groupId" value={group.id} />
+                      <input
+                        type="hidden"
+                        name="recurrenceId"
+                        value={rule.id}
+                      />
+                      <div className="d-flex flex-wrap gap-3">
+                        {rule.poolLanes.map((lane) => (
+                          <div className="form-check" key={lane.id}>
+                            <input
+                              className="form-check-input"
+                              id={`recurrenceLane-${rule.id}-${lane.id}`}
+                              name="laneIds"
+                              type="checkbox"
+                              value={lane.id}
+                              defaultChecked={rule.lanes.some(
+                                (chosen) => chosen.id === lane.id,
+                              )}
+                            />
+                            <label
+                              className="form-check-label"
+                              htmlFor={`recurrenceLane-${rule.id}-${lane.id}`}
+                            >
+                              {lane.name}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2">
+                        <button
+                          className="btn btn-outline-secondary btn-sm"
+                          type="submit"
+                        >
+                          {t("schedule.lanes.recurrenceSave")}
+                        </button>
+                      </div>
+                      <p className="form-text">
+                        {t("schedule.lanes.recurrenceNote")}
+                      </p>
+                    </form>
+                  )}
+                </details>
               </li>
             ))}
           </ul>
@@ -527,6 +624,7 @@ export default async function GroupSchedulePage({
             <tr>
               <th scope="col">{t("schedule.columns.moment")}</th>
               <th scope="col">{t("schedule.columns.pool")}</th>
+              <th scope="col">{t("schedule.columns.lanes")}</th>
               <th scope="col">{t("schedule.columns.status")}</th>
               <th scope="col">{t("groups.columns.actions")}</th>
             </tr>
@@ -540,6 +638,28 @@ export default async function GroupSchedulePage({
                   </Link>
                 </td>
                 <td>{lesson.poolName ?? t("schedule.noPool")}</td>
+                {/* A SCHEDULE THAT HIDES WHICH LESSON WAS CHANGED IS WORSE
+                    THAN ONE THAT SHOWS NOTHING. The badge is only on the two
+                    rows that do NOT follow the season — an "inherited" badge on
+                    thirty-five of thirty-six lines is noise that hides the one
+                    line it exists to point at. */}
+                <td>
+                  {lesson.laneAssignment.lanes.length === 0
+                    ? t("schedule.lanes.none")
+                    : lesson.laneAssignment.lanes
+                        .map((lane) => lane.name)
+                        .join(", ")}
+                  {lesson.laneAssignment.laneSource === "OVERRIDE" ? (
+                    <span className="badge text-bg-warning ms-2">
+                      {t("schedule.lanes.override")}
+                    </span>
+                  ) : null}
+                  {lesson.laneAssignment.laneSource === "PINNED" ? (
+                    <span className="badge text-bg-light ms-2">
+                      {t("schedule.lanes.pinned")}
+                    </span>
+                  ) : null}
+                </td>
                 <td>
                   {lesson.status === "CANCELLED" ? (
                     <>

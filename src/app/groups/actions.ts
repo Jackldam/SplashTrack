@@ -50,6 +50,7 @@ import {
 import {
   addGuestToSession,
   cancelSession,
+  clearSessionLaneOverride,
   createClosure,
   createLane,
   createPool,
@@ -57,8 +58,10 @@ import {
   deactivateRecurrence,
   FacilityError,
   generateSessions,
+  overrideSessionLanes,
   removeGuestFromSession,
   ScheduleError,
+  setRecurrenceLanes,
   updateClosure,
   updateLane,
   updatePool,
@@ -363,6 +366,68 @@ export async function updateClosureAction(formData: FormData): Promise<void> {
   });
   revalidatePath(`/groups/${groupId}/schedule`);
   redirect(`/groups/${groupId}/schedule?saved=closureUpdated`);
+}
+
+// ── lanes ───────────────────────────────────────────────────────────────────
+
+/**
+ * Sets which lanes a season's lessons use.
+ *
+ * `getAll` AND NOT `get`. A set of checkboxes posts the ticked ones as repeated
+ * fields of the same name and posts NOTHING when they are all unticked, so
+ * `get("laneIds")` would read a three-lane selection as one lane and an emptied
+ * one as null. `getAll` returns `[]` for the empty case, which is the value that
+ * means *"no lanes recorded for this series"* — a real answer, not an absence.
+ */
+export async function setRecurrenceLanesAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  await run(`/groups/${groupId}/schedule`, async () => {
+    await setRecurrenceLanes(
+      await actor(),
+      String(formData.get("recurrenceId") ?? ""),
+      { laneIds: formData.getAll("laneIds") },
+    );
+  });
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(`/groups/${groupId}/schedule?saved=recurrenceLanes`);
+}
+
+/**
+ * Gives one lesson lanes of its own.
+ *
+ * Back to the LESSON and not to the schedule: the person is looking at one
+ * lesson, and a redirect that dropped them into a year of them would make them
+ * find it again to see whether the change took.
+ */
+export async function overrideSessionLanesAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  await run(`/groups/${groupId}/sessions/${sessionId}`, async () => {
+    await overrideSessionLanes(await actor(), sessionId, {
+      laneIds: formData.getAll("laneIds"),
+    });
+  });
+  revalidatePath(`/groups/${groupId}/sessions/${sessionId}`);
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(`/groups/${groupId}/sessions/${sessionId}?saved=lanesOverridden`);
+}
+
+/** Returns one lesson to following its season's lanes. */
+export async function clearSessionLaneOverrideAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  await run(`/groups/${groupId}/sessions/${sessionId}`, async () => {
+    await clearSessionLaneOverride(await actor(), sessionId);
+  });
+  revalidatePath(`/groups/${groupId}/sessions/${sessionId}`);
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(`/groups/${groupId}/sessions/${sessionId}?saved=lanesCleared`);
 }
 
 export async function cancelSessionAction(formData: FormData): Promise<void> {

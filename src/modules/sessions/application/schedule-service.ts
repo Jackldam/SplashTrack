@@ -74,10 +74,31 @@ function instant(actor: ActorContext): Date {
   return actor.at ?? new Date();
 }
 
+/**
+ * A refusal a person caused and can act on, as opposed to a bug.
+ *
+ * THE REASON IS A MESSAGE KEY, so no two reasons across this module's error
+ * classes may share a name — `FacilityError` says the same thing from the other
+ * side, and picked `facilityNotFound` rather than reuse `notFound` for exactly
+ * this reason. The three lane reasons live here rather than in a fourth class
+ * because assigning a lane to a lesson is a scheduling act: they are refusals
+ * about a timetable, not about a facility's own record.
+ */
 export class ScheduleError extends Error {
   constructor(
     public readonly reason:
-      "windowTooWide" | "windowOrder" | "alreadyCancelled" | "notFound",
+      | "windowTooWide"
+      | "windowOrder"
+      | "alreadyCancelled"
+      | "notFound"
+      /** A lane that does not exist, or belongs to another pool. One refusal
+       *  for both: separating them would answer "does lane X exist" for
+       *  anybody who can reach the endpoint. */
+      | "laneNotInPool"
+      /** Lanes were chosen for a series or a lesson that names no pool. */
+      | "laneWithoutPool"
+      /** The submitted selection was not a list of ids, or was too long. */
+      | "laneUnknown",
     message: string,
   ) {
     super(message);

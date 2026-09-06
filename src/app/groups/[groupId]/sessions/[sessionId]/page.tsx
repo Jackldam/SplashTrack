@@ -5,7 +5,12 @@ import { getConfiguredLocalization } from "@/lib/settings";
 import { getSessionForPrincipal, resolveTimeZone } from "@/modules/sessions";
 
 import { guarded, requireSignedIn } from "../../../access";
-import { addGuestAction, removeGuestAction } from "../../../actions";
+import {
+  addGuestAction,
+  clearSessionLaneOverrideAction,
+  overrideSessionLanesAction,
+  removeGuestAction,
+} from "../../../actions";
 import { formatSessionMoment } from "../../../format";
 
 /**
@@ -27,6 +32,15 @@ import { formatSessionMoment } from "../../../format";
  *
  * The page is guarded on `{ session }`, which is what makes that work: a
  * `SESSION`-scoped grant reaches this screen and nothing else.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * AND IT SAYS WHERE THE LANES CAME FROM, NOT ONLY WHAT THEY ARE
+ *
+ * D-190: a lesson normally inherits its season's lanes and occasionally carries
+ * its own. Those are different facts and the screen states which one it is
+ * looking at, because *"is dit een uitzondering of gewoon de reeks"* is the
+ * question somebody standing at the pool is asking. Showing the lanes alone
+ * would make the exception invisible, which is the failure the badge exists for.
  */
 export default async function SessionDetailPage({
   params,
@@ -113,6 +127,102 @@ export default async function SessionDetailPage({
           {t(`groups.saved.${query.saved}` as "groups.saved.group")}
         </div>
       ) : null}
+
+      {/* ── the lanes, and where they come from ─────────────────────────────
+          The badge names the state in all three cases here, unlike the schedule
+          table where only the exceptions are badged: this screen is about ONE
+          lesson, so "these are the season's lanes" is an answer rather than
+          noise — it is exactly what somebody opening this page wants to know. */}
+      <h2 className="h5 mt-4">{t("schedule.lanes.title")}</h2>
+      <p>
+        {lesson.laneAssignment.lanes.length === 0
+          ? t("schedule.lanes.none")
+          : lesson.laneAssignment.lanes.map((lane) => lane.name).join(", ")}
+        <span
+          className={
+            lesson.laneAssignment.laneSource === "OVERRIDE"
+              ? "badge text-bg-warning ms-2"
+              : "badge text-bg-light ms-2"
+          }
+        >
+          {t(
+            `schedule.lanes.${
+              lesson.laneAssignment.laneSource === "OVERRIDE"
+                ? "override"
+                : lesson.laneAssignment.laneSource === "PINNED"
+                  ? "pinned"
+                  : "inherited"
+            }` as "schedule.lanes.inherited",
+          )}
+        </span>
+      </p>
+
+      {lesson.poolLanes.length === 0 ? (
+        <p className="form-text">{t("schedule.lanes.sessionNoPool")}</p>
+      ) : (
+        <details className="mb-4">
+          <summary>{t("schedule.lanes.sessionTitle")}</summary>
+          <p className="form-text">{t("schedule.lanes.sessionNote")}</p>
+          {/* The boxes are pre-ticked with the EFFECTIVE lanes — inherited or
+              not — so "swap one lane" is one click and not a re-entry of the
+              whole set from memory. */}
+          <form action={overrideSessionLanesAction} className="mt-2">
+            <input type="hidden" name="groupId" value={groupId} />
+            <input type="hidden" name="sessionId" value={lesson.id} />
+            <div className="d-flex flex-wrap gap-3">
+              {lesson.poolLanes.map((lane) => (
+                <div className="form-check" key={lane.id}>
+                  <input
+                    className="form-check-input"
+                    id={`sessionLane-${lane.id}`}
+                    name="laneIds"
+                    type="checkbox"
+                    value={lane.id}
+                    defaultChecked={lesson.laneAssignment.lanes.some(
+                      (chosen) => chosen.id === lane.id,
+                    )}
+                  />
+                  <label
+                    className="form-check-label"
+                    htmlFor={`sessionLane-${lane.id}`}
+                  >
+                    {lane.name}
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2">
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                type="submit"
+              >
+                {t("schedule.lanes.sessionSave")}
+              </button>
+            </div>
+          </form>
+
+          {/* THE WAY BACK. An override entered on the wrong lesson is an
+              ordinary mistake, and without this the only repair would be
+              re-typing the season's lanes here — which looks identical and is
+              not the same thing, so the next change to the series would skip
+              this lesson for ever. */}
+          {lesson.laneAssignment.laneSource === "INHERITED" ? null : (
+            <form action={clearSessionLaneOverrideAction} className="mt-3">
+              <input type="hidden" name="groupId" value={groupId} />
+              <input type="hidden" name="sessionId" value={lesson.id} />
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                type="submit"
+              >
+                {t("schedule.lanes.sessionClear")}
+              </button>
+              <span className="form-text ms-3">
+                {t("schedule.lanes.sessionClearNote")}
+              </span>
+            </form>
+          )}
+        </details>
+      )}
 
       <h2 className="h5 mt-4">{t("session.roster.title")}</h2>
       {lesson.roster.length === 0 ? (

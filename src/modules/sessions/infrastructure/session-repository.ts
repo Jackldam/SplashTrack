@@ -7,7 +7,78 @@
 import type { Reach } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 
+import {
+  resolveLaneSource,
+  type SessionLaneSourceView,
+} from "../application/lane-assignment-service";
 import { sessionFilterForReach } from "./session-reach-filter";
+
+/** One lane, as a schedule names it. */
+export interface AssignedLane {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * A lesson's lanes AND where they came from, which travel together on purpose.
+ *
+ * A surface that got the lanes without the source would render an inherited
+ * lesson and an overridden one identically — and *"which of these did somebody
+ * change"* is the question a person opening a schedule is actually asking. The
+ * two are one value so that no screen can take the first and forget the second.
+ */
+export interface LaneAssignment {
+  readonly lanes: readonly AssignedLane[];
+  readonly laneSource: SessionLaneSourceView;
+}
+
+/** The row shape both session reads select, so the resolution below is shared. */
+interface LaneCarryingRow {
+  laneSource: "OVERRIDE" | "PINNED" | null;
+  lanes: { lane: { id: string; name: string; sequence: number } }[];
+  recurrence: {
+    lanes: { lane: { id: string; name: string; sequence: number } }[];
+  } | null;
+}
+
+/** What both reads ask Prisma for. One definition, so the two cannot drift. */
+const LANE_SELECTION = {
+  laneSource: true,
+  lanes: { select: { lane: { select: laneFields() } } },
+  recurrence: {
+    select: { lanes: { select: { lane: { select: laneFields() } } } },
+  },
+} as const;
+
+function laneFields() {
+  return { id: true, name: true, sequence: true } as const;
+}
+
+/**
+ * THE INHERITANCE, READ. A lesson with no `laneSource` carries no lanes of its
+ * own and answers with its recurrence's — which is why a generated lesson costs
+ * nothing to store and follows a change to the season for free.
+ *
+ * Sorted by the lane's own `sequence` here rather than in the query, because
+ * the rows arrive through two different relations and only one comparison
+ * should decide the order a person reads them in.
+ */
+function laneAssignment(row: LaneCarryingRow): LaneAssignment {
+  const source = resolveLaneSource(row.laneSource);
+  const rows =
+    source === "INHERITED" ? (row.recurrence?.lanes ?? []) : row.lanes;
+  return {
+    laneSource: source,
+    lanes: rows
+      .map((entry) => entry.lane)
+      .sort(
+        (left, right) =>
+          left.sequence - right.sequence ||
+          left.name.localeCompare(right.name, "nl"),
+      )
+      .map((lane) => ({ id: lane.id, name: lane.name })),
+  };
+}
 
 /**
  * Thrown when a reach covers no session at all — so the caller reports a DENIAL
@@ -34,6 +105,8 @@ export interface ScheduledSessionListItem {
   readonly cancellationReason: string | null;
   /** Explicit roster rows — guests, in this pass. */
   readonly guestCount: number;
+  /** The lanes, and whether they are the season's or this lesson's own. */
+  readonly laneAssignment: LaneAssignment;
 }
 
 /**
@@ -71,6 +144,7 @@ export async function listSessions(
       group: { select: { name: true } },
       pool: { select: { name: true } },
       _count: { select: { rosterEntries: true } },
+      ...LANE_SELECTION,
     },
   });
 
@@ -85,6 +159,7 @@ export async function listSessions(
     status: row.status,
     cancellationReason: row.cancellationReason,
     guestCount: row._count.rosterEntries,
+    laneAssignment: laneAssignment(row),
   }));
 }
 
@@ -110,6 +185,19 @@ export interface SessionDetail {
   readonly cancelledAt: Date | null;
   readonly cancellationReason: string | null;
   readonly roster: readonly RosterMember[];
+  /** The lanes, and whether they are the season's or this lesson's own. */
+  readonly laneAssignment: LaneAssignment;
+  /**
+   * Every lane in THIS lesson's pool, in the pool's own order — what the
+   * override form offers.
+   *
+   * It comes from the read that already knows the lesson's pool rather than
+   * from `listPools`, so the choices a person is shown are exactly the lanes
+   * `overrideSessionLanes` will accept. A form built from the club's whole lane
+   * list would offer choices the service refuses, which is a refusal the person
+   * did nothing to earn.
+   */
+  readonly poolLanes: readonly AssignedLane[];
 }
 
 /**
@@ -143,7 +231,16 @@ export async function findSessionDetail(
       cancelledAt: true,
       cancellationReason: true,
       group: { select: { name: true } },
-      pool: { select: { name: true } },
+      pool: {
+        select: {
+          name: true,
+          lanes: {
+            orderBy: [{ sequence: "asc" }, { name: "asc" }],
+            select: { id: true, name: true },
+          },
+        },
+      },
+      ...LANE_SELECTION,
       rosterEntries: {
         select: {
           source: true,
@@ -213,6 +310,8 @@ export async function findSessionDetail(
     status: session.status,
     cancelledAt: session.cancelledAt,
     cancellationReason: session.cancellationReason,
+    laneAssignment: laneAssignment(session),
+    poolLanes: session.pool?.lanes ?? [],
     roster: [...roster.values()].sort((left, right) =>
       `${left.familyName} ${left.givenName}`.localeCompare(
         `${right.familyName} ${right.givenName}`,

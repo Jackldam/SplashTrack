@@ -277,7 +277,10 @@
       "windowTooWide": "Kies een kortere periode. Meer dan anderhalf jaar in één keer is bijna altijd een verkeerd jaartal — en opnieuw uitvoeren is veilig.",
       "windowOrder": "De einddatum ligt vóór de begindatum.",
       "duplicateName": "Er bestaat al iets met deze naam. Kies een andere naam.",
-      "facilityNotFound": "Dat bad of die baan bestaat niet (meer)."
+      "facilityNotFound": "Dat bad of die baan bestaat niet (meer).",
+      "laneNotInPool": "Die baan ligt niet in het bad van deze les. Kies een baan uit dit bad.",
+      "laneWithoutPool": "Kies eerst een bad. Een baan ligt in een bad; zonder bad is er niets te kiezen.",
+      "laneUnknown": "De gekozen banen kloppen niet."
     },
     "saved": {
       "group": "Groep opgeslagen.",
@@ -296,7 +299,10 @@
       "lane": "Baan toegevoegd.",
       "laneUpdated": "Baan bijgewerkt.",
       "recurrenceStopped": "Lesreeks gestopt. De lessen die al gegenereerd zijn blijven staan.",
-      "closureUpdated": "Sluiting bijgewerkt."
+      "closureUpdated": "Sluiting bijgewerkt.",
+      "recurrenceLanes": "Banen van de lesreeks opgeslagen. Lessen die al geweest zijn houden de banen waarin ze gezwommen zijn.",
+      "lanesOverridden": "Banen voor deze les aangepast. Alleen deze les; de lesreeks en de andere lessen blijven zoals ze waren.",
+      "lanesCleared": "Deze les volgt weer de banen van de lesreeks."
     },
     "fields": {
       "name": "Naam",
@@ -415,7 +421,26 @@
     "columns": {
       "moment": "Wanneer",
       "pool": "Bad",
-      "status": "Status"
+      "status": "Status",
+      "lanes": "Banen"
+    },
+    "lanes": {
+      "title": "Banen",
+      "none": "Geen banen vastgelegd.",
+      "inherited": "van de lesreeks",
+      "override": "afwijkend",
+      "pinned": "vastgelegd",
+      "recurrenceTitle": "Banen voor deze lesreeks",
+      "recurrenceNote": "Deze banen gelden voor het hele seizoen. Lessen die nog moeten komen volgen een wijziging automatisch; lessen die al geweest zijn houden de banen waarin ze gezwommen zijn, en een les met een eigen keuze blijft die houden.",
+      "recurrenceSave": "Banen opslaan",
+      "recurrenceNoPool": "Deze lesreeks heeft geen bad. Kies eerst een bad — een baan ligt in een bad.",
+      "recurrenceNoLanes": "In dit bad zijn nog geen banen vastgelegd. Leg ze vast bij Baden en banen.",
+      "sessionTitle": "Banen voor deze les",
+      "sessionNote": "Normaal volgt een les de banen van de lesreeks. Wijk hier af als het deze week anders ligt — dat raakt alleen deze les.",
+      "sessionSave": "Alleen deze les aanpassen",
+      "sessionClear": "Weer de lesreeks volgen",
+      "sessionClearNote": "Zet de eigen keuze van deze les terug, zodat hij de banen van de lesreeks weer volgt.",
+      "sessionNoPool": "Deze les heeft geen bad, dus er zijn geen banen te kiezen."
     }
   },
   "session": {

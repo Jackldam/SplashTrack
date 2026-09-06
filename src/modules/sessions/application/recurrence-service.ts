@@ -349,6 +349,17 @@ export interface RecurrenceView {
   readonly endsOn: Date | null;
   readonly active: boolean;
   readonly poolName: string | null;
+  /**
+   * THE LANES THIS SEASON USES, and every lane it could use.
+   *
+   * Both, because the screen that shows the first is the screen that edits it,
+   * and the choices have to be the lanes of THIS rule's pool — which is the
+   * only place the pool is known without a second read. A rule with no pool
+   * gets an empty `poolLanes` and can hold no lanes, which is what the service
+   * refuses and what the form therefore must not offer.
+   */
+  readonly lanes: readonly { readonly id: string; readonly name: string }[];
+  readonly poolLanes: readonly { readonly id: string; readonly name: string }[];
 }
 
 /** A group's rules. Guarded on the group, like everything else about it. */
@@ -381,7 +392,18 @@ export async function listRecurrencesForGroup(
       startsOn: true,
       endsOn: true,
       active: true,
-      pool: { select: { name: true } },
+      pool: {
+        select: {
+          name: true,
+          lanes: {
+            orderBy: [{ sequence: "asc" }, { name: "asc" }],
+            select: { id: true, name: true },
+          },
+        },
+      },
+      lanes: {
+        select: { lane: { select: { id: true, name: true, sequence: true } } },
+      },
     },
   });
 
@@ -394,6 +416,15 @@ export async function listRecurrencesForGroup(
     endsOn: row.endsOn,
     active: row.active,
     poolName: row.pool?.name ?? null,
+    lanes: row.lanes
+      .map((entry) => entry.lane)
+      .sort(
+        (left, right) =>
+          left.sequence - right.sequence ||
+          left.name.localeCompare(right.name, "nl"),
+      )
+      .map((lane) => ({ id: lane.id, name: lane.name })),
+    poolLanes: row.pool?.lanes ?? [],
   }));
 }
 

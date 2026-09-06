@@ -1,8 +1,9 @@
 /**
  * `sessions` module public API — the owner of `ScheduledSession` (D-057).
  *
- * It owns `ScheduledSession`, `SessionRosterEntry`, `SessionLane`, `Pool`,
- * `Lane`, `SessionRecurrence` and `ScheduleException`. No other module reads
+ * It owns `ScheduledSession`, `SessionRosterEntry`, `SessionLane`,
+ * `RecurrenceLane`, `Pool`, `Lane`, `SessionRecurrence` and
+ * `ScheduleException`. No other module reads
  * those tables directly. An earlier draft of the design had `planning` writing
  * the session table and `attendance` reading it — *"one table, two owners"* —
  * which D-057 calls the first boundary that would have eroded; both are
@@ -50,6 +51,16 @@ export {
   type RecurrenceView,
   type UpdateClosureInput,
 } from "./application/recurrence-service";
+
+export {
+  clearSessionLaneOverride,
+  overrideSessionLanes,
+  resolveLaneSource,
+  setRecurrenceLanes,
+  type OverrideSessionLanesInput,
+  type SessionLaneSourceView,
+  type SetRecurrenceLanesInput,
+} from "./application/lane-assignment-service";
 
 export {
   addGuestToSession,
@@ -102,6 +113,8 @@ export {
 
 export {
   ReachCoversNoSessionError,
+  type AssignedLane,
+  type LaneAssignment,
   type PoolView,
   type RosterMember,
   type ScheduledSessionListItem,

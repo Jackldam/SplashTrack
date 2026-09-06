@@ -277,7 +277,10 @@
       "windowTooWide": "Choose a shorter period. More than eighteen months at once is almost always a mistyped year — and running it again is safe.",
       "windowOrder": "The end date falls before the start date.",
       "duplicateName": "Something by that name already exists. Choose another name.",
-      "facilityNotFound": "That pool or lane no longer exists."
+      "facilityNotFound": "That pool or lane no longer exists.",
+      "laneNotInPool": "That lane is not in this lesson's pool. Choose a lane in this pool.",
+      "laneWithoutPool": "Choose a pool first. A lane is inside a pool; without one there is nothing to choose.",
+      "laneUnknown": "The lanes chosen are not valid."
     },
     "saved": {
       "group": "Group saved.",
@@ -296,7 +299,10 @@
       "lane": "Lane added.",
       "laneUpdated": "Lane updated.",
       "recurrenceStopped": "Recurrence stopped. The lessons it already generated stay.",
-      "closureUpdated": "Closure updated."
+      "closureUpdated": "Closure updated.",
+      "recurrenceLanes": "The series' lanes are saved. Lessons that have already happened keep the lanes they were swum in.",
+      "lanesOverridden": "This lesson's lanes are changed. This lesson only; the series and every other lesson stay as they were.",
+      "lanesCleared": "This lesson follows the series' lanes again."
     },
     "fields": {
       "name": "Name",
@@ -415,7 +421,26 @@
     "columns": {
       "moment": "When",
       "pool": "Pool",
-      "status": "Status"
+      "status": "Status",
+      "lanes": "Lanes"
+    },
+    "lanes": {
+      "title": "Lanes",
+      "none": "No lanes recorded.",
+      "inherited": "from the series",
+      "override": "changed for this lesson",
+      "pinned": "recorded",
+      "recurrenceTitle": "Lanes for this series",
+      "recurrenceNote": "These lanes apply to the whole season. Lessons still to come follow a change automatically; lessons that have already happened keep the lanes they were swum in, and a lesson with a choice of its own keeps it.",
+      "recurrenceSave": "Save lanes",
+      "recurrenceNoPool": "This series has no pool. Choose a pool first — a lane is inside a pool.",
+      "recurrenceNoLanes": "No lanes are recorded in this pool yet. Record them under Pools and lanes.",
+      "sessionTitle": "Lanes for this lesson",
+      "sessionNote": "A lesson normally follows the series' lanes. Change them here if this week is different — it affects this lesson only.",
+      "sessionSave": "Change this lesson only",
+      "sessionClear": "Follow the series again",
+      "sessionClearNote": "Drops this lesson's own choice so it follows the series' lanes again.",
+      "sessionNoPool": "This lesson has no pool, so there are no lanes to choose."
     }
   },
   "session": {
