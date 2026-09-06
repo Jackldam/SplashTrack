@@ -24,7 +24,7 @@ migration without asking.**
 | ouder / voogd | `PersonRelationship` (guardian) | fixed | Legal authority is *evidence*, not an assumption. Authority lapses at the age of digital consent (D-151). |
 | groep | `Group` | fixed | A teaching group. Progress is recorded per individual, never per group. |
 | lesuur / les | `ScheduledSession` | fixed | One lesson occurrence at a time and place. Owned by the `sessions` module (D-057). |
-| locatie | `OrganizationUnit` | fixed | The club has **one** location today (2026-09-03). `UNIT` is a flat scope with no descendant walk (D-121) — that answer confirms the choice rather than straining it. |
+| locatie | `OrganizationUnit` | fixed | The club has **one** location today (2026-09-03). `UNIT` is a flat scope with no descendant walk (D-121) — that answer confirms the choice rather than straining it. **There is no `Location` table.** `01-domain-model.md` §3.2 lists one, and §3.4 gives `ScheduledSession` a `locationId`; D-175 is later and explicit that the place a lesson happens is a `Pool` owned by `sessions`, and this row is where D-159/D-189 put the authority for the other spelling. So a session references a `Pool` (and optionally `Lane`s) and inherits its *organisational* position from its group's `unitId`. Recorded in the phase 1.6 build report. |
 | bad | `Pool` | fixed | A pool within a location. Two of them: one with six 25 m lanes, one with three. A facility — **never** an `OrganizationUnit`, never a scope type (D-175). |
 | baan | `Lane` | fixed | A lane in a pool. Also a facility, not a scope: a lane is where a lesson happens, not who may read a child's record (D-175). |
 | instructeur / leraar | `Instructor` (role) | fixed | A role, never a membership requirement (D-060). |
@@ -35,6 +35,14 @@ migration without asking.**
 | lidmaatschapsperiode | `MembershipPeriod` | fixed | One interval of belonging. Belonging is a set of intervals and never a status flag (D-059); at most one may be open at a time. |
 | in- en uitschrijfgeschiedenis | `StudentLifecycleEvent` | fixed | The pupil's append-only history — `JOINED`, `PAUSED`, `LEFT`, `RETURNED`, `TRIAL_ATTENDED`. Current status is DERIVED from it. A group move is **not** here: that is `GroupMove`, owned by `groups` (D-134 gives the fact one home), and moving a child DOWN a level must read as ordinarily there as moving up. |
 | pauze | `PAUSED` (lifecycle) | fixed | A pupil taking a break — a broken arm, a term abroad. **Not a departure**: the person is still held under D-066, and treating a pause as an ending would start a retention clock on a child who returns in September. |
+| groepsindeling | `GroupMembership` | fixed | That a pupil is *in* a group, as a time-bounded interval — `fromDate` and an open-ended `toDate`, never a status flag (D-059's rule applied to groups). Moving groups ends one row and opens another; **both rows stay**, which is what makes "which group was this child in last March?" answerable at all. |
+| doorstromen / terugzetten | `GroupMove` | fixed | The *act* behind the two `GroupMembership` rows — who decided, when, why, and in which direction (D-108). **`UP`, `DOWN` and `LATERAL` are three ordinary values of one field**: moving a child back down a level is a teaching decision, not a correction, and nothing in the identifier, the schema or the screen may spell it as a failure. `direction` is RECORDED, never derived from level order, so a lateral move is not reported as a demotion. |
+| lesgever bij een groep | `InstructorAssignment` | fixed | Who teaches a group, time-bounded like `GroupMembership`. **Not a grant**: it grants nothing by itself (D-060). It is the live half of `GROUP` reach — an instructor sees a group's pupils only while both this and their `GroupMembership` are open *at query time* (D-145 rule 1), so an instructor who stops teaching a group loses sight of it immediately rather than at the next cleanup. |
+| deelnemerslijst | `SessionRosterEntry` | fixed | Who is expected at one lesson: the group's members **plus** any explicitly added guests. `source` is `GROUP` or `GUEST`; an *inhaalles* is a `GUEST` row and nothing else about it is modelled (D-179, D-109). The receiving instructor's sight of a guest comes from this row through `SESSION` reach — never from group membership, which the guest does not have. |
+| lesreeks | `SessionRecurrence` | fixed | **NOT IN THE DESIGN SET — added by phase 1.6; see the build report.** The rule a group's lessons are generated from: a weekday, a time of day, a duration and a pool, running between two dates. Nothing in the design creates a `ScheduledSession`, and six groups over a season is ~216 rows nobody will type. A group may have more than one (a group swimming Tuesday *and* Thursday is two rules). |
+| sluiting / vakantie | `ScheduleException` | fixed | **NOT IN THE DESIGN SET — added by phase 1.6.** A date range on which no lesson is generated: a school holiday, a closed pool, a single group's week off. `groupId` is nullable and **null means club-wide**, which is the ordinary case. It suppresses GENERATION; it never deletes a lesson that already exists. |
+| afgelast | `ScheduledSessionStatus.CANCELLED` | fixed | One lesson that will not take place. **The row stays** — cancelling is a status and a reason, never a delete, because "there was a lesson on the 12th and it was called off" is a different fact from "there was never a lesson on the 12th", and a parent asking about a missed week deserves the first answer. Re-running generation never resurrects it. |
+| blok / lesperiode | — (a date range) | fixed | **Deliberately not an entity.** "Generate a term" is a `from`/`to` the administrator supplies to the generator; the design names no `Term`, and inventing one would put a second home beside `SessionRecurrence.startsOn`/`endsOn`. |
 | gezag / toestemmingsbevoegdheid | `PersonRelationship.authority` | fixed | That a relationship CLAIMS the right to consent on the subject's behalf. Evidence of a claim, never a legal determination (D-063), and never an authorization scope — `RELATED` was removed from `ScopeType` and must not return (OD-5, D-161). |
 | onderbouwing | `PersonRelationship.evidence` | fixed | HOW the authority claim was established. Mandatory wherever authority is claimed, encrypted under the D-096/D-167 envelope, and disclosed only through an audited read. |
 | leeftijd digitale toestemming | `ageOfDigitalConsentYears` | fixed | The age at which a person consents for themselves, and therefore at which guardian authority lapses by operation of law (D-151). A `bounded` setting (13–18, default 16 — Art. 8(1)'s own range), evaluated at READ TIME. Nothing marks a row on a birthday. |
@@ -105,3 +113,21 @@ actually speaks. Ask before they reach a migration:
 
 - Is there a Dutch term for the person who performs an aftest, distinct from
   "instructeur"? If the club has a word for it, the role should carry it.
+
+Asked during phase 1.6 and **not answered inside the build window**. The reading
+implemented is given with each; all three are cheap to change and none is
+load-bearing on data already written except the third.
+
+- **Does a group meet at one fixed weekly moment, or several?** Built as
+  *several*: a group may carry more than one `SessionRecurrence`. It costs
+  nothing and subsumes the single-slot answer, so a "one slot" answer needs no
+  migration — only a screen that offers one.
+- **Are closures club-wide or per group?** Built as *both*, through a nullable
+  `ScheduleException.groupId` where null means club-wide.
+- **What does `Group.capacity` count — places in the group, or bodies in the
+  water?** Built as **places in the group**: the ceiling is checked against open
+  `GroupMembership` rows, and an *inhaalles* guest does not consume one. That is
+  the reading that keeps D-180 and D-179 coherent — D-180 makes capacity an
+  input to a *placement* decision, and D-179 says a guest is not in the group —
+  but if the club means "bodies in the water", the check moves to the session
+  roster and this is the one of the three worth correcting early.
