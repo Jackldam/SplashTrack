@@ -44,6 +44,39 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // Its own class, added by phase 1.1 — see the enum member's comment in
   // `prisma/schema.prisma` for why it is not folded into `PERSON_IDENTITY`.
   PersonRelationship: "PERSON_RELATIONSHIPS",
+  // --- phase 1.6, the `groups` module -------------------------------------
+  // The group itself is TEACHING CONFIGURATION and holds no personal data: a
+  // name, a capacity, a unit. `ORGANIZATION_SETTINGS` is the honest class for
+  // it, and it is what §5's own "Organisation settings & branding" row covers.
+  Group: "ORGANIZATION_SETTINGS",
+  // A pupil's placement history shares the pupil's class, on the
+  // StudentProfile/StudentLifecycleEvent precedent above: same purpose
+  // (`STUDENT_PROFILE`'s is literally "administering a pupil's lessons, GROUPS
+  // and progress"), same trigger (`LAST_ENROLMENT_END`), same expiry. Giving
+  // either its own class would be a second retention decision about one fact.
+  GroupMembership: "STUDENT_PROFILE",
+  GroupMove: "STUDENT_PROFILE",
+  // Its own class — see the enum member in `prisma/schema.prisma` for why it is
+  // not `ROLE_ASSIGNMENTS`, which is the distinction D-145 rests on.
+  InstructorAssignment: "INSTRUCTOR_ASSIGNMENTS",
+  // --- phase 1.6, the `sessions` module ------------------------------------
+  // Facilities. A pool is a place; places hold no personal data (D-175).
+  Pool: "ORGANIZATION_SETTINGS",
+  Lane: "ORGANIZATION_SETTINGS",
+  SessionLane: "ORGANIZATION_SETTINGS",
+  // The RULE that generates a timetable, and the dates it skips: configuration
+  // an administrator edits, with no personal data in either.
+  SessionRecurrence: "ORGANIZATION_SETTINGS",
+  ScheduleException: "ORGANIZATION_SETTINGS",
+  ScheduledSession: "SCHEDULED_SESSIONS",
+  // WHO WAS EXPECTED AT A LESSON is personal data about a pupil, held for the
+  // same purpose and expiring on the same trigger as the attendance recorded
+  // against it — so it shares that class deliberately. The roster must not
+  // outlive the attendance it explains: keeping "these twelve children were
+  // expected on 3 March" after the attendance is deleted would leave the more
+  // re-identifying half of D-111's pair behind, which is the opposite of what
+  // that decision is for.
+  SessionRosterEntry: "ATTENDANCE_EVENTS",
   Role: "ORGANIZATION_SETTINGS",
   OrganizationUnit: "ORGANIZATION_SETTINGS",
   AccessGroup: "ORGANIZATION_SETTINGS",

@@ -326,6 +326,15 @@ model Person {
   /// organisation's behalf (D-065, F-27). Accountability evidence; severed, not
   /// deleted, on erasure — a confirmation stands after its confirmer leaves.
   retentionConfirmations RetentionPolicy[] @relation("RetentionPolicyConfirmedBy")
+
+  /// Groups this person teaches or has taught (phase 1.6). The person's OWN
+  /// data — an instructor's teaching history — so `Restrict` and `HARD_DELETE`.
+  instructorAssignments InstructorAssignment[]
+  /// Group moves this person DECIDED. Somebody else's history, not theirs:
+  /// accountability evidence, severed rather than deleted on erasure, so a
+  /// child's record does not lose the fact that a move was a considered
+  /// decision when the instructor who made it leaves.
+  groupMovesDecided     GroupMove[]           @relation("GroupMoveDecidedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -782,6 +791,15 @@ model StudentProfile {
 
   lifecycleEvents StudentLifecycleEvent[]
 
+  /// Phase 1.6. All three CASCADE from this row on the `StudentLifecycleEvent`
+  /// pattern: none of them references `Person`, so none appears in the erasure
+  /// registry, and they leave when the profile the erasure deletes explicitly
+  /// goes. That is why those foreign keys are cascades and the `Person` edges
+  /// above are not.
+  groupMemberships GroupMembership[]
+  groupMoves       GroupMove[]
+  rosterEntries    SessionRosterEntry[]
+
   @@index([unitId])
 }
 
@@ -970,6 +988,575 @@ model PersonRelationship {
 }
 
 // ---------------------------------------------------------------------------
+// Teaching groups, who is in them, and who teaches them
+// (phase 1.6, the `groups` module — D-059, D-108, D-145, D-180)
+// ---------------------------------------------------------------------------
+
+/// *groep* — WHO IS TAUGHT TOGETHER, and a table separate from `Course`
+/// (§2.3). A course is *what* is taught; conflating the two makes it impossible
+/// to move a pupil between groups without re-enrolling them, or to run two
+/// groups of the same course.
+///
+/// WHAT IS DELIBERATELY NOT HERE: `courseLevelId`. §3.2 lists it, and the
+/// `courses` module that owns `CourseLevel` is not built. A dangling id column
+/// with no table behind it is the stub column D-163 refuses on the same
+/// reasoning — nothing could write it, nothing could read it, and it would look
+/// like a level was recorded. It arrives with `courses`, and until then a
+/// group's level lives in its name, where a club already puts it.
+/// @dataClass ORGANIZATION_SETTINGS
+model Group {
+  id String @id @default(cuid(2))
+
+  /// The club's own name for the group — *"Groep 3 dinsdag"*, *"Diploma B
+  /// donderdag"*. Bounded at the validation layer, not here.
+  name String
+
+  /// HOW MANY PUPILS BELONG IN THIS GROUP. D-180's placement screen needs it:
+  /// placement is a matching decision — a human looks for a group at the right
+  /// level *with room* — so "with room" has to be answerable.
+  ///
+  /// NULLABLE, per §3.2's own `capacity?`, and the null means what it says:
+  /// nobody has stated a capacity for this group. The placement screen shows
+  /// that as unknown rather than as unlimited, because a group with no stated
+  /// ceiling is a group nobody has thought about, not a group with infinite
+  /// space.
+  ///
+  /// WHAT IT COUNTS is the reading recorded in `docs/glossary.md` and NOT
+  /// settled by the domain expert: open `GroupMembership` rows — places in the
+  /// group — and not bodies in the water at one lesson. That keeps D-180 and
+  /// D-179 coherent, since a make-up guest is by definition not in the group
+  /// and must not consume a place they do not hold. The ceiling is enforced in
+  /// the service, not by a constraint: it is a business rule an administrator
+  /// may knowingly exceed with a reason, and a CHECK cannot be overridden.
+  capacity Int?
+
+  /// Retired groups stay for their history. A closed group is not a deleted
+  /// one — its memberships, moves and lessons are the record of a season.
+  active Boolean @default(true)
+
+  /// The unit this group sits in. §3.6: `Group` carries `unitId` and
+  /// `ScheduledSession` inherits its unit from its group. This is the column
+  /// `unitOfGroup` resolves.
+  ///
+  /// NULLABLE for exactly the reason `StudentProfile.unitId` is: v1 creates no
+  /// `OrganizationUnit` rows and the club has one location. Null DENIES `UNIT`
+  /// reach rather than widening it — every coverage rule is a positive
+  /// membership test — so the nullable column fails safe.
+  unitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  memberships GroupMembership[]
+  moves       GroupMove[]          @relation("GroupMoveTo")
+  movesFrom   GroupMove[]          @relation("GroupMoveFrom")
+  instructors InstructorAssignment[]
+  recurrences SessionRecurrence[]
+  sessions    ScheduledSession[]
+  exceptions  ScheduleException[]
+
+  @@index([unitId])
+  @@index([active])
+}
+
+/// *groepsindeling* — that a pupil is in a group, AS AN INTERVAL.
+///
+/// **TIME-BOUNDED, NEVER A STATUS FLAG.** This is D-059's rule applied to
+/// groups, and §3.2 states it directly: *"moving groups is a new row, not an
+/// update"*. Ending one row and opening another is what keeps "which group was
+/// this child in last March?" answerable — a flag destroys that answer the
+/// moment it is flipped, and the answer is the product's value.
+///
+/// It is also load-bearing for authorization. `GroupMembership` rows are kept
+/// for life, so `GROUP` reach may never be resolved from their EXISTENCE:
+/// D-145 rule 1 requires an ACTIVE membership at query time, checked live by
+/// `isActiveGroupMember`. Without that, every instructor who ever taught a
+/// child keeps read access to them permanently (F-114).
+///
+/// A pupil may hold several OPEN memberships at once — a child in a lesson
+/// group and a club-swimming group is ordinary — so the partial unique index in
+/// the migration forbids only two open memberships OF THE SAME GROUP, on the
+/// `RoleAssignment_standing_grant_key` pattern: a duplicate standing fact is
+/// noise, while closed historical ones are legitimate history.
+/// @dataClass STUDENT_PROFILE
+model GroupMembership {
+  id               String @id @default(cuid(2))
+  groupId          String
+  studentProfileId String
+
+  /// When this placement began.
+  fromDate DateTime
+  /// When it ended. NULL = currently in this group. The ONLY signal there is.
+  toDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group          Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([studentProfileId])
+  /// The index `isActiveGroupMember` reads — the hot path of D-145 rule 1, run
+  /// on every coverage check a `GROUP`-scoped instructor makes.
+  @@index([groupId, studentProfileId, toDate])
+  @@index([studentProfileId, toDate])
+}
+
+/// Which way a pupil moved, RECORDED rather than derived (D-108).
+///
+/// **THE THREE VALUES ARE ORDINARY AND EQUAL.** The domain expert was explicit
+/// that a child who is struggling moving back down is as normal as a faster
+/// child moving up. So `DOWN` is not a correction, not an exception and not an
+/// error path: it is written by the same code, requires the same reason, and is
+/// rendered by the same component in the same colour as `UP`. A model that only
+/// reads forward turns a normal teaching event into a mistake, and the screen
+/// then presents it as one to a parent.
+///
+/// `LATERAL` exists so that a different evening at the same level is not
+/// reported as a demotion — which is exactly what DERIVING the direction from
+/// level order would do, and is why §3.2 makes it a recorded field.
+enum GroupMoveDirection {
+  UP
+  DOWN
+  LATERAL
+}
+
+/// *doorstromen / terugzetten* — the ACT behind two `GroupMembership` rows.
+///
+/// The membership rows carry the DATA; what is missing without this table is
+/// the decision: who made it, when, and why. §3.2 and D-108: *"a move down is
+/// indistinguishable from an administrative error"* without it, *"and the screen
+/// that renders the child's history will present it as one. A parent reading
+/// 'moved from Group 4 to Group 3' with no reason attached draws the worst
+/// conclusion available; the same row with 'meer tijd nodig voor de
+/// schoolslagbeenslag' is a teaching decision."*
+///
+/// `reason` IS MANDATORY, in the column and not only in a form. D-108 accepts
+/// the cost in as many words: *"a required reason on an action administrators
+/// would rather do in two clicks. Accepted: the reason is the entire value of
+/// the record."*
+/// @dataClass STUDENT_PROFILE
+model GroupMove {
+  id               String @id @default(cuid(2))
+  studentProfileId String
+
+  /// NULL for a first placement — there was no group before this one. That is a
+  /// real move to record, not a non-event: it is when the child joined a group.
+  fromGroupId String?
+  toGroupId   String
+
+  direction GroupMoveDirection
+  /// NOT NULL, and the point of the record. Free text in the club's own words.
+  reason    String
+
+  /// WHO DECIDED. Nullable so an erasure can SEVER it — this is somebody else's
+  /// history and the decision stands after the decider leaves, on the
+  /// `RoleAssignment.grantedByPersonId` pattern. `SetNull` as defence in depth;
+  /// `PERSON_REFERENCE_CLASSIFICATION` classifies it `SEVER_AND_RETAIN` and the
+  /// erasure severs it explicitly regardless.
+  decidedByPersonId String?
+
+  /// WHEN THE MOVE HAPPENED, which is not when it was typed in.
+  occurredAt DateTime
+
+  createdAt DateTime @default(now())
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  fromGroup      Group?         @relation("GroupMoveFrom", fields: [fromGroupId], references: [id], onDelete: Restrict)
+  toGroup        Group          @relation("GroupMoveTo", fields: [toGroupId], references: [id], onDelete: Restrict)
+  decidedBy      Person?        @relation("GroupMoveDecidedBy", fields: [decidedByPersonId], references: [id], onDelete: SetNull)
+
+  @@index([studentProfileId, occurredAt])
+  @@index([toGroupId])
+  @@index([fromGroupId])
+  @@index([decidedByPersonId])
+}
+
+/// *lesgever bij een groep* — who teaches a group, time-bounded like the
+/// membership beside it.
+///
+/// **THIS IS NOT A GRANT.** D-060: authorization comes exclusively from role
+/// assignments and their scopes, and this row gives nobody a read of anybody.
+/// What it is, is the LIVE HALF of `GROUP` coverage: D-145 rule 1 requires an
+/// active `InstructorAssignment` **and** an active `GroupMembership` at query
+/// time, so an instructor who holds a `GROUP`-scoped grant sees that group's
+/// pupils only while this row is open. The moment it closes they lose sight of
+/// the group — immediately, on the next query, not at the next cleanup run. A
+/// predicate cannot be behind schedule; a job can (D-144's argument).
+///
+/// **`role` IS SHORT FREE TEXT, NOT AN ENUM.** §3.2 names the field and no
+/// chapter gives it values. A closed vocabulary contains the roles somebody
+/// thought of — the same argument `MembershipPeriod.endReason` makes — and the
+/// club's own words (*hoofdinstructeur*, *hulpinstructeur*, *stagiair*) are not
+/// mine to invent. Nothing in this product binds a normative rule to it: D-130
+/// puts every such rule on a permission, and this column is a label on a
+/// timetable.
+///
+/// WHAT IS DELIBERATELY NOT HERE: the `| sessionId` half of §3.2's
+/// `personId, groupId | sessionId`. A substitute's reach comes from a
+/// `SESSION`-scoped grant (D-068), not from this table, so a nullable
+/// `sessionId` nothing writes would be a stub column that looks like a feature.
+/// It arrives with the surface that assigns a substitute.
+/// @dataClass INSTRUCTOR_ASSIGNMENTS
+model InstructorAssignment {
+  id       String @id @default(cuid(2))
+  personId String
+  groupId  String
+
+  /// The club's own word for what this person does with this group. Null when
+  /// they simply teach it.
+  role String?
+
+  fromDate DateTime
+  /// NULL = currently teaching this group. The ONLY signal `GROUP` reach reads.
+  toDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Restrict, and `HARD_DELETE` in the classification: an instructor's
+  /// teaching history is their own data.
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+  /// The index `activeInstructorGroupIds` reads — resolved once per reach
+  /// resolution for a principal holding any `GROUP` grant.
+  @@index([personId, toDate])
+  @@index([groupId, toDate])
+}
+
+// ---------------------------------------------------------------------------
+// Lessons, where they happen, and the rule that generates them
+// (phase 1.6, the `sessions` module — D-057, D-175, D-179)
+// ---------------------------------------------------------------------------
+
+/// *bad* — a pool. A FACILITY OWNED BY THIS MODULE, never an `OrganizationUnit`
+/// and never an authorization scope (D-175).
+///
+/// The reasoning is D-175's own: modelling pools as units would give D-121's
+/// deliberately flat `UNIT` scope a hierarchy, and modelling lanes as a scope
+/// type would add a sixth variant to `Reach` for a concept that grants nobody
+/// access to anybody. *A lane is where a lesson happens, not who may read a
+/// child's record.* "Who may see everything in the shallow pool" therefore has
+/// no direct answer in the scope model, and is answered through the groups and
+/// sessions that use it — which is correct, because a pool is a place and
+/// places do not hold permissions.
+///
+/// The club has one location with two pools: six 25 m lanes and three (Jack,
+/// 2026-09-03).
+/// @dataClass ORGANIZATION_SETTINGS
+model Pool {
+  id   String @id @default(cuid(2))
+  name String
+
+  /// The pool's length, where the club states one. Descriptive: nothing
+  /// computes with it, and a pool whose length nobody recorded is not a defect.
+  lengthMetres Int?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lanes       Lane[]
+  sessions    ScheduledSession[]
+  recurrences SessionRecurrence[]
+
+  @@unique([name])
+}
+
+/// *baan* — a lane in a pool. A facility, on the same D-175 reasoning as
+/// `Pool`: it is where a lesson happens, not who may read a child's record.
+/// @dataClass ORGANIZATION_SETTINGS
+model Lane {
+  id     String @id @default(cuid(2))
+  poolId String
+
+  /// The club's own label — *"baan 1"*, *"ondiep"*. A string and not an
+  /// integer, for the same reason `memberNumber` is: the club's labels are not
+  /// arithmetic.
+  name String
+
+  /// Presentation order within the pool. Lanes are read left to right and a
+  /// name sorts alphabetically, which puts "baan 10" before "baan 2".
+  sequence Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pool     Pool          @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  sessions SessionLane[]
+
+  @@unique([poolId, name])
+  @@index([poolId, sequence])
+}
+
+/// *lesreeks* — the rule a group's lessons are generated from.
+///
+/// **NOT IN THE DESIGN SET, AND THE GAP IS THE REASON IT EXISTS.** Nothing in
+/// any chapter creates a `ScheduledSession`. Six groups across roughly
+/// thirty-six teaching weeks is about two hundred rows nobody is going to type,
+/// and the flagship attendance screen (§4.1) is unreachable without them — so
+/// the design's most important surface had no path to its own data. Recorded as
+/// an addition in `docs/build/phase-1.6-groups-and-sessions-report.md` rather
+/// than presented as something a chapter asked for.
+///
+/// A GROUP MAY HAVE SEVERAL. A group swimming Tuesday and Thursday is two
+/// rules, not one rule with a list. That question went to the domain expert and
+/// was not answered in the build window; several subsumes one, so a "one slot"
+/// answer needs no migration — only a screen that offers one.
+///
+/// **TIME OF DAY IS TWO INTEGERS, NOT A TIMESTAMP.** `startMinuteOfDay` is
+/// minutes past local midnight and `durationMinutes` is how long the lesson
+/// runs. A `DateTime` would carry a date nobody meant and a zone nobody chose;
+/// a `@db.Time` still leaves the zone question open. The zone is applied once,
+/// at generation, from the organisation's configured `localization.timeZone` —
+/// see `expandRecurrence` for why that matters across a DST boundary, which in
+/// the Netherlands falls inside every swimming season.
+/// @dataClass ORGANIZATION_SETTINGS
+model SessionRecurrence {
+  id      String @id @default(cuid(2))
+  groupId String
+
+  /// Where these lessons happen. Nullable: a club that has not recorded its
+  /// pools yet can still generate a timetable, and D-175 makes the pool a
+  /// property of the lesson rather than a prerequisite for one.
+  poolId String?
+
+  /// ISO-8601 weekday: 1 = Monday … 7 = Sunday. A CHECK constraint holds the
+  /// range, because an out-of-range weekday generates NOTHING and would look
+  /// like a broken generator rather than bad data.
+  weekday Int
+
+  /// Minutes past local midnight. 18:00 is 1080.
+  startMinuteOfDay Int
+  /// How long the lesson runs. 45 minutes is the club's ordinary slot.
+  durationMinutes  Int
+
+  /// The first date this rule may produce a lesson on.
+  startsOn DateTime  @db.Date
+  /// The last date it may. NULL = open-ended; the generator's own `to` bound
+  /// then decides, which is what makes "generate the next term" a question the
+  /// administrator answers rather than the schema.
+  endsOn   DateTime? @db.Date
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group    Group              @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  pool     Pool?              @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  sessions ScheduledSession[]
+
+  @@index([groupId, active])
+  @@index([poolId])
+}
+
+/// *sluiting / vakantie* — a date range on which no lesson is generated.
+///
+/// **NOT IN THE DESIGN SET** — added by phase 1.6 alongside `SessionRecurrence`,
+/// because a recurrence with no way to skip the Christmas holidays generates a
+/// timetable the club has to correct by hand, which is worse than no timetable.
+///
+/// `groupId` NULL MEANS CLUB-WIDE, and that is the ordinary case: a school
+/// holiday closes everything. A group id narrows it to one group's week off.
+/// Both, because the question went to the domain expert unanswered and a
+/// nullable column costs nothing over either single answer.
+///
+/// **IT SUPPRESSES GENERATION AND NEVER DELETES.** Adding a holiday after a term
+/// has been generated does not remove the lessons already there — those are
+/// cancelled, individually and with a reason, which is a different act with a
+/// different record. A closure that silently deleted rows would take the
+/// attendance registered against them with it.
+/// @dataClass ORGANIZATION_SETTINGS
+model ScheduleException {
+  id String @id @default(cuid(2))
+
+  /// NULL = the whole club. Otherwise this one group only.
+  groupId String?
+
+  /// Inclusive on both ends: a one-day closure has `fromDate = toDate`. The
+  /// half-open convention would make a single day look like a mistake to the
+  /// administrator typing it.
+  fromDate DateTime @db.Date
+  toDate   DateTime @db.Date
+
+  /// Why the club is shut — *"kerstvakantie"*, *"bad in onderhoud"*. Required:
+  /// an unexplained hole in a timetable is a support question.
+  reason String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+  @@index([fromDate, toDate])
+}
+
+/// The states a lesson can be in. TWO, and the absence of more is deliberate.
+///
+/// There is no `COMPLETED`: whether a lesson has happened is its date against
+/// the clock, and a status column saying so would be a second, mutable copy of
+/// a fact the timestamp already carries — one that goes wrong the first time
+/// nobody presses the button. Attendance is registered against a session
+/// whatever its status says, and `attendance` is a different module.
+enum ScheduledSessionStatus {
+  SCHEDULED
+  /// Called off. **The row survives** — see `ScheduledSession.status`.
+  CANCELLED
+}
+
+/// *lesuur / les* — ONE LESSON OCCURRENCE, and the join point between planning
+/// and attendance.
+///
+/// **OWNED BY THIS MODULE** (D-057). An earlier draft had `planning` writing the
+/// table and `attendance` reading it — "one table, two owners", which violates
+/// the domain model's own isolation rule and would have been the first boundary
+/// to erode. Both are consumers; this module is the owner, and everything else
+/// goes through its published service.
+///
+/// WHERE, per D-175: a `Pool`, optionally narrowed to `Lane`s. There is no
+/// `Location` table — §3.2 lists one and §3.4 gives this model a `locationId`,
+/// and D-175 is the later, explicit decision. Its ORGANISATIONAL position it
+/// inherits from its group's `unitId` (§3.6), which is what `groupOfSession`
+/// plus `unitOfGroup` resolve for `UNIT` reach.
+///
+/// **CANCELLING IS A STATUS AND A REASON, NEVER A DELETE.** "There was a lesson
+/// on the 12th and it was called off" and "there was never a lesson on the
+/// 12th" are different facts, and the parent asking why their child missed a
+/// week deserves the first. Deleting would also take any attendance registered
+/// against the row with it.
+/// @dataClass SCHEDULED_SESSIONS
+model ScheduledSession {
+  id      String @id @default(cuid(2))
+  groupId String
+
+  poolId String?
+
+  /// The recurrence that generated this occurrence, or NULL for a lesson
+  /// somebody scheduled by hand. Half of the idempotency key below.
+  recurrenceId String?
+
+  /// THE LOCAL CALENDAR DATE this occurrence belongs to — the other half of the
+  /// idempotency key, and the reason generating a term twice does not double
+  /// the schedule.
+  ///
+  /// It is a separate column from `startsAt` and not derived from it, because
+  /// `startsAt` is an instant: deriving the date would mean picking a zone at
+  /// query time, and across a DST change two different instants can share a
+  /// local date. The date is what the club means by "the lesson of the 12th",
+  /// so it is stored as one.
+  occursOn DateTime @db.Date
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  status ScheduledSessionStatus @default(SCHEDULED)
+
+  /// Set together with `status = CANCELLED`, by a CHECK constraint in the
+  /// migration — a cancellation with no reason is the record D-108 refuses for
+  /// a group move, for the same reason.
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group      Group              @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  pool       Pool?              @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  recurrence SessionRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+
+  lanes        SessionLane[]
+  rosterEntries SessionRosterEntry[]
+
+  /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
+  /// so hand-scheduled lessons (`recurrenceId IS NULL`) never collide with each
+  /// other, while a generated one can exist at most once per rule per date.
+  /// Re-running the generator is then a no-op by construction rather than by a
+  /// check somebody has to remember to write — and, because the constraint sees
+  /// a CANCELLED row too, re-running never resurrects a lesson the club called
+  /// off.
+  @@unique([recurrenceId, occursOn])
+  @@index([groupId, startsAt])
+  @@index([startsAt])
+  @@index([poolId, startsAt])
+}
+
+/// Which lanes a lesson uses. A join table, because a lesson in the big pool
+/// may occupy three of the six lanes and the other three are somebody else's.
+/// @dataClass ORGANIZATION_SETTINGS
+model SessionLane {
+  sessionId String
+  laneId    String
+
+  session ScheduledSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lane    Lane             @relation(fields: [laneId], references: [id], onDelete: Restrict)
+
+  @@id([sessionId, laneId])
+  @@index([laneId])
+}
+
+/// Why a pupil is on a session's roster.
+enum SessionRosterSource {
+  /// They are in the group this lesson belongs to.
+  GROUP
+  /// *inhaalles* — they are not, and they are attending this once (D-179).
+  GUEST
+}
+
+/// *deelnemerslijst* — who is expected at one lesson.
+///
+/// §3.2: *"the roster of a session is derived from the group **plus** any
+/// explicitly added guests. A make-up lesson is a `GUEST` entry; nothing else
+/// about it is modelled."*
+///
+/// **THIS TABLE IS WHAT MAKES `SESSION` REACH WEEKLY MACHINERY** rather than an
+/// exotic case (D-179). `GROUP` coverage reaches *"the students in it"*, and a
+/// guest is not in it — so without a session-derived path the receiving
+/// instructor cannot see the child standing in front of them, and the fix at
+/// 16:55 on a Tuesday is an administrator minting a grant. `isOnSessionRoster`
+/// reads these rows AT CHECK TIME (D-068), so adding or removing a pupil
+/// changes reach immediately and nothing is cached at grant time.
+///
+/// GROUP ROWS ARE MATERIALISED, not computed on the fly, and that is the point
+/// of the table rather than an optimisation. The roster of a lesson is who was
+/// expected THAT DAY; deriving it from current membership would rewrite history
+/// every time a child changed group, and would make a guest impossible to
+/// represent at all.
+/// @dataClass ATTENDANCE_EVENTS
+model SessionRosterEntry {
+  id               String @id @default(cuid(2))
+  sessionId        String
+  studentProfileId String
+
+  source SessionRosterSource
+
+  /// Why this guest is here — *"inhaalles gemist 5 maart"*. Only meaningful on
+  /// a `GUEST` row; short free text, and never a medical fact, on the same
+  /// reasoning as `StudentLifecycleEvent.reason`.
+  reason String?
+
+  createdAt DateTime @default(now())
+
+  session        ScheduledSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentProfile StudentProfile   @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  /// One entry per pupil per lesson. A child cannot be on a roster twice, and a
+  /// guest who is later placed in the group is one row whose source changes,
+  /// not two rows.
+  @@unique([sessionId, studentProfileId])
+  @@index([studentProfileId])
+  /// The index `isOnSessionRoster` reads.
+  @@index([sessionId, studentProfileId])
+}
+
+// ---------------------------------------------------------------------------
 // Authorization: roles group permissions; assignments are org-scoped
 //
 // The TABLES are extracted; the GUARD is not. `requirePermission` and
@@ -1041,6 +1628,7 @@ model OrganizationUnit {
   // on those two columns serves.
   memberships     Membership[]
   studentProfiles StudentProfile[]
+  groups          Group[]
 
   @@index([path])
 }
@@ -1730,6 +2318,26 @@ enum DataClass {
   /// so it needed a class before it could be one.
   ROLE_ASSIGNMENTS
   STUDENT_PROFILE
+  /// **Not in §5's table.** `InstructorAssignment` — who taught which group,
+  /// when. It needed a class of its own for the reason `ROLE_ASSIGNMENTS` and
+  /// `PERSON_RELATIONSHIPS` did: D-066 counts it as a relationship that HOLDS a
+  /// person, so it had to be a classified table before it could be a
+  /// relationship source. It could not simply BE `ROLE_ASSIGNMENTS`, which is
+  /// the distinction D-145 rests on — a teaching assignment is a domain fact
+  /// and a grant is an authorization one, and the whole live-coverage rule is
+  /// that reaching a group's pupils requires BOTH. Folding them into one class
+  /// would blur exactly the line that makes the rule sayable. Ships with
+  /// `proposedLawfulBasis: UNRESOLVED`, which is D-110's own marker.
+  INSTRUCTOR_ASSIGNMENTS
+  /// **Not in §5's table.** `ScheduledSession` and the rules that generate it —
+  /// the timetable. It carries NO personal data (a group, a pool, two
+  /// timestamps and a status), which is why it is not folded into
+  /// `ATTENDANCE_EVENTS` beside the roster: those two have different content
+  /// and would then share one expiry. What it does carry is the date an
+  /// attendance event points at, so its retention must not fall BELOW
+  /// attendance's — a deleted session with retained attendance is an orphan
+  /// nobody can read.
+  SCHEDULED_SESSIONS
   /// Special category, Art. 9. `DELETE` on expiry — never anonymise (D-176).
   MEDICAL_NOTES
   /// Special category by inference (D-148, D-087).

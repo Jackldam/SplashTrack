@@ -148,6 +148,51 @@ export const RETENTION_CATALOGUE: readonly RetentionProposal[] = [
     source: "Not in §5 — added by phase 1.1; see the report",
   },
   {
+    dataClass: "INSTRUCTOR_ASSIGNMENTS",
+    purpose:
+      "Recording who taught which group and when — the timetable's staffing " +
+      "half, the answer to 'who was standing at the poolside that term', and " +
+      "the live domain fact D-145 rule 1 evaluates before a GROUP-scoped grant " +
+      "reaches any pupil.",
+    // NOT IN §5'S TABLE, and unresolved rather than guessed — the
+    // ROLE_ASSIGNMENTS and PERSON_RELATIONSHIPS precedent. Two readings are
+    // defensible and both are the organisation's to choose: it is arguably held
+    // on CONTRACT (it is how the club administers the lessons it sells) or on
+    // LEGITIMATE_INTEREST (it is the record behind a safeguarding question years
+    // later — who was with these children). Guessing would put a basis nobody
+    // chose behind every instructor in the club.
+    proposedLawfulBasis: "UNRESOLVED",
+    // D-066's rule, on the instructor's side: the row is held as long as the
+    // person is held by anything, and this row is itself one of the things
+    // holding them.
+    trigger: "LAST_RELATIONSHIP_END",
+    retainForDays: null,
+    onExpiry: "REVIEW",
+    evidencedByAudit: true,
+    source: "Not in §5 — added by phase 1.6; see the report",
+  },
+  {
+    dataClass: "SCHEDULED_SESSIONS",
+    purpose:
+      "The lesson timetable: which group swam where and when, and which " +
+      "lessons were called off. No personal data — a group, a pool, two " +
+      "timestamps and a status.",
+    proposedLawfulBasis: "LEGITIMATE_INTEREST",
+    trigger: "SESSION_DATE",
+    // NULL, and deliberately longer-lived than the attendance registered
+    // against it rather than shorter. `ATTENDANCE_EVENTS` is a hard DELETE at 24
+    // months (D-111); a timetable that expired FIRST would strand attendance
+    // rows pointing at lessons nobody can name, which is a worse record than
+    // either policy intends. Null with REVIEW says honestly that nothing
+    // deletes these automatically in v1 — the same statement the other REVIEW
+    // classes make — and leaves the number to the organisation, which is the
+    // only party that knows how far back it wants to read its own season.
+    retainForDays: null,
+    onExpiry: "REVIEW",
+    evidencedByAudit: true,
+    source: "Not in §5 — added by phase 1.6; see the report",
+  },
+  {
     dataClass: "MEDICAL_NOTES",
     purpose:
       "Keeping a child safe in the water — an instructor who does not know " +

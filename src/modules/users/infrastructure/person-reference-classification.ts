@@ -131,7 +131,32 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "own retention clock starts.",
   },
 
+  "InstructorAssignment.personId": {
+    category: "HARD_DELETE",
+    reason:
+      "An instructor's own teaching history — which groups they taught, and " +
+      "when. Their data, from their side, exactly as a StudentProfile is a " +
+      "pupil's: Restrict foreign key, an explicit deleteMany in the erasure. " +
+      "It is NOT a grant and deleting it revokes nothing (D-060); what it does " +
+      "do is end the live half of GROUP coverage, because D-145 rule 1 reads " +
+      "these rows at query time — so an erased instructor stops reaching a " +
+      "group's pupils by construction rather than by a second cleanup step.",
+  },
+
   // --- SEVER_AND_RETAIN — not the person's own data; only the link is nulled ---
+  "GroupMove.decidedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO DECIDED to move a child between groups — accountability evidence " +
+      "about somebody else's record, on the RoleAssignment.grantedByPersonId " +
+      "pattern beside it. The move belongs to the PUPIL's history and is theirs " +
+      "to keep: D-108 makes the recorded reason the entire value of the row, " +
+      "and it is what stops a move DOWN from reading as an administrative " +
+      "error to the parent looking at it. Deleting the row when the instructor " +
+      "who decided it leaves would destroy a child's history to erase an " +
+      "adult's name, so only the name goes. The foreign key is onDelete: " +
+      "SetNull as defence in depth; the erasure severs it explicitly regardless.",
+  },
   "RoleAssignment.grantedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

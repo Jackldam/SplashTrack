@@ -40,6 +40,24 @@
  * of the schema. Recorded here because "no entry" and "forgotten" look identical
  * from the outside, and this file's whole premise is that they must not.
  *
+ * PHASE 1.6 ADDS THREE MORE TO THAT SAME CATEGORY: `GroupMembership`,
+ * `SessionRosterEntry` and — from this file's point of view — the whole of the
+ * `sessions` timetable. `GroupMembership` and `SessionRosterEntry` reference
+ * `StudentProfile`, not `Person`, and cascade from it exactly as
+ * `StudentLifecycleEvent` does. `Group`, `Pool`, `Lane`, `SessionLane`,
+ * `SessionRecurrence`, `ScheduleException` and `ScheduledSession` reference no
+ * person at all: a group is a name and a capacity, a pool is a place, and a
+ * lesson is a time. They are configuration and timetable, and an erasure has
+ * nothing to do to them.
+ *
+ * `GroupMove` needs saying out loud, because its shape is the one that looks
+ * wrong at a glance: it is `erase`, its `studentProfileId` cascades with the
+ * pupil, and its `decidedByPersonId` is SEVERED rather than deleted. So erasing
+ * an INSTRUCTOR leaves every move they decided intact and anonymous — the
+ * child's history keeps the fact that the move was a considered decision with a
+ * recorded reason, which is the entire value D-108 assigns to the record, while
+ * the departed instructor's name goes. Erasing the PUPIL takes the rows.
+ *
  * `Charge` and `Payment` are NOT yet in this registry — the `fees` module has
  * not been extracted (no such tables exist in `prisma/schema.prisma` yet).
  * D-092/D-154 already describe their shape: `exempt("fiscal administration
@@ -77,6 +95,14 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     Membership: { kind: "erase" },
     StudentProfile: { kind: "erase" },
     PersonRelationship: { kind: "erase" },
+    // Phase 1.6. An instructor's teaching history is their OWN data
+    // (`InstructorAssignment.personId` is `HARD_DELETE`); a group move is
+    // somebody ELSE's history that names its decider
+    // (`GroupMove.decidedByPersonId` is `SEVER_AND_RETAIN`). Both are ordinary
+    // participants in erasure, which is what `erase` means — the column-level
+    // answer is `PERSON_REFERENCE_CLASSIFICATION`'s, not this file's.
+    InstructorAssignment: { kind: "erase" },
+    GroupMove: { kind: "erase" },
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },
