@@ -67,6 +67,10 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // The RULE that generates a timetable, and the dates it skips: configuration
   // an administrator edits, with no personal data in either.
   SessionRecurrence: "ORGANIZATION_SETTINGS",
+  // The season's lane assignment (D-190). It says which water a rule's lessons
+  // use and names nobody, so it is configuration on exactly the reasoning
+  // `SessionLane` is — and it outlives no pupil, because it references none.
+  RecurrenceLane: "ORGANIZATION_SETTINGS",
   ScheduleException: "ORGANIZATION_SETTINGS",
   ScheduledSession: "SCHEDULED_SESSIONS",
   // WHO WAS EXPECTED AT A LESSON is personal data about a pupil, held for the

@@ -45,10 +45,10 @@
  * `sessions` timetable. `GroupMembership` and `SessionRosterEntry` reference
  * `StudentProfile`, not `Person`, and cascade from it exactly as
  * `StudentLifecycleEvent` does. `Group`, `Pool`, `Lane`, `SessionLane`,
- * `SessionRecurrence`, `ScheduleException` and `ScheduledSession` reference no
- * person at all: a group is a name and a capacity, a pool is a place, and a
- * lesson is a time. They are configuration and timetable, and an erasure has
- * nothing to do to them.
+ * `RecurrenceLane` (phase 1.8), `SessionRecurrence`, `ScheduleException` and
+ * `ScheduledSession` reference no person at all: a group is a name and a
+ * capacity, a pool is a place, and a lesson is a time. They are configuration
+ * and timetable, and an erasure has nothing to do to them.
  *
  * `GroupMove` needs saying out loud, because its shape is the one that looks
  * wrong at a glance: it is `erase`, its `studentProfileId` cascades with the

@@ -334,7 +334,7 @@ model Person {
   /// accountability evidence, severed rather than deleted on erasure, so a
   /// child's record does not lose the fact that a move was a considered
   /// decision when the instructor who made it leaves.
-  groupMovesDecided     GroupMove[]           @relation("GroupMoveDecidedBy")
+  groupMovesDecided     GroupMove[]            @relation("GroupMoveDecidedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -1050,8 +1050,8 @@ model Group {
   unit OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
   memberships GroupMembership[]
-  moves       GroupMove[]          @relation("GroupMoveTo")
-  movesFrom   GroupMove[]          @relation("GroupMoveFrom")
+  moves       GroupMove[]            @relation("GroupMoveTo")
+  movesFrom   GroupMove[]            @relation("GroupMoveFrom")
   instructors InstructorAssignment[]
   recurrences SessionRecurrence[]
   sessions    ScheduledSession[]
@@ -1288,8 +1288,9 @@ model Lane {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  pool     Pool          @relation(fields: [poolId], references: [id], onDelete: Restrict)
-  sessions SessionLane[]
+  pool        Pool             @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  sessions    SessionLane[]
+  recurrences RecurrenceLane[]
 
   @@unique([poolId, name])
   @@index([poolId, sequence])
@@ -1353,8 +1354,40 @@ model SessionRecurrence {
   pool     Pool?              @relation(fields: [poolId], references: [id], onDelete: Restrict)
   sessions ScheduledSession[]
 
+  /// WHICH LANES THIS RULE'S LESSONS USE, and the reason lanes live here rather
+  /// than only on the lesson (D-190).
+  ///
+  /// *"Vaak ligt het het seizoen vast, een enkele keer wisselt het"* (Jack,
+  /// 2026-09-06). Lane assignment is an attribute of the SEASON, so it is an
+  /// attribute of the rule the season is generated from — set once, inherited by
+  /// every lesson the rule produces, and costing nothing per week.
+  ///
+  /// Every lane here must belong to this rule's `pool`, which is checked in
+  /// `lane-assignment-service.ts` and not by the schema: a lane's pool is one
+  /// join away and Postgres cannot express the dependency in a foreign key.
+  lanes RecurrenceLane[]
+
   @@index([groupId, active])
   @@index([poolId])
+}
+
+/// Which lanes a *lesreeks* uses. The inherited default for every lesson it
+/// generates.
+///
+/// A JOIN TABLE FOR THE SAME REASON `SessionLane` IS ONE: a group swimming in
+/// the big pool may occupy three of the six lanes and the other three are
+/// somebody else's. Many-to-many is the shape the club has, and collapsing it
+/// to a single `laneId` would make the common case unrepresentable.
+/// @dataClass ORGANIZATION_SETTINGS
+model RecurrenceLane {
+  recurrenceId String
+  laneId       String
+
+  recurrence SessionRecurrence @relation(fields: [recurrenceId], references: [id], onDelete: Cascade)
+  lane       Lane              @relation(fields: [laneId], references: [id], onDelete: Restrict)
+
+  @@id([recurrenceId, laneId])
+  @@index([laneId])
 }
 
 /// *sluiting / vakantie* — a date range on which no lesson is generated.
@@ -1459,6 +1492,15 @@ model ScheduledSession {
 
   status ScheduledSessionStatus @default(SCHEDULED)
 
+  /// WHERE THIS LESSON'S LANES COME FROM. **NULL is the ordinary case and means
+  /// it inherits its recurrence's lanes** — see `SessionLaneSource` for why the
+  /// column exists at all, and `lane-assignment-service.ts` for the one place
+  /// the three states are resolved.
+  ///
+  /// A hand-scheduled lesson (`recurrenceId IS NULL`) has nothing to inherit
+  /// from, so NULL there means it simply has no lanes.
+  laneSource SessionLaneSource?
+
   /// Set together with `status = CANCELLED`, by a CHECK constraint in the
   /// migration — a cancellation with no reason is the record D-108 refuses for
   /// a group move, for the same reason.
@@ -1472,7 +1514,7 @@ model ScheduledSession {
   pool       Pool?              @relation(fields: [poolId], references: [id], onDelete: Restrict)
   recurrence SessionRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
 
-  lanes        SessionLane[]
+  lanes         SessionLane[]
   rosterEntries SessionRosterEntry[]
 
   /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
@@ -1488,8 +1530,39 @@ model ScheduledSession {
   @@index([poolId, startsAt])
 }
 
+/// Why ONE lesson carries its own lanes instead of inheriting the season's.
+///
+/// The two values are not the same act and must not render as one another.
+///
+///   `OVERRIDE`  A PERSON set these lanes for this lesson. *"Een enkele keer
+///               wisselt het"* — the pool is busy, the group swims in two other
+///               lanes this Tuesday. Deliberate, and therefore never silently
+///               reverted when the recurrence changes (D-190).
+///
+///   `PINNED`    NOBODY set these lanes; the application froze them. When a
+///               recurrence's lanes change, every lesson that has ALREADY
+///               HAPPENED keeps the lanes it was taught in, because a schedule
+///               is read backwards as a record of what the club did. The lanes
+///               are copied onto the lesson at that moment and the marker says
+///               they were pinned rather than chosen.
+///
+/// Rendering a pinned lesson as an override would tell the reader somebody
+/// deliberately changed a lesson last March. Rendering it as inherited would
+/// claim it still follows the rule, which it no longer does. Hence two values.
+enum SessionLaneSource {
+  OVERRIDE
+  PINNED
+}
+
 /// Which lanes a lesson uses. A join table, because a lesson in the big pool
 /// may occupy three of the six lanes and the other three are somebody else's.
+///
+/// **A ROW HERE ONLY EXISTS WHEN THE LESSON DOES NOT INHERIT.** The common case
+/// — a season's lanes fixed on the recurrence — writes nothing to this table at
+/// all, per lesson or otherwise, and `ScheduledSession.laneSource` is what makes
+/// the absence of rows readable: NULL means "ask the recurrence", not "no
+/// lanes". An `OVERRIDE` with no rows is a lesson somebody deliberately gave no
+/// lanes, which is a different statement and an expressible one.
 /// @dataClass ORGANIZATION_SETTINGS
 model SessionLane {
   sessionId String
