@@ -295,7 +295,8 @@
       "poolUpdated": "Bad bijgewerkt.",
       "lane": "Baan toegevoegd.",
       "laneUpdated": "Baan bijgewerkt.",
-      "recurrenceStopped": "Lesreeks gestopt. De lessen die al gegenereerd zijn blijven staan."
+      "recurrenceStopped": "Lesreeks gestopt. De lessen die al gegenereerd zijn blijven staan.",
+      "closureUpdated": "Sluiting bijgewerkt."
     },
     "fields": {
       "name": "Naam",
@@ -393,7 +394,9 @@
       "scope": "Geldt voor",
       "clubWide": "hele club",
       "groupOnly": "alleen deze groep",
-      "note": "Een sluiting voorkomt dat er lessen worden aangemaakt. Lessen die er al staan blijven staan — die las je los af, met een eigen reden."
+      "note": "Een sluiting voorkomt dat er lessen worden aangemaakt. Lessen die er al staan blijven staan — die las je los af, met een eigen reden.",
+      "save": "Sluiting opslaan",
+      "saveNote": "Corrigeren verandert alleen wat er nog gegenereerd wordt. Lessen die al bestaan blijven staan; die las je af bij de les zelf."
     },
     "generate": {
       "title": "Rooster genereren",

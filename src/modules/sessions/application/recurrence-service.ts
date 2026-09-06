@@ -23,7 +23,7 @@ import { recordAuditEvent } from "@/modules/audit";
 import { ensureSessionsRegistrations } from "../infrastructure/registrations";
 import { toIsoDate } from "../domain/zoned-time";
 import { TEXT_MAX } from "./input";
-import type { ActorContext } from "./schedule-service";
+import { ScheduleError, type ActorContext } from "./schedule-service";
 
 function instant(actor: ActorContext): Date {
   return actor.at ?? new Date();
@@ -236,6 +236,107 @@ export async function createClosure(
     );
 
     return closure;
+  });
+}
+
+export interface UpdateClosureInput {
+  fromDate: unknown;
+  toDate: unknown;
+  reason: unknown;
+}
+
+/**
+ * Corrects a closure's dates or its reason.
+ *
+ * A CLOSURE IS CONFIGURATION AND NOT HISTORY, which is what makes an in-place
+ * update the right shape (see `facility-service.ts` for the same argument about
+ * a pool's name). *"Kerstvakantie, 21-12 t/m 5-1"* typed as *"21-11"* is a
+ * fortnight of lessons the generator will silently not produce, and the wrong
+ * dates answer no question anybody will ask.
+ *
+ * IT CHANGES ONLY WHAT WILL BE GENERATED. Widening a closure does not remove
+ * lessons that already exist — cancelling does that, one at a time and each
+ * with a reason — and narrowing one does not create them: generation is a
+ * separate act an administrator triggers, and it is idempotent, so re-running
+ * it fills the gap the correction opened.
+ *
+ * THE SCOPE IS NOT EDITABLE. Turning a club-wide closure into one group's night
+ * off, or the reverse, crosses the boundary `createClosure` guards — shutting
+ * the club for a fortnight is not a power a `GROUP`-scoped principal holds — so
+ * that is a new closure rather than a field on this one.
+ */
+export async function updateClosure(
+  actor: ActorContext,
+  closureId: string,
+  input: UpdateClosureInput,
+): Promise<void> {
+  ensureSessionsRegistrations();
+  const at = instant(actor);
+
+  const before = await prisma.scheduleException.findUnique({
+    where: { id: closureId },
+    select: { groupId: true, fromDate: true, toDate: true, reason: true },
+  });
+  if (!before) return;
+
+  // Guarded on the closure's OWN scope, read from the row. Taking the scope
+  // from the caller would let a group-scoped principal aim a per-group edit at
+  // a club-wide closure and be checked against their own group.
+  await requirePermission(
+    actor.principal,
+    "planning.manage",
+    before.groupId === null
+      ? { organization: true }
+      : { group: before.groupId },
+    { at },
+  );
+
+  const fromDate = requiredDate("fromDate", input.fromDate);
+  const toDate = requiredDate("toDate", input.toDate);
+  const reason = requiredText("reason", input.reason, TEXT_MAX.reason);
+
+  if (toDate < fromDate) {
+    throw new ScheduleError(
+      "windowOrder",
+      "A closure cannot end before it starts.",
+    );
+  }
+
+  const changed: string[] = [];
+  if (before.fromDate.getTime() !== fromDate.getTime()) {
+    changed.push("fromDate");
+  }
+  if (before.toDate.getTime() !== toDate.getTime()) changed.push("toDate");
+  if (before.reason !== reason) changed.push("reason");
+  if (changed.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.scheduleException.update({
+      where: { id: closureId },
+      data: { fromDate, toDate, reason },
+    });
+
+    await recordAuditEvent(
+      {
+        eventType: "sessions.closure.updated",
+        outcome: "SUCCESS",
+        actorPersonId: actor.principal.personId,
+        actorAuthMethod: "session",
+        targetType: before.groupId === null ? "organization" : "group",
+        targetId: before.groupId ?? "organization",
+        requestId: actor.requestId ?? null,
+        // The dates travel as VALUES, exactly as `createClosure` records them:
+        // a closed date range is a fact about a timetable rather than personal
+        // data, and "why is there a hole in March" is answered by these rows.
+        changedFields: {
+          closureId,
+          fields: changed.join(","),
+          fromDate: toIsoDate(fromDate),
+          toDate: toIsoDate(toDate),
+        },
+      },
+      tx,
+    );
   });
 }
 

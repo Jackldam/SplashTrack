@@ -18,6 +18,7 @@ import {
   createRecurrenceAction,
   deactivateRecurrenceAction,
   generateSessionsAction,
+  updateClosureAction,
 } from "../../actions";
 import {
   formatCalendarDate,
@@ -333,13 +334,85 @@ export default async function GroupSchedulePage({
         <ul className="list-group mb-3">
           {closures.value.map((closure) => (
             <li className="list-group-item" key={closure.id}>
-              {formatCalendarDate(closure.fromDate)} …{" "}
-              {formatCalendarDate(closure.toDate)} — {closure.reason}
-              <span className="badge text-bg-light ms-2">
-                {closure.groupId === null
-                  ? t("schedule.closures.clubWide")
-                  : t("schedule.closures.groupOnly")}
-              </span>
+              <details>
+                <summary>
+                  {formatCalendarDate(closure.fromDate)} …{" "}
+                  {formatCalendarDate(closure.toDate)} — {closure.reason}
+                  <span className="badge text-bg-light ms-2">
+                    {closure.groupId === null
+                      ? t("schedule.closures.clubWide")
+                      : t("schedule.closures.groupOnly")}
+                  </span>
+                </summary>
+                {/* A closure typed with the wrong month is a fortnight of
+                    lessons the generator silently does not produce, and there
+                    was no way to correct one. The SCOPE is not a field here —
+                    turning a club-wide closure into one group's night off
+                    crosses the boundary `createClosure` guards. */}
+                <form action={updateClosureAction} className="row g-2 mt-2">
+                  <input type="hidden" name="groupId" value={group.id} />
+                  <input type="hidden" name="closureId" value={closure.id} />
+                  <div className="col-md-3">
+                    <label
+                      className="form-label"
+                      htmlFor={`closureFrom-${closure.id}`}
+                    >
+                      {t("schedule.fields.from")}
+                    </label>
+                    <input
+                      className="form-control"
+                      id={`closureFrom-${closure.id}`}
+                      name="fromDate"
+                      type="date"
+                      defaultValue={toDateInputValue(closure.fromDate)}
+                      required
+                    />
+                  </div>
+                  <div className="col-md-3">
+                    <label
+                      className="form-label"
+                      htmlFor={`closureTo-${closure.id}`}
+                    >
+                      {t("schedule.fields.to")}
+                    </label>
+                    <input
+                      className="form-control"
+                      id={`closureTo-${closure.id}`}
+                      name="toDate"
+                      type="date"
+                      defaultValue={toDateInputValue(closure.toDate)}
+                      required
+                    />
+                  </div>
+                  <div className="col-md-6">
+                    <label
+                      className="form-label"
+                      htmlFor={`closureReason-${closure.id}`}
+                    >
+                      {t("schedule.fields.reason")}
+                    </label>
+                    <input
+                      className="form-control"
+                      id={`closureReason-${closure.id}`}
+                      name="reason"
+                      defaultValue={closure.reason}
+                      maxLength={500}
+                      required
+                    />
+                  </div>
+                  <div className="col-12">
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      type="submit"
+                    >
+                      {t("schedule.closures.save")}
+                    </button>
+                    <span className="form-text ms-3">
+                      {t("schedule.closures.saveNote")}
+                    </span>
+                  </div>
+                </form>
+              </details>
             </li>
           ))}
         </ul>

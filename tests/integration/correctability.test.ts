@@ -41,10 +41,15 @@ import { PermissionDeniedError } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 import { currentLifecycleState, recordLifecycleEvent } from "@/modules/people";
 import {
+  createClosure,
   createLane,
   createPool,
+  createRecurrence,
   FacilityError,
+  generateSessions,
+  listClosuresForGroup,
   listPoolsForPrincipal,
+  updateClosure,
   updateLane,
   updatePool,
 } from "@/modules/sessions";
@@ -56,7 +61,9 @@ import {
   GROUPS_ADMIN_PERMISSIONS,
   INSTRUCTOR_PERMISSIONS,
   installRealRelations,
+  makeGroup,
   makePerson,
+  makePool,
   makeRole,
   makeStudent,
   resetGroupsFixtures,
@@ -328,6 +335,79 @@ describe("an edit attempted without planning.manage", () => {
     // the endpoint.
     await expect(
       updatePool(reader(), "groupsfx_no_such_pool", { name: "x" }),
+    ).rejects.toBeInstanceOf(PermissionDeniedError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The same class, swept: a closure had no repair path either
+// ---------------------------------------------------------------------------
+
+describe("correcting a closure", () => {
+  it("moves the dates, audits them, and leaves generated lessons alone", async () => {
+    const groupId = await makeGroup("closure_group");
+    const poolId = await makePool("closure_pool");
+    await createRecurrence(admin(), groupId, {
+      poolId,
+      weekday: 2,
+      startTime: "18:00",
+      durationMinutes: 45,
+      startsOn: "2026-03-03",
+      endsOn: "2026-03-31",
+    });
+    const generated = await generateSessions(admin(), groupId, {
+      from: "2026-03-01",
+      to: "2026-03-31",
+    });
+
+    // Typed with the wrong MONTH, which is how this goes wrong in practice.
+    const closure = await createClosure(admin(), {
+      groupId,
+      fromDate: "2026-04-10",
+      toDate: "2026-04-17",
+      reason: "voorjaarsvakantie",
+    });
+
+    await updateClosure(admin(), closure.id, {
+      fromDate: "2026-03-10",
+      toDate: "2026-03-17",
+      reason: "voorjaarsvakantie",
+    });
+
+    const closures = await listClosuresForGroup(admin(), groupId);
+    expect(closures[0]).toMatchObject({
+      fromDate: new Date("2026-03-10T00:00:00.000Z"),
+      toDate: new Date("2026-03-17T00:00:00.000Z"),
+    });
+
+    // The lessons the club already has are untouched: a closure suppresses
+    // GENERATION and never reaches back into a timetable.
+    expect(await prisma.scheduledSession.count({ where: { groupId } })).toBe(
+      generated.created,
+    );
+
+    const events = await auditFor(groupId);
+    expect(events.at(-1)).toMatchObject({
+      eventType: "sessions.closure.updated",
+      changedFields: { closureId: closure.id, fields: "fromDate,toDate" },
+    });
+  });
+
+  it("is denied to a caller without planning.manage", async () => {
+    const groupId = await makeGroup("closure_denied");
+    const closure = await createClosure(admin(), {
+      groupId,
+      fromDate: "2026-03-10",
+      toDate: "2026-03-17",
+      reason: "kerstvakantie",
+    });
+
+    await expect(
+      updateClosure(reader(), closure.id, {
+        fromDate: "2026-01-01",
+        toDate: "2026-12-31",
+        reason: "het hele jaar dicht",
+      }),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
   });
 });

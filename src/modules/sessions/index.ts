@@ -43,10 +43,12 @@ export {
   deactivateRecurrence,
   listClosuresForGroup,
   listRecurrencesForGroup,
+  updateClosure,
   type ClosureView,
   type CreateClosureInput,
   type CreateRecurrenceInput,
   type RecurrenceView,
+  type UpdateClosureInput,
 } from "./application/recurrence-service";
 
 export {

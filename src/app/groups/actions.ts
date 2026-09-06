@@ -59,6 +59,7 @@ import {
   generateSessions,
   removeGuestFromSession,
   ScheduleError,
+  updateClosure,
   updateLane,
   updatePool,
 } from "@/modules/sessions";
@@ -337,6 +338,31 @@ export async function createClosureAction(formData: FormData): Promise<void> {
   });
   revalidatePath(`/groups/${groupId}/schedule`);
   redirect(`/groups/${groupId}/schedule?saved=closure`);
+}
+
+/**
+ * Corrects a closure's dates or its reason.
+ *
+ * A closure typed with the wrong month is a fortnight of lessons the generator
+ * silently does not produce, and until now the only way out was to leave it
+ * there. Correcting it changes what will be GENERATED and nothing that already
+ * exists — see `updateClosure`.
+ */
+export async function updateClosureAction(formData: FormData): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  await run(`/groups/${groupId}/schedule`, async () => {
+    await updateClosure(
+      await actor(),
+      String(formData.get("closureId") ?? ""),
+      {
+        fromDate: formData.get("fromDate"),
+        toDate: formData.get("toDate"),
+        reason: formData.get("reason"),
+      },
+    );
+  });
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(`/groups/${groupId}/schedule?saved=closureUpdated`);
 }
 
 export async function cancelSessionAction(formData: FormData): Promise<void> {

@@ -295,7 +295,8 @@
       "poolUpdated": "Pool updated.",
       "lane": "Lane added.",
       "laneUpdated": "Lane updated.",
-      "recurrenceStopped": "Recurrence stopped. The lessons it already generated stay."
+      "recurrenceStopped": "Recurrence stopped. The lessons it already generated stay.",
+      "closureUpdated": "Closure updated."
     },
     "fields": {
       "name": "Name",
@@ -393,7 +394,9 @@
       "scope": "Applies to",
       "clubWide": "the whole club",
       "groupOnly": "this group only",
-      "note": "A closure stops lessons being created. Lessons already on the schedule stay — you cancel those one at a time, each with its own reason."
+      "note": "A closure stops lessons being created. Lessons already on the schedule stay — you cancel those one at a time, each with its own reason.",
+      "save": "Save closure",
+      "saveNote": "Correcting it changes only what is still to be generated. Lessons that already exist stay; those are cancelled on the lesson itself."
     },
     "generate": {
       "title": "Generate the schedule",
