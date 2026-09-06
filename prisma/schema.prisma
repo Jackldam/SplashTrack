@@ -1524,11 +1524,19 @@ enum SessionRosterSource {
 /// reads these rows AT CHECK TIME (D-068), so adding or removing a pupil
 /// changes reach immediately and nothing is cached at grant time.
 ///
-/// GROUP ROWS ARE MATERIALISED, not computed on the fly, and that is the point
-/// of the table rather than an optimisation. The roster of a lesson is who was
-/// expected THAT DAY; deriving it from current membership would rewrite history
-/// every time a child changed group, and would make a guest impossible to
-/// represent at all.
+/// **ONLY THE EXPLICIT HALF IS STORED.** §3.2 says the roster is *"derived from
+/// the group plus any explicitly added guests"*, and it is: the group half is
+/// computed at read time from `GroupMembership` AT THE LESSON'S OWN DATE, and
+/// only deliberate additions become rows here. `source` is therefore `GUEST` on
+/// everything this pass writes; the `GROUP` value exists for the future step
+/// that FREEZES a roster once attendance has been registered against it.
+///
+/// Deriving is safe — and better than materialising — precisely because
+/// `GroupMembership` is time-bounded and never mutated: a move CLOSES one row
+/// and opens another, so "who was in group G on 3 March" is a stable answer that
+/// does not change when a child moves in April. Materialising at generation time
+/// would have been the worse choice in the obvious direction: a term generated
+/// in September would miss every child who joins in November.
 /// @dataClass ATTENDANCE_EVENTS
 model SessionRosterEntry {
   id               String @id @default(cuid(2))
