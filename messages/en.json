@@ -236,5 +236,207 @@
     "codeHelp": "The six digits your app is showing now.",
     "verify": "Finish setting up",
     "reloadWarning": "Do not reload this page: the QR code disappears and you start again from your password."
+  },
+  "groups": {
+    "title": "Groups",
+    "subtitle": "Who is taught together, who teaches them, and when.",
+    "empty": "There are no groups yet.",
+    "full": "full",
+    "capacityUnknown": "(no capacity set)",
+    "noInstructor": "No instructor yet",
+    "columns": {
+      "name": "Group",
+      "occupancy": "Occupancy",
+      "instructors": "Instructors",
+      "schedule": "Schedule",
+      "scheduleLink": "View schedule",
+      "pupil": "Pupil",
+      "studentNumber": "Pupil number",
+      "since": "Since",
+      "actions": "Actions"
+    },
+    "denied": {
+      "title": "No access",
+      "explanation": "You do not have access to this. The permission required: {permission}. This is not a fault — ask an administrator if you need access."
+    },
+    "errors": {
+      "denied": "You do not have access to this action.",
+      "validation": "The details entered are not valid.",
+      "groupFull": "This group is full. Tick 'place above capacity' if you mean to do this.",
+      "sameGroup": "That is not a move: the pupil is already in this group.",
+      "reasonRequired": "Give a reason. Without one, a move later reads as a mistake.",
+      "notInSourceGroup": "This pupil is not in the group you are moving them out of.",
+      "endsBeforeItStarts": "The end date falls before the start date.",
+      "alreadyClosed": "This has already been ended.",
+      "noOpenInterval": "There is nothing open to end.",
+      "alreadyCancelled": "That lesson is already cancelled.",
+      "notFound": "That lesson does not exist.",
+      "windowTooWide": "Choose a shorter period. More than eighteen months at once is almost always a mistyped year — and running it again is safe.",
+      "windowOrder": "The end date falls before the start date."
+    },
+    "saved": {
+      "group": "Group saved.",
+      "instructor": "Instructor assigned.",
+      "instructorEnded": "Assignment ended. This instructor can no longer see this group.",
+      "placed": "Pupil placed.",
+      "moved": "Pupil moved.",
+      "membershipEnded": "Placement ended.",
+      "recurrence": "Recurrence added.",
+      "closure": "Closure recorded.",
+      "cancelled": "Lesson cancelled.",
+      "guest": "Guest added.",
+      "guestRemoved": "Guest removed.",
+      "pool": "Pool added."
+    },
+    "fields": {
+      "name": "Name",
+      "capacity": "Capacity",
+      "capacityHelp": "Places in the group. Leaving it empty means 'not stated', not 'unlimited'.",
+      "active": "Active"
+    },
+    "create": {
+      "title": "New group",
+      "submit": "Create group"
+    },
+    "edit": {
+      "title": "Edit group",
+      "submit": "Save"
+    },
+    "detail": {
+      "title": "Group",
+      "notFound": "This group does not exist.",
+      "instructors": "Instructors",
+      "members": "Pupils",
+      "noMembers": "No pupils in this group yet.",
+      "occupancy": "{occupied} of {capacity} places taken",
+      "occupancyUnknown": "{occupied} pupils · capacity not stated"
+    },
+    "instructor": {
+      "assign": "Assign instructor",
+      "personId": "Person id",
+      "role": "Role (your own word)",
+      "fromDate": "From",
+      "endDate": "End date",
+      "end": "End",
+      "endNote": "Ending an assignment is how someone loses access to this group. It takes effect on their very next query — there is no cleanup job. The row stays, so 'who taught this group' remains answerable."
+    },
+    "membership": {
+      "endDate": "End date",
+      "end": "Remove"
+    },
+    "place": {
+      "title": "Place a pupil",
+      "studentProfileId": "StudentProfile id",
+      "fromDate": "From",
+      "reason": "Reason",
+      "override": "Place above capacity (a deliberate choice, and it is recorded)",
+      "submit": "Place"
+    },
+    "move": {
+      "title": "Move a pupil",
+      "note": "One form for every direction. Moving a pupil back down is an ordinary teaching decision and is recorded exactly as moving up is — not as a correction.",
+      "pupil": "Pupil",
+      "toGroup": "To group",
+      "direction": "Direction",
+      "directions": {
+        "UP": "Up a level",
+        "DOWN": "Back down a level",
+        "LATERAL": "Same level"
+      },
+      "occurredAt": "Date",
+      "reason": "Reason",
+      "reasonHelp": "The reason is required and is the whole value of the record: 'needs more time on the breaststroke leg kick' is a teaching decision, a blank reads as a mistake.",
+      "submit": "Move"
+    },
+    "pools": {
+      "link": "Pools and lanes"
+    }
+  },
+  "schedule": {
+    "title": "Schedule",
+    "subtitle": "Lessons for {group}. Times in {timeZone}.",
+    "noPool": "no pool chosen",
+    "generated": "{created} lessons created out of {planned} planned; {skipped} skipped by a closure.",
+    "fields": {
+      "weekday": "Day",
+      "startTime": "Start time",
+      "duration": "Length (min)",
+      "pool": "Pool",
+      "startsOn": "Runs from",
+      "endsOn": "Runs until",
+      "from": "From",
+      "to": "To (inclusive)",
+      "reason": "Reason"
+    },
+    "recurrences": {
+      "title": "Recurrences",
+      "empty": "No recurrence yet. Without one, no schedule can be generated.",
+      "add": "Add a recurrence",
+      "line": "Every {weekday} at {start}, {duration} minutes, in {pool}",
+      "inactive": "stopped"
+    },
+    "closures": {
+      "title": "Closures and holidays",
+      "empty": "No closures recorded.",
+      "add": "Add a closure",
+      "scope": "Applies to",
+      "clubWide": "the whole club",
+      "groupOnly": "this group only",
+      "note": "A closure stops lessons being created. Lessons already on the schedule stay — you cancel those one at a time, each with its own reason."
+    },
+    "generate": {
+      "title": "Generate the schedule",
+      "submit": "Create lessons",
+      "note": "Running this again is safe: existing lessons are not duplicated, and cancelled lessons do not come back."
+    },
+    "lessons": {
+      "title": "Lessons",
+      "empty": "No lessons in this period yet.",
+      "scheduled": "Going ahead",
+      "cancelled": "Cancelled",
+      "cancel": "Cancel",
+      "cancelReason": "Reason",
+      "cancelNote": "A cancelled lesson stays on the schedule with its reason. 'The lesson was called off' and 'there was no lesson' are different answers to a parent's question."
+    },
+    "columns": {
+      "moment": "When",
+      "pool": "Pool",
+      "status": "Status"
+    }
+  },
+  "session": {
+    "title": "Lesson",
+    "notFound": "This lesson does not exist.",
+    "cancelled": "This lesson was cancelled: {reason}",
+    "roster": {
+      "title": "Attending",
+      "empty": "Nobody on the roster yet.",
+      "source": "Why they are here",
+      "guest": "GUEST",
+      "groupMember": "In the group"
+    },
+    "guest": {
+      "title": "Add a guest (make-up lesson)",
+      "note": "A make-up lesson is an ordinary lesson with a guest. The guest does not join the group and takes no place in it; this lesson's instructor can see the child because they are on this roster.",
+      "studentProfileId": "StudentProfile id",
+      "reason": "Reason (e.g. 'make-up, missed 5 March')",
+      "submit": "Add guest",
+      "remove": "Remove"
+    }
+  },
+  "pools": {
+    "title": "Pools and lanes",
+    "subtitle": "Where lessons happen. A pool is a place, not a department and not a permission level.",
+    "empty": "No pools recorded yet.",
+    "noLanes": "No lanes recorded.",
+    "lanes": "{count} lanes: {names}",
+    "create": {
+      "title": "Add a pool",
+      "submit": "Add pool"
+    },
+    "fields": {
+      "name": "Name",
+      "length": "Length (m)"
+    }
   }
 }

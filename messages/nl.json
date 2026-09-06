@@ -236,5 +236,207 @@
     "codeHelp": "De zes cijfers die je app nu toont.",
     "verify": "Instellen afronden",
     "reloadWarning": "Ververs deze pagina niet: de QR-code verdwijnt dan en je begint opnieuw met je wachtwoord."
+  },
+  "groups": {
+    "title": "Groepen",
+    "subtitle": "Wie er samen les krijgt, wie er lesgeeft, en wanneer.",
+    "empty": "Er zijn nog geen groepen.",
+    "full": "vol",
+    "capacityUnknown": "(geen capaciteit ingesteld)",
+    "noInstructor": "Nog geen lesgever",
+    "columns": {
+      "name": "Groep",
+      "occupancy": "Bezetting",
+      "instructors": "Lesgevers",
+      "schedule": "Rooster",
+      "scheduleLink": "Rooster bekijken",
+      "pupil": "Leerling",
+      "studentNumber": "Leerlingnummer",
+      "since": "Sinds",
+      "actions": "Acties"
+    },
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je hebt hier geen toegang toe. De benodigde rechten: {permission}. Dit is geen storing — vraag een beheerder om toegang als je die nodig hebt."
+    },
+    "errors": {
+      "denied": "Je hebt geen toegang tot deze actie.",
+      "validation": "De ingevoerde gegevens kloppen niet.",
+      "groupFull": "Deze groep zit vol. Vink 'boven de capaciteit plaatsen' aan als je dit bewust doet.",
+      "sameGroup": "Dit is geen verplaatsing: de leerling zit al in deze groep.",
+      "reasonRequired": "Geef een reden op. Zonder reden leest een overplaatsing later als een fout.",
+      "notInSourceGroup": "Deze leerling zit niet (meer) in de groep waaruit je hem wilt verplaatsen.",
+      "endsBeforeItStarts": "De einddatum ligt vóór de begindatum.",
+      "alreadyClosed": "Dit is al beëindigd.",
+      "noOpenInterval": "Er is niets lopends om te beëindigen.",
+      "alreadyCancelled": "Deze les is al afgelast.",
+      "notFound": "Die les bestaat niet.",
+      "windowTooWide": "Kies een kortere periode. Meer dan anderhalf jaar in één keer is bijna altijd een verkeerd jaartal — en opnieuw uitvoeren is veilig.",
+      "windowOrder": "De einddatum ligt vóór de begindatum."
+    },
+    "saved": {
+      "group": "Groep opgeslagen.",
+      "instructor": "Lesgever toegewezen.",
+      "instructorEnded": "Toewijzing beëindigd. Deze lesgever ziet deze groep vanaf nu niet meer.",
+      "placed": "Leerling geplaatst.",
+      "moved": "Leerling verplaatst.",
+      "membershipEnded": "Plaatsing beëindigd.",
+      "recurrence": "Lesreeks toegevoegd.",
+      "closure": "Sluiting vastgelegd.",
+      "cancelled": "Les afgelast.",
+      "guest": "Gast toegevoegd.",
+      "guestRemoved": "Gast verwijderd.",
+      "pool": "Bad toegevoegd."
+    },
+    "fields": {
+      "name": "Naam",
+      "capacity": "Capaciteit",
+      "capacityHelp": "Aantal plekken in de groep. Leeg laten mag: dat betekent 'niet vastgesteld', niet 'onbeperkt'.",
+      "active": "Actief"
+    },
+    "create": {
+      "title": "Nieuwe groep",
+      "submit": "Groep aanmaken"
+    },
+    "edit": {
+      "title": "Groep bewerken",
+      "submit": "Opslaan"
+    },
+    "detail": {
+      "title": "Groep",
+      "notFound": "Deze groep bestaat niet.",
+      "instructors": "Lesgevers",
+      "members": "Leerlingen",
+      "noMembers": "Nog geen leerlingen in deze groep.",
+      "occupancy": "{occupied} van {capacity} plekken bezet",
+      "occupancyUnknown": "{occupied} leerlingen · capaciteit niet vastgesteld"
+    },
+    "instructor": {
+      "assign": "Lesgever toewijzen",
+      "personId": "Person-id",
+      "role": "Rol (eigen woorden)",
+      "fromDate": "Vanaf",
+      "endDate": "Einddatum",
+      "end": "Beëindigen",
+      "endNote": "Een toewijzing beëindigen is hoe iemand zijn toegang tot deze groep verliest. Dat gaat direct in bij de volgende keer dat diegene iets opvraagt — er draait geen opruimtaak. De regel blijft staan, zodat 'wie gaf hier les' beantwoordbaar blijft."
+    },
+    "membership": {
+      "endDate": "Einddatum",
+      "end": "Uitschrijven"
+    },
+    "place": {
+      "title": "Leerling plaatsen",
+      "studentProfileId": "StudentProfile-id",
+      "fromDate": "Vanaf",
+      "reason": "Reden",
+      "override": "Boven de capaciteit plaatsen (bewuste keuze, wordt vastgelegd)",
+      "submit": "Plaatsen"
+    },
+    "move": {
+      "title": "Leerling verplaatsen",
+      "note": "Eén formulier voor alle richtingen. Een leerling terugzetten is een gewone lesbeslissing en wordt precies zo vastgelegd als doorstromen — niet als correctie.",
+      "pupil": "Leerling",
+      "toGroup": "Naar groep",
+      "direction": "Richting",
+      "directions": {
+        "UP": "Doorstromen",
+        "DOWN": "Terugzetten",
+        "LATERAL": "Zelfde niveau"
+      },
+      "occurredAt": "Datum",
+      "reason": "Reden",
+      "reasonHelp": "De reden is verplicht en is het hele punt van de vastlegging: 'meer tijd nodig voor de schoolslagbeenslag' is een lesbeslissing, een lege reden leest als een fout.",
+      "submit": "Verplaatsen"
+    },
+    "pools": {
+      "link": "Baden en banen"
+    }
+  },
+  "schedule": {
+    "title": "Rooster",
+    "subtitle": "Lessen van {group}. Tijden in {timeZone}.",
+    "noPool": "geen bad gekozen",
+    "generated": "{created} lessen aangemaakt van {planned} gepland; {skipped} overgeslagen wegens een sluiting.",
+    "fields": {
+      "weekday": "Dag",
+      "startTime": "Begintijd",
+      "duration": "Duur (min)",
+      "pool": "Bad",
+      "startsOn": "Loopt vanaf",
+      "endsOn": "Loopt tot",
+      "from": "Van",
+      "to": "Tot en met",
+      "reason": "Reden"
+    },
+    "recurrences": {
+      "title": "Lesreeksen",
+      "empty": "Nog geen lesreeks. Zonder lesreeks kan er geen rooster gegenereerd worden.",
+      "add": "Lesreeks toevoegen",
+      "line": "Elke {weekday} om {start}, {duration} minuten, in {pool}",
+      "inactive": "gestopt"
+    },
+    "closures": {
+      "title": "Sluitingen en vakanties",
+      "empty": "Geen sluitingen vastgelegd.",
+      "add": "Sluiting toevoegen",
+      "scope": "Geldt voor",
+      "clubWide": "hele club",
+      "groupOnly": "alleen deze groep",
+      "note": "Een sluiting voorkomt dat er lessen worden aangemaakt. Lessen die er al staan blijven staan — die las je los af, met een eigen reden."
+    },
+    "generate": {
+      "title": "Rooster genereren",
+      "submit": "Lessen aanmaken",
+      "note": "Opnieuw uitvoeren is veilig: bestaande lessen worden niet gedupliceerd en afgelaste lessen komen niet terug."
+    },
+    "lessons": {
+      "title": "Lessen",
+      "empty": "Nog geen lessen in deze periode.",
+      "scheduled": "Gaat door",
+      "cancelled": "Afgelast",
+      "cancel": "Aflassen",
+      "cancelReason": "Reden",
+      "cancelNote": "Een afgelaste les blijft in het rooster staan, met de reden erbij. 'De les is afgelast' en 'er was geen les' zijn verschillende antwoorden op de vraag van een ouder."
+    },
+    "columns": {
+      "moment": "Wanneer",
+      "pool": "Bad",
+      "status": "Status"
+    }
+  },
+  "session": {
+    "title": "Les",
+    "notFound": "Deze les bestaat niet.",
+    "cancelled": "Deze les is afgelast: {reason}",
+    "roster": {
+      "title": "Deelnemers",
+      "empty": "Nog niemand op de deelnemerslijst.",
+      "source": "Reden van deelname",
+      "guest": "GAST",
+      "groupMember": "In de groep"
+    },
+    "guest": {
+      "title": "Gast toevoegen (inhaalles)",
+      "note": "Een inhaalles is een gewone les met een gast erbij. De gast komt niet in de groep en neemt geen plek in; de lesgever van deze les ziet het kind doordat het op deze deelnemerslijst staat.",
+      "studentProfileId": "StudentProfile-id",
+      "reason": "Reden (bijv. 'inhaalles, les van 5 maart gemist')",
+      "submit": "Gast toevoegen",
+      "remove": "Verwijderen"
+    }
+  },
+  "pools": {
+    "title": "Baden en banen",
+    "subtitle": "Waar de lessen plaatsvinden. Een bad is een plek, geen afdeling en geen rechtenniveau.",
+    "empty": "Nog geen baden vastgelegd.",
+    "noLanes": "Geen banen vastgelegd.",
+    "lanes": "{count} banen: {names}",
+    "create": {
+      "title": "Bad toevoegen",
+      "submit": "Bad toevoegen"
+    },
+    "fields": {
+      "name": "Naam",
+      "length": "Lengte (m)"
+    }
   }
 }
