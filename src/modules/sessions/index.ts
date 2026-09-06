@@ -58,9 +58,14 @@ export {
 export {
   createLane,
   createPool,
+  FacilityError,
   listPoolsForPrincipal,
+  updateLane,
+  updatePool,
   type CreateLaneInput,
   type CreatePoolInput,
+  type UpdateLaneInput,
+  type UpdatePoolInput,
 } from "./application/facility-service";
 
 export {
