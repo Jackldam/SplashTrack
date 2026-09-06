@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: ${{ secrets.UAT_APP_URL }}
+      url: https://uat.splashtrack.sysadminheaven.nl
     steps:
       - name: Notify team for approval
         run: |
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: ${{ secrets.UAT_APP_URL }}
+      url: https://uat.splashtrack.sysadminheaven.nl
     steps:
       - uses: actions/checkout@v4
 

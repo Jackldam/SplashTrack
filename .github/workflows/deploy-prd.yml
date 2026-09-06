@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: ${{ secrets.PRD_APP_URL }}
+      url: ${{ vars.PRD_APP_URL }}
     steps:
       - name: Verify deployment criteria
         run: |
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: ${{ secrets.PRD_APP_URL }}
+      url: ${{ vars.PRD_APP_URL }}
     steps:
       - uses: actions/checkout@v4
 
