@@ -98,7 +98,17 @@ export class ScheduleError extends Error {
       /** Lanes were chosen for a series or a lesson that names no pool. */
       | "laneWithoutPool"
       /** The submitted selection was not a list of ids, or was too long. */
-      | "laneUnknown",
+      | "laneUnknown"
+      /** A series was pointed at a pool that does not exist or is out of use.
+       *  NOT a reuse of `FacilityError`'s `facilityNotFound`: that is the
+       *  facility module answering about its own record, this is the timetable
+       *  refusing to plan lessons somewhere nobody swims — and the reason is a
+       *  message key, so the two may not share a name. */
+      | "poolNotFound"
+      /** A season's pool cannot move while one of its FUTURE lessons carries
+       *  lanes of its own. Those lanes are places inside the pool being left
+       *  behind, and D-190 forbids silently reverting a deliberate override. */
+      | "laneOverrideBlocksPool",
     message: string,
   ) {
     super(message);

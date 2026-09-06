@@ -296,8 +296,15 @@ export async function setRecurrenceLanes(
  * lesson are both excluded by it, and neither could be excluded by looking at
  * whether `SessionLane` rows are present, because an override with no lanes
  * looks exactly like an inheriting lesson from the join table alone.
+ *
+ * EXPORTED TO THIS MODULE AND NO FURTHER. `updateRecurrence` moves a season to
+ * another pool, which empties its lane selection — the same loss of inherited
+ * lanes `setRecurrenceLanes([])` is, so it owes the past the same freeze. It
+ * calls this rather than repeating it, because two copies of rule 3 is how one
+ * of them quietly stops matching the other. It is not re-exported from
+ * `index.ts`: it is half of a write, not a capability a screen calls.
  */
-async function pinPastOccurrences(
+export async function pinPastOccurrences(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   recurrenceId: string,
   laneIds: readonly string[],

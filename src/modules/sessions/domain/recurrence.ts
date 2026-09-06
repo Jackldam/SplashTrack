@@ -105,6 +105,29 @@ function closes(window: ClosureWindow, date: Date): boolean {
 }
 
 /**
+ * The closure that covers one date for one group, or null.
+ *
+ * ONE HOME FOR "club-wide, or this group's, both ends inclusive" (D-134).
+ * `expandRecurrence` below asks it per occurrence it is about to plan, and
+ * `updateRecurrence` asks it of a date a lesson has just been MOVED to — moving
+ * a season from Tuesday to Thursday can walk a lesson onto the club's Christmas
+ * fortnight, and that is worth counting rather than discovering at the pool.
+ */
+export function closureCovering(
+  closures: readonly ClosureWindow[],
+  groupId: string,
+  date: Date,
+): ClosureWindow | null {
+  return (
+    closures.find(
+      (closure) =>
+        (closure.groupId === null || closure.groupId === groupId) &&
+        closes(closure, date),
+    ) ?? null
+  );
+}
+
+/**
  * The dates one rule produces between `from` and `to` inclusive, minus the
  * closures that apply to it.
  *
@@ -134,17 +157,13 @@ export function expandRecurrence(
   if (start.getTime() > end.getTime()) return { planned, skipped };
 
   // Walk forward to the first matching weekday, then step a week at a time.
-  // Bounded by construction: `applicable` never exceeds seven, and each
-  // iteration advances by exactly seven days toward `end`.
+  // Bounded by construction: the offset never exceeds seven, and each iteration
+  // advances by exactly seven days toward `end`.
   const offset = (rule.weekday - isoWeekday(start) + 7) % 7;
   let cursor = addDays(start, offset);
 
-  const applicable = closures.filter(
-    (closure) => closure.groupId === null || closure.groupId === groupId,
-  );
-
   while (cursor.getTime() <= end.getTime()) {
-    const closure = applicable.find((candidate) => closes(candidate, cursor));
+    const closure = closureCovering(closures, groupId, cursor);
     if (closure) {
       skipped.push({
         recurrenceId: rule.id,
