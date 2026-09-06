@@ -269,8 +269,18 @@ Each checked against the code rather than against the report.
 | **D‑3** relationship authority/evidence | **Yes**, unchanged | No `updateRelationship` exists. The evidence column is encrypted (D‑096), so a correction path must be written with the envelope in mind. |
 | **D‑4** assignment/placement made by mistake | **Yes — and the report understated it** | See below. |
 | **D‑5** a cancelled lesson cannot be un-cancelled | **Yes**, unchanged | No service exists, deliberately. `ScheduledSession_cancellation_shape_check` was written with this case explicitly in mind. |
-| **D‑6** recurrence weekday/time not editable | **Closed, not deferred** | Unchanged: stop-and-create *is* the correction, and the screen supports it. |
+| **D‑6** recurrence weekday/time not editable | ~~**Closed, not deferred**~~ — **this row was wrong; see the note under the table** | ~~Unchanged: stop-and-create *is* the correction, and the screen supports it.~~ |
 | **D‑7** a closure cannot be removed | **Yes**, unchanged | No delete path exists. Adding one to a module whose index deliberately exports none is a decision, not an implementation. |
+
+> **Correction, 2026-09-06 (phase 1.9).** The D‑6 row above is wrong, and it was
+> wrong when this report was written — it reviewed the deferral against the
+> phase 1.7 report rather than against the code, which is the exact failure §6
+> opens by claiming to avoid. `deactivateRecurrence` touches no
+> `ScheduledSession`, and the idempotency key is `(recurrenceId, occursOn)`,
+> **per rule** — so a replacement series does not deduplicate against its
+> predecessor's lessons and the club gets two lessons that evening, one at the
+> wrong time. `updateRecurrence` (D-191) is the correction;
+> `docs/build/phase-1.9-recurrence-correction-report.md` §1 counts the rows.
 
 **None of the seven is a capability with no surface** — so none of them was this
 pass's business under the brief's rule. Two need expanding.
