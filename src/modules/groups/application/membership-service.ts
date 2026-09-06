@@ -397,13 +397,20 @@ export async function endGroupMembership(
 }
 
 /**
- * A pupil's whole group history, guarded on the PUPIL rather than on a group.
+ * A pupil's group history — guarded on the PUPIL, and then NARROWED to the
+ * groups this caller reaches.
  *
- * `{ student }` is the right reference: the history spans groups, so no single
- * group reference could authorise it, and a `GROUP`-scoped instructor holding
- * reach over one of them must not thereby read the child's placements
- * everywhere. That is D-145 rule 2 — coverage is per relation, and a group grant
- * returns *that group's* records, not the pupil's other ones.
+ * TWO STEPS, AND BOTH ARE NECESSARY. `{ student }` is the right reference for
+ * the guard: the history spans groups, so no single group reference could
+ * authorise it. But passing that guard is not the same as being entitled to all
+ * of it — a `GROUP` grant covers `{ student }` for a pupil in that group, so the
+ * guard alone let an instructor read every group the child had ever been in.
+ * D-145 rule 2 is explicit that coverage is per RELATION and a group grant
+ * returns *that group's* records, so the reach goes to the repository as a
+ * required argument and the narrowing happens in the query.
+ *
+ * Caught by `groups-scope-escape.test.ts` rather than by review — see
+ * `findStudentGroupHistory` for the full account.
  */
 export async function getStudentGroupHistory(
   actor: ActorContext,
@@ -412,14 +419,14 @@ export async function getStudentGroupHistory(
   ensureGroupsRegistrations();
   const at = instant(actor);
 
-  await requirePermission(
+  const reach = await requirePermission(
     actor.principal,
     "groups.read",
     { student: studentProfileId },
     { at },
   );
 
-  return findStudentGroupHistory(studentProfileId);
+  return findStudentGroupHistory(studentProfileId, reach);
 }
 
 export { GroupFullError } from "../domain/capacity";

@@ -47,8 +47,10 @@ import { prisma } from "@/lib/database";
  * It mirrors `../domain/interval.ts`'s `isActiveAt` and the two must agree — the
  * domain function is what the services and the screens use, this is what the
  * database evaluates, and a disagreement between them would be an access
- * decision that depends on which one asked. `groups-reach.test.ts` exercises
- * both against the same rows.
+ * decision that depends on which one asked.
+ * `tests/integration/groups-scope-escape.test.ts` runs the list filter and
+ * `coversResource` over the same rows for the same principals, which is what
+ * catches a divergence.
  */
 function activeAt(at: Date) {
   return {

@@ -206,8 +206,18 @@ export interface GroupHistoryEntry {
 
 export interface GroupMoveEntry {
   readonly id: string;
+  /**
+   * Null for a FIRST placement — there was no group before this one — and also
+   * null when the caller does not reach the group they came from, which
+   * {@link GroupMoveEntry.fromGroupWithheld} is what distinguishes. Two very
+   * different facts; a screen that rendered both as a blank would be telling one
+   * of them wrongly.
+   */
   readonly fromGroupName: string | null;
-  readonly toGroupName: string;
+  /** True when a group name was WITHHELD rather than absent. */
+  readonly fromGroupWithheld: boolean;
+  readonly toGroupName: string | null;
+  readonly toGroupWithheld: boolean;
   readonly direction: "UP" | "DOWN" | "LATERAL";
   readonly reason: string;
   readonly occurredAt: Date;
@@ -219,8 +229,38 @@ export interface GroupMoveEntry {
 }
 
 /**
- * A pupil's WHOLE group history — every placement and every move, in both
- * directions.
+ * A pupil's group history, NARROWED TO WHAT THIS REACH COVERS.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THE REACH ARGUMENT IS NOT OPTIONAL, AND WHY IT WAS ADDED
+ *
+ * The first version of this function took only a `studentProfileId` and returned
+ * everything, on the strength of the service having guarded `{ student }`. That
+ * guard is real — it establishes the caller reaches the PUPIL — and it is not
+ * sufficient, which is exactly D-145 rule 2: *coverage is per **relation**, not
+ * per entity*, and a `GROUP`-scoped instructor gets *"that group's progress and
+ * attendance only"*.
+ *
+ * A `GROUP` grant DOES cover `{ student }` for a pupil in that group
+ * (`coversResource`'s `GROUPS`/`student` branch), so the guard passed and the
+ * instructor received every group the child had ever been in, by name, with
+ * dates — including the club-swimming group they have no relationship with.
+ * `groups-scope-escape.test.ts` caught it, which is the case
+ * `06-delivery.md` §2.1 means when it requires the suite to assert on the
+ * FIELDS returned rather than only on reachability. A green `coversResource` is
+ * necessary and not sufficient.
+ *
+ * So the narrowing is here, in the query, against the same filter the group list
+ * uses — one home for "which groups does this reach cover".
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A WITHHELD GROUP IS SAID TO BE WITHHELD
+ *
+ * A move whose OTHER end is out of reach is still the pupil's history and still
+ * belongs in the list: *"moved out of this group on 3 March, meer tijd nodig
+ * voor de schoolslagbeenslag"* is the instructor's own record. What is withheld
+ * is the other group's NAME, and the entry says so rather than rendering a blank
+ * that reads as "there was no group".
  *
  * ORDERED BY DATE AND NOTHING ELSE. There is no filter that hides a `DOWN`, no
  * separate "corrections" list, and no flag the renderer could colour on: a move
@@ -229,13 +269,25 @@ export interface GroupMoveEntry {
  */
 export async function findStudentGroupHistory(
   studentProfileId: string,
+  reach: Reach,
 ): Promise<{
   memberships: GroupHistoryEntry[];
   moves: GroupMoveEntry[];
 }> {
+  const filter = groupFilterForReach(reach);
+  if (filter.kind === "DENIED") throw new ReachCoversNoGroupError();
+
+  // NULL means "no narrowing", and it is kept distinct from an empty object on
+  // purpose. `{ group: {} }` is NOT a no-op in Prisma — as a relation filter it
+  // constrains rather than passes through, and using it for the `ALL` case
+  // silently returned an empty history to an ORGANIZATION-scoped administrator.
+  // The same reason `GroupReachFilter` has an `ALL` variant instead of an empty
+  // `where`: "no filter" and "a filter that matches everything" are different.
+  const scope = filter.kind === "WHERE" ? filter.where : null;
+
   const [memberships, moves] = await Promise.all([
     prisma.groupMembership.findMany({
-      where: { studentProfileId },
+      where: { studentProfileId, ...(scope ? { group: scope } : {}) },
       orderBy: [{ fromDate: "asc" }],
       select: {
         id: true,
@@ -245,19 +297,49 @@ export async function findStudentGroupHistory(
       },
     }),
     prisma.groupMove.findMany({
-      where: { studentProfileId },
+      // EITHER end. A move out of the caller's group is as much their record as
+      // a move into it, and dropping the first would make a child appear to
+      // vanish from the history with no explanation.
+      where: {
+        studentProfileId,
+        ...(scope ? { OR: [{ toGroup: scope }, { fromGroup: scope }] } : {}),
+      },
       orderBy: [{ occurredAt: "asc" }],
       select: {
         id: true,
         direction: true,
         reason: true,
         occurredAt: true,
+        fromGroupId: true,
+        toGroupId: true,
         fromGroup: { select: { name: true } },
         toGroup: { select: { name: true } },
         decidedBy: { select: { givenName: true, familyName: true } },
       },
     }),
   ]);
+
+  // Which of the groups named by those moves this reach actually covers. One
+  // query rather than one per move, and it uses the same filter as everything
+  // else so it cannot disagree with the list above.
+  const named = new Set<string>();
+  for (const move of moves) {
+    named.add(move.toGroupId);
+    if (move.fromGroupId) named.add(move.fromGroupId);
+  }
+  const reachable =
+    scope === null
+      ? named
+      : new Set(
+          named.size === 0
+            ? []
+            : (
+                await prisma.group.findMany({
+                  where: { AND: [{ id: { in: [...named] } }, scope] },
+                  select: { id: true },
+                })
+              ).map((row) => row.id),
+        );
 
   return {
     memberships: memberships.map((row) => ({
@@ -267,15 +349,24 @@ export async function findStudentGroupHistory(
       fromDate: row.fromDate,
       toDate: row.toDate,
     })),
-    moves: moves.map((row) => ({
-      id: row.id,
-      fromGroupName: row.fromGroup?.name ?? null,
-      toGroupName: row.toGroup.name,
-      direction: row.direction,
-      reason: row.reason,
-      occurredAt: row.occurredAt,
-      decidedBy: row.decidedBy,
-    })),
+    moves: moves.map((row) => {
+      const fromReachable =
+        row.fromGroupId !== null && reachable.has(row.fromGroupId);
+      const toReachable = reachable.has(row.toGroupId);
+      return {
+        id: row.id,
+        fromGroupName: fromReachable ? (row.fromGroup?.name ?? null) : null,
+        // A first placement has no source group at all, so nothing is being
+        // withheld — only an EXISTING group the caller cannot reach is.
+        fromGroupWithheld: row.fromGroupId !== null && !fromReachable,
+        toGroupName: toReachable ? row.toGroup.name : null,
+        toGroupWithheld: !toReachable,
+        direction: row.direction,
+        reason: row.reason,
+        occurredAt: row.occurredAt,
+        decidedBy: row.decidedBy,
+      };
+    }),
   };
 }
 

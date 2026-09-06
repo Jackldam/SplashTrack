@@ -454,18 +454,29 @@ ALTER TABLE "ScheduledSession"
   ADD CONSTRAINT "ScheduledSession_window_order_check"
   CHECK ("endsAt" > "startsAt");
 
--- CANCELLATION IS ALL-OR-NOTHING, both ways. A session marked CANCELLED with no
+-- CANCELLATION IS ALL-OR-NOTHING, BOTH WAYS. A session marked CANCELLED with no
 -- reason is the row a parent asks about and nobody can answer; a session
 -- carrying a cancellation reason while still SCHEDULED is a lesson that reads as
--- both on and off. The equality — rather than two one-way implications — is what
--- makes UNCANCELLING have to clear the fields rather than leave a stale reason
--- behind. Same shape as `RetentionPolicy_confirmation_shape_check`: half a
--- cancellation is not a cancellation.
+-- both on and off.
+--
+-- A `CASE` and not an equality between two booleans. The equality looks
+-- symmetric and is not: `("cancelledAt" IS NOT NULL AND "cancellationReason" IS
+-- NOT NULL AND …)` is already false when EITHER is null, so a SCHEDULED row
+-- carrying a stale reason with no `cancelledAt` satisfies `false = false` and
+-- passes. That is exactly the row UNCANCELLING would leave behind, which is the
+-- case this constraint exists for, and it went green under the equality — caught
+-- by `groups-and-sessions-constraints.test.ts` asserting the property rather
+-- than the expression.
+--
+-- Same intent as `RetentionPolicy_confirmation_shape_check`: half a cancellation
+-- is not a cancellation.
 ALTER TABLE "ScheduledSession"
   ADD CONSTRAINT "ScheduledSession_cancellation_shape_check"
   CHECK (
-    ("status" = 'CANCELLED')
-    = ("cancelledAt" IS NOT NULL
-       AND "cancellationReason" IS NOT NULL
-       AND length(btrim("cancellationReason")) > 0)
+    CASE WHEN "status" = 'CANCELLED'
+      THEN "cancelledAt" IS NOT NULL
+           AND "cancellationReason" IS NOT NULL
+           AND length(btrim("cancellationReason")) > 0
+      ELSE "cancelledAt" IS NULL AND "cancellationReason" IS NULL
+    END
   );
