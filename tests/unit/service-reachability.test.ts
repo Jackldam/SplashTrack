@@ -126,9 +126,9 @@ function sourceFiles(directory: string): string[] {
  * make a source-level invariant depend on a database connection. It is the same
  * choice `route-guard-coverage.test.ts` and `navigation-shell.test.ts` make.
  */
-function exportedCapabilities(module: string): string[] {
+function exportedCapabilities(moduleName: string): string[] {
   const source = readFileSync(
-    path.join(SRC, "modules", module, "index.ts"),
+    path.join(SRC, "modules", moduleName, "index.ts"),
     "utf8",
   );
   const names: string[] = [];
@@ -174,12 +174,12 @@ describe("every write a module exports is reachable from a screen", () => {
 
   it("has a surface calling it, or an allowlisted reason not to", () => {
     const unreachable: string[] = [];
-    for (const module of MODULES) {
-      for (const name of exportedCapabilities(module)) {
+    for (const moduleName of MODULES) {
+      for (const name of exportedCapabilities(moduleName)) {
         if (!isWrite(name)) continue;
         if (NO_SURFACE_NEEDED.has(name)) continue;
         if (!isReachedByASurface(name)) {
-          unreachable.push(`${module}: ${name}`);
+          unreachable.push(`${moduleName}: ${name}`);
         }
       }
     }
@@ -216,11 +216,11 @@ describe("and the reads are reachable too, or are deliberately not", () => {
    * upward is the signal.
    */
   it("reports how many non-write capabilities no surface reaches", () => {
-    const unreached = MODULES.flatMap((module) =>
-      exportedCapabilities(module)
+    const unreached = MODULES.flatMap((moduleName) =>
+      exportedCapabilities(moduleName)
         .filter((name) => !isWrite(name))
         .filter((name) => !isReachedByASurface(name))
-        .map((name) => `${module}: ${name}`),
+        .map((name) => `${moduleName}: ${name}`),
     );
     // Not zero and not asserted to be: it is a number to look at when it moves.
     expect(unreached.length).toBeLessThan(40);
