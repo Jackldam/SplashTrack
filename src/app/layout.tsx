@@ -5,6 +5,8 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { getPublicOrganizationConfig } from "@/lib/settings";
 
+import { AppHeader } from "./app-header";
+
 // Bootstrap first, so application styles can override it.
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
@@ -57,7 +59,15 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        {/* THE WAY BACK, AND IT IS HERE ON PURPOSE. A page cannot render
+            outside this layout, so no future module can ship without one —
+            which is exactly what happened to the way IN before the landing
+            page got its `groups` link. See `app-header.tsx`, and
+            `tests/unit/navigation-shell.test.ts` for the invariant. */}
+        <NextIntlClientProvider>
+          <AppHeader />
+          {children}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

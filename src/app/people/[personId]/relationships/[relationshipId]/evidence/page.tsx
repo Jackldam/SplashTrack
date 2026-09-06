@@ -72,7 +72,7 @@ export default async function EvidencePage({
 
   return (
     <main className="container py-5">
-      <nav className="mb-3">
+      <nav aria-label="kruimelpad" className="mb-3">
         <Link href={`/people/${personId}`}>{t("people.backToPerson")}</Link>
       </nav>
 

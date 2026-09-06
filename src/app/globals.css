@@ -22,6 +22,18 @@ input[type="radio"] {
   min-height: var(--st-touch-target-min);
 }
 
+/*
+ * The way home, in the root layout's header. A link and not a button, so the
+ * rule above does not reach it — and it is the one target every screen depends
+ * on, so it takes the same minimum BY NAME rather than by a second number.
+ */
+.st-home-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--st-touch-target-min);
+  padding-inline: 0.5rem;
+}
+
 /* Never remove a focus indicator. Keyboard and switch access depend on it. */
 :focus-visible {
   outline: 2px solid currentColor;

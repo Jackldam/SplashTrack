@@ -1,7 +1,9 @@
 {
   "common": {
     "brand": "SplashTrack",
-    "loading": "Bezig met laden…"
+    "loading": "Bezig met laden…",
+    "mainNavigation": "Hoofdnavigatie",
+    "toHome": "naar de startpagina"
   },
   "landing": {
     "title": "SplashTrack",

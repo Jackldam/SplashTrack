@@ -1,7 +1,9 @@
 {
   "common": {
     "brand": "SplashTrack",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "mainNavigation": "Main navigation",
+    "toHome": "to the home page"
   },
   "landing": {
     "title": "SplashTrack",

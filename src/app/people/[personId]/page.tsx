@@ -118,7 +118,7 @@ export default async function PersonDetailPage({
 
   return (
     <main className="container py-5">
-      <nav className="mb-3">
+      <nav aria-label="kruimelpad" className="mb-3">
         <Link href="/people">{t("people.backToList")}</Link>
       </nav>
 
