@@ -275,7 +275,9 @@
       "alreadyCancelled": "That lesson is already cancelled.",
       "notFound": "That lesson does not exist.",
       "windowTooWide": "Choose a shorter period. More than eighteen months at once is almost always a mistyped year — and running it again is safe.",
-      "windowOrder": "The end date falls before the start date."
+      "windowOrder": "The end date falls before the start date.",
+      "duplicateName": "Something by that name already exists. Choose another name.",
+      "facilityNotFound": "That pool or lane no longer exists."
     },
     "saved": {
       "group": "Group saved.",
@@ -289,7 +291,11 @@
       "cancelled": "Lesson cancelled.",
       "guest": "Guest added.",
       "guestRemoved": "Guest removed.",
-      "pool": "Pool added."
+      "pool": "Pool added.",
+      "poolUpdated": "Pool updated.",
+      "lane": "Lane added.",
+      "laneUpdated": "Lane updated.",
+      "recurrenceStopped": "Recurrence stopped. The lessons it already generated stay."
     },
     "fields": {
       "name": "Name",
@@ -376,7 +382,9 @@
       "empty": "No recurrence yet. Without one, no schedule can be generated.",
       "add": "Add a recurrence",
       "line": "Every {weekday} at {start}, {duration} minutes, in {pool}",
-      "inactive": "stopped"
+      "inactive": "stopped",
+      "stop": "Stop recurrence",
+      "stopNote": "Stopping leaves the lessons it already generated in place; it only stops new ones being added. A lesson that is not going ahead is cancelled on the lesson itself."
     },
     "closures": {
       "title": "Closures and holidays",
@@ -439,7 +447,22 @@
     },
     "fields": {
       "name": "Name",
-      "length": "Length (m)"
+      "length": "Length (m)",
+      "active": "In service"
+    },
+    "inactive": "out of service",
+    "edit": {
+      "title": "Correct this pool",
+      "submit": "Save pool",
+      "note": "The name and length are ordinary corrections. Who changed what, and when, is in the audit trail."
+    },
+    "lane": {
+      "title": "Lanes",
+      "add": "Add lane",
+      "save": "Save lane",
+      "name": "Lane name",
+      "namePlaceholder": "lane 1",
+      "sequence": "Order"
     }
   }
 }

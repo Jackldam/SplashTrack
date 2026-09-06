@@ -58,6 +58,9 @@ export default async function GroupDetailPage({
   if (!result.ok) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/groups">{t("groups.title")}</Link>
+        </nav>
         <h1>{t("groups.detail.title")}</h1>
         <div className="alert alert-warning mt-4" role="alert">
           <h2 className="h5">{t("groups.denied.title")}</h2>
@@ -73,6 +76,9 @@ export default async function GroupDetailPage({
   if (!group) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/groups">{t("groups.title")}</Link>
+        </nav>
         <h1>{t("groups.detail.title")}</h1>
         <p className="text-muted">{t("groups.detail.notFound")}</p>
       </main>

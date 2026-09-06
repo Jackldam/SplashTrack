@@ -60,7 +60,10 @@ function instant(actor: ActorContext): Date {
  */
 export class FacilityError extends Error {
   constructor(
-    public readonly reason: "duplicateName" | "notFound",
+    // `facilityNotFound` and not `notFound`: a reason travels to the screen as
+    // a message key, `ScheduleError` already owns `notFound` for a lesson, and
+    // two refusals sharing a key means one of them renders the other's Dutch.
+    public readonly reason: "duplicateName" | "facilityNotFound",
     message: string,
   ) {
     super(message);
@@ -209,7 +212,10 @@ export async function updatePool(
         select: { name: true, lengthMetres: true, active: true },
       });
       if (!before) {
-        throw new FacilityError("notFound", "That pool does not exist.");
+        throw new FacilityError(
+          "facilityNotFound",
+          "That pool does not exist.",
+        );
       }
 
       const changed = (["name", "lengthMetres", "active"] as const).filter(
@@ -310,7 +316,7 @@ export async function createLane(
       );
     }
     if (isMissingReference(error)) {
-      throw new FacilityError("notFound", "That pool does not exist.");
+      throw new FacilityError("facilityNotFound", "That pool does not exist.");
     }
     throw error;
   }
@@ -364,7 +370,10 @@ export async function updateLane(
         select: { poolId: true, name: true, sequence: true },
       });
       if (!before) {
-        throw new FacilityError("notFound", "That lane does not exist.");
+        throw new FacilityError(
+          "facilityNotFound",
+          "That lane does not exist.",
+        );
       }
 
       const changed = (["name", "sequence"] as const).filter(

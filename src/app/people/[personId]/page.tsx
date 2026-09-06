@@ -65,6 +65,9 @@ export default async function PersonDetailPage({
   if (!result.ok) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/people">{t("people.backToList")}</Link>
+        </nav>
         <h1>{t("people.title")}</h1>
         <div className="alert alert-warning mt-4" role="alert">
           <h2 className="h5">{t("people.denied.title")}</h2>
@@ -72,7 +75,6 @@ export default async function PersonDetailPage({
             {t("people.denied.explanation", { permission: result.permission })}
           </p>
         </div>
-        <Link href="/people">{t("people.backToList")}</Link>
       </main>
     );
   }

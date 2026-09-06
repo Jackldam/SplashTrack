@@ -275,7 +275,9 @@
       "alreadyCancelled": "Deze les is al afgelast.",
       "notFound": "Die les bestaat niet.",
       "windowTooWide": "Kies een kortere periode. Meer dan anderhalf jaar in één keer is bijna altijd een verkeerd jaartal — en opnieuw uitvoeren is veilig.",
-      "windowOrder": "De einddatum ligt vóór de begindatum."
+      "windowOrder": "De einddatum ligt vóór de begindatum.",
+      "duplicateName": "Er bestaat al iets met deze naam. Kies een andere naam.",
+      "facilityNotFound": "Dat bad of die baan bestaat niet (meer)."
     },
     "saved": {
       "group": "Groep opgeslagen.",
@@ -289,7 +291,11 @@
       "cancelled": "Les afgelast.",
       "guest": "Gast toegevoegd.",
       "guestRemoved": "Gast verwijderd.",
-      "pool": "Bad toegevoegd."
+      "pool": "Bad toegevoegd.",
+      "poolUpdated": "Bad bijgewerkt.",
+      "lane": "Baan toegevoegd.",
+      "laneUpdated": "Baan bijgewerkt.",
+      "recurrenceStopped": "Lesreeks gestopt. De lessen die al gegenereerd zijn blijven staan."
     },
     "fields": {
       "name": "Naam",
@@ -376,7 +382,9 @@
       "empty": "Nog geen lesreeks. Zonder lesreeks kan er geen rooster gegenereerd worden.",
       "add": "Lesreeks toevoegen",
       "line": "Elke {weekday} om {start}, {duration} minuten, in {pool}",
-      "inactive": "gestopt"
+      "inactive": "gestopt",
+      "stop": "Reeks stoppen",
+      "stopNote": "Stoppen laat de lessen die al gegenereerd zijn staan; er komen alleen geen nieuwe meer bij. Een les die niet doorgaat las je af bij de les zelf."
     },
     "closures": {
       "title": "Sluitingen en vakanties",
@@ -439,7 +447,22 @@
     },
     "fields": {
       "name": "Naam",
-      "length": "Lengte (m)"
+      "length": "Lengte (m)",
+      "active": "In gebruik"
+    },
+    "inactive": "niet in gebruik",
+    "edit": {
+      "title": "Bad corrigeren",
+      "submit": "Bad opslaan",
+      "note": "Naam en lengte zijn gewoon te corrigeren. Wie wat wanneer wijzigde staat in het auditspoor."
+    },
+    "lane": {
+      "title": "Banen",
+      "add": "Baan toevoegen",
+      "save": "Baan opslaan",
+      "name": "Naam van de baan",
+      "namePlaceholder": "baan 1",
+      "sequence": "Volgorde"
     }
   }
 }

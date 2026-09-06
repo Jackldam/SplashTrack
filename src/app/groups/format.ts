@@ -62,3 +62,23 @@ export function formatWeekday(isoWeekday: number): string {
 export function toDateInputValue(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
+
+/**
+ * *"Instructiebad — baan 1, baan 2"* — one pool as a schedule option.
+ *
+ * THE LANES ARE IN THE LABEL, because they are what a planner is choosing
+ * between two pools ON: *"waar zwemt deze groep"* is answered by the water, and
+ * *"is dat het bad met de ondiepe banen"* by what is in it. `Pool` and `Lane`
+ * were both in the schema and only the pool had ever reached a screen, so a
+ * lane — once it could be added at all — still changed nothing anybody could
+ * see anywhere a lesson is planned.
+ *
+ * Exported and pure, so that property can be tested without rendering a page.
+ */
+export function poolOptionLabel(pool: {
+  readonly name: string;
+  readonly lanes: readonly { readonly name: string }[];
+}): string {
+  if (pool.lanes.length === 0) return pool.name;
+  return `${pool.name} — ${pool.lanes.map((lane) => lane.name).join(", ")}`;
+}

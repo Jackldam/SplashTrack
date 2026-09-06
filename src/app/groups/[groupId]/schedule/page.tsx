@@ -16,6 +16,7 @@ import {
   cancelSessionAction,
   createClosureAction,
   createRecurrenceAction,
+  deactivateRecurrenceAction,
   generateSessionsAction,
 } from "../../actions";
 import {
@@ -23,6 +24,7 @@ import {
   formatMinuteOfDay,
   formatSessionMoment,
   formatWeekday,
+  poolOptionLabel,
   toDateInputValue,
 } from "../../format";
 
@@ -74,6 +76,9 @@ export default async function GroupSchedulePage({
   if (!groupResult.ok) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/groups">{t("groups.title")}</Link>
+        </nav>
         <h1>{t("schedule.title")}</h1>
         <div className="alert alert-warning mt-4" role="alert">
           <h2 className="h5">{t("groups.denied.title")}</h2>
@@ -90,6 +95,9 @@ export default async function GroupSchedulePage({
   if (!group) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/groups">{t("groups.title")}</Link>
+        </nav>
         <h1>{t("schedule.title")}</h1>
         <p className="text-muted">{t("groups.detail.notFound")}</p>
       </main>
@@ -167,28 +175,55 @@ export default async function GroupSchedulePage({
       {!recurrences.ok || recurrences.value.length === 0 ? (
         <p className="text-muted">{t("schedule.recurrences.empty")}</p>
       ) : (
-        <ul className="list-group mb-3">
-          {recurrences.value.map((rule) => (
-            <li className="list-group-item" key={rule.id}>
-              {t("schedule.recurrences.line", {
-                weekday: formatWeekday(rule.weekday),
-                start: formatMinuteOfDay(rule.startMinuteOfDay),
-                duration: rule.durationMinutes,
-                pool: rule.poolName ?? t("schedule.noPool"),
-              })}
-              <span className="text-muted">
-                {" "}
-                — {formatCalendarDate(rule.startsOn)}
-                {rule.endsOn ? ` … ${formatCalendarDate(rule.endsOn)}` : ""}
-              </span>
-              {!rule.active ? (
-                <span className="badge text-bg-secondary ms-2">
-                  {t("schedule.recurrences.inactive")}
+        <>
+          <ul className="list-group mb-3">
+            {recurrences.value.map((rule) => (
+              <li
+                className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                key={rule.id}
+              >
+                <span>
+                  {t("schedule.recurrences.line", {
+                    weekday: formatWeekday(rule.weekday),
+                    start: formatMinuteOfDay(rule.startMinuteOfDay),
+                    duration: rule.durationMinutes,
+                    pool: rule.poolName ?? t("schedule.noPool"),
+                  })}
+                  <span className="text-muted">
+                    {" "}
+                    — {formatCalendarDate(rule.startsOn)}
+                    {rule.endsOn ? ` … ${formatCalendarDate(rule.endsOn)}` : ""}
+                  </span>
+                  {!rule.active ? (
+                    <span className="badge text-bg-secondary ms-2">
+                      {t("schedule.recurrences.inactive")}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+                {/* A RULE TYPED WITH THE WRONG WEEKDAY HAD NO REPAIR PATH. The
+                  service could stop one since phase 1.6 and no screen called
+                  it, so the only way out was cancelling every lesson it made,
+                  one at a time, each with a reason. It stops the rule and
+                  leaves the timetable alone — see `deactivateRecurrence` for
+                  why deleting it would orphan and then duplicate the lessons
+                  it already produced. */}
+                {rule.active ? (
+                  <form action={deactivateRecurrenceAction}>
+                    <input type="hidden" name="groupId" value={group.id} />
+                    <input type="hidden" name="recurrenceId" value={rule.id} />
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      type="submit"
+                    >
+                      {t("schedule.recurrences.stop")}
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="form-text">{t("schedule.recurrences.stopNote")}</p>
+        </>
       )}
 
       <details className="mb-4">
@@ -244,13 +279,19 @@ export default async function GroupSchedulePage({
             <label className="form-label" htmlFor="poolId">
               {t("schedule.fields.pool")}
             </label>
+            {/* INACTIVE POOLS ARE NOT OFFERED. That is what the flag is for:
+                a pool taken out of service stops being a choice for lessons
+                that have not been planned yet, while every lesson already
+                planned in it keeps saying where it was. */}
             <select className="form-select" id="poolId" name="poolId">
               <option value="">{t("schedule.noPool")}</option>
-              {(pools.ok ? pools.value : []).map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}
-                </option>
-              ))}
+              {(pools.ok ? pools.value : [])
+                .filter((pool) => pool.active)
+                .map((pool) => (
+                  <option key={pool.id} value={pool.id}>
+                    {poolOptionLabel(pool)}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="col-md-2">

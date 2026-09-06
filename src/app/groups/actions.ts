@@ -51,11 +51,16 @@ import {
   addGuestToSession,
   cancelSession,
   createClosure,
+  createLane,
   createPool,
   createRecurrence,
+  deactivateRecurrence,
+  FacilityError,
   generateSessions,
   removeGuestFromSession,
   ScheduleError,
+  updateLane,
+  updatePool,
 } from "@/modules/sessions";
 
 const actionLogger = logger.child({ component: "groups.actions" });
@@ -98,6 +103,9 @@ function refusal(error: unknown, back: string): never {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof ScheduleError) {
+    redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
+  }
+  if (error instanceof FacilityError) {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof ApiError) {
@@ -292,6 +300,29 @@ export async function generateSessionsAction(
   );
 }
 
+/**
+ * Stops a rule producing new lessons.
+ *
+ * The service has existed since phase 1.6 and no screen called it, so a
+ * recurrence typed with the wrong weekday could only be worked around by
+ * cancelling every lesson it produced, one at a time, with a reason each. It
+ * DEACTIVATES rather than deletes — see `deactivateRecurrence` for why the
+ * generated lessons make deletion the wrong operation.
+ */
+export async function deactivateRecurrenceAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  await run(`/groups/${groupId}/schedule`, async () => {
+    await deactivateRecurrence(
+      await actor(),
+      String(formData.get("recurrenceId") ?? ""),
+    );
+  });
+  revalidatePath(`/groups/${groupId}/schedule`);
+  redirect(`/groups/${groupId}/schedule?saved=recurrenceStopped`);
+}
+
 export async function createClosureAction(formData: FormData): Promise<void> {
   const groupId = String(formData.get("groupId") ?? "");
   const scope = String(formData.get("scope") ?? "club");
@@ -360,4 +391,54 @@ export async function createPoolAction(formData: FormData): Promise<void> {
   });
   revalidatePath("/groups/pools");
   redirect("/groups/pools?saved=pool");
+}
+
+/**
+ * Corrects a pool.
+ *
+ * THE SUBJECT COMES FROM THE FORM AND THE PERMISSION IS CHECKED IN THE SERVICE,
+ * which is the same division every action in this file follows. `poolId` in a
+ * hidden field is not a weakness: it names WHICH pool, and `updatePool` guards
+ * `planning.manage` at the organisation before it reads the row — so a caller
+ * who reached the screen on `planning.read` alone is refused here whichever id
+ * they post.
+ */
+export async function updatePoolAction(formData: FormData): Promise<void> {
+  await run("/groups/pools", async () => {
+    await updatePool(await actor(), String(formData.get("poolId") ?? ""), {
+      name: formData.get("name"),
+      lengthMetres: formData.get("lengthMetres"),
+      // Not `?? undefined`: an unchecked box posts nothing, and reading that
+      // as "leave it alone" would make the flag one-way. `updateGroupAction`
+      // reads it the same way.
+      active: formData.get("active"),
+    });
+  });
+  revalidatePath("/groups/pools");
+  revalidatePath("/groups", "layout");
+  redirect("/groups/pools?saved=poolUpdated");
+}
+
+export async function createLaneAction(formData: FormData): Promise<void> {
+  await run("/groups/pools", async () => {
+    await createLane(await actor(), String(formData.get("poolId") ?? ""), {
+      name: formData.get("name"),
+      sequence: formData.get("sequence"),
+    });
+  });
+  revalidatePath("/groups/pools");
+  revalidatePath("/groups", "layout");
+  redirect("/groups/pools?saved=lane");
+}
+
+export async function updateLaneAction(formData: FormData): Promise<void> {
+  await run("/groups/pools", async () => {
+    await updateLane(await actor(), String(formData.get("laneId") ?? ""), {
+      name: formData.get("name"),
+      sequence: formData.get("sequence"),
+    });
+  });
+  revalidatePath("/groups/pools");
+  revalidatePath("/groups", "layout");
+  redirect("/groups/pools?saved=laneUpdated");
 }

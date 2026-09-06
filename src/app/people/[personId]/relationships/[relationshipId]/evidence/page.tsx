@@ -56,6 +56,9 @@ export default async function EvidencePage({
   if (!result.ok) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href={`/people/${personId}`}>{t("people.backToPerson")}</Link>
+        </nav>
         <h1>{t("people.evidence.title")}</h1>
         <div className="alert alert-warning mt-4" role="alert">
           <h2 className="h5">{t("people.denied.title")}</h2>
@@ -63,7 +66,6 @@ export default async function EvidencePage({
             {t("people.denied.explanation", { permission: result.permission })}
           </p>
         </div>
-        <Link href={`/people/${personId}`}>{t("people.backToPerson")}</Link>
       </main>
     );
   }
