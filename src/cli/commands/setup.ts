@@ -96,10 +96,13 @@ export async function setupInit(ctx: CommandContext): Promise<number> {
   ctx.log(`    ${setupUrl()}`);
   ctx.log("");
   ctx.log(
-    "It asks for the one-time token, which is written to " +
-      `${setupTokenPath()} — read it with \`docker compose exec app cat ` +
-      "<that path>\`, or issue a new one with `splashtrack setup:token --new`.",
+    "It asks for the one-time token. Get one, and read it, in that order — " +
+      "the second command only works after the first, because an expired " +
+      "token is deleted rather than left lying about:",
   );
+  ctx.log("");
+  ctx.log("    docker compose exec app splashtrack setup:token --new");
+  ctx.log(`    docker compose exec app cat ${setupTokenPath()}`);
   ctx.log("");
   ctx.log(
     "If you cannot use a browser: `splashtrack admin:create --email " +
@@ -215,21 +218,35 @@ export async function setupToken(ctx: CommandContext): Promise<number> {
     ctx.log(`Setup token file: ${status.path}`);
     switch (status.state) {
       case "NONE":
-        ctx.log("  state      none issued");
+        ctx.log("  state      none issued — the file does not exist");
         break;
       case "VALID":
         ctx.log(`  state      usable, expires ${status.expiresAt}`);
         break;
       case "EXPIRED":
-        ctx.log(`  state      EXPIRED at ${status.expiresAt}`);
+        // Not "there is an expired token in the file": there is no file. Say so
+        // here, because the operator's next move is to look at it.
+        ctx.log(`  state      EXPIRED at ${status.expiresAt}, and DELETED`);
         break;
       case "USED":
-        ctx.log(`  state      already used at ${status.usedAt}`);
+        ctx.log(`  state      already used at ${status.usedAt}, and DELETED`);
         break;
     }
     ctx.log("");
-    ctx.log("Issue a new one with `splashtrack setup:token --new`.");
-    ctx.log("The token itself is never printed here — read the file.");
+    // ONE ROUTE, AND IT WORKS FROM EVERY STATE ABOVE. Telling the operator to
+    // `cat` the file is only correct while a token happens to be live; issuing
+    // first makes the pair correct always, and `--new` on a valid token costs
+    // nothing but a token nobody had used yet.
+    ctx.log("To get a token you can use, from any of those states:");
+    ctx.log("");
+    ctx.log("    splashtrack setup:token --new");
+    ctx.log(`    cat ${status.path}`);
+    ctx.log("");
+    ctx.log(
+      "The token itself is never printed by this command (D-101) — the second " +
+        "line is how you read it, and it only has something to print after " +
+        "the first line has run.",
+    );
     return 0;
   }
 
@@ -252,9 +269,15 @@ export async function setupToken(ctx: CommandContext): Promise<number> {
   );
   ctx.log("and it can be used exactly once.");
   ctx.log("");
-  ctx.log("Read it:");
+  ctx.log("Read it now — it is on disk only while it is usable:");
   ctx.log("");
   ctx.log(`    docker compose exec app cat ${result.path}`);
+  ctx.log("");
+  ctx.log(
+    "After it expires that file is DELETED, so a later `cat` will fail rather " +
+      "than hand you a token that no longer works. Re-run this command with " +
+      "--new to get another one.",
+  );
   ctx.log("");
   ctx.log(
     "THAT FILE IS A CREDENTIAL. Whoever holds this token becomes the " +

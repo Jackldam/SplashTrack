@@ -17,6 +17,7 @@
 
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   statSync,
@@ -33,6 +34,7 @@ import {
   clearSetupToken,
   consumeSetupToken,
   ensureSetupToken,
+  expiredSetupTokenPath,
   hasUsableSetupToken,
   issueSetupToken,
   normaliseSetupToken,
@@ -273,10 +275,105 @@ describe("status", () => {
     const issuedAt = new Date("2026-09-05T10:00:00.000Z");
     issueSetupToken(scratch, issuedAt);
 
+    // Asked in chronological order, because observing expiry now DESTROYS the
+    // token (see "expiry destroys the credential" below) and real clocks do not
+    // run backwards.
+    expect(hasUsableSetupToken(scratch, issuedAt)).toBe(true);
+
     const late = new Date(issuedAt.getTime() + 61 * 60 * 1000);
     expect(setupTokenStatus(scratch, late).state).toBe("EXPIRED");
     expect(hasUsableSetupToken(scratch, late)).toBe(false);
-    expect(hasUsableSetupToken(scratch, issuedAt)).toBe(true);
+  });
+});
+
+describe("expiry destroys the credential", () => {
+  /**
+   * THE DEFECT THIS SUITE EXISTS FOR. The token expires by a timestamp inside
+   * the file, and nothing used to touch the file when that moment passed — so
+   * `cat $DATA_DIR/setup-token` kept printing 32 characters that look exactly
+   * like a working token. The owner pasted one, the wizard refused it, and he
+   * could not tell whether the fault was the token, the wizard or his typing.
+   */
+  const issuedAt = new Date("2026-09-05T10:00:00.000Z");
+  const late = new Date(issuedAt.getTime() + 61 * 60 * 1000);
+
+  it("deletes the token file, so reading it fails loudly", () => {
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    expect(existsSync(setupTokenPath(scratch))).toBe(true);
+
+    setupTokenStatus(scratch, late);
+
+    // THE POINT: `cat` gets ENOENT, not a dead credential.
+    expect(existsSync(setupTokenPath(scratch))).toBe(false);
+    expect(() => readFileSync(setupTokenPath(scratch), "utf8")).toThrow();
+    expect(readSetupToken(scratch)).toBeNull();
+  });
+
+  it("leaves a marker with the dates and none of the value", () => {
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    const token = tokenValue(scratch);
+
+    setupTokenStatus(scratch, late);
+
+    const marker = readFileSync(expiredSetupTokenPath(scratch), "utf8");
+    // Diagnosable — the operator can still see WHEN it died…
+    expect(marker).toContain(issuedAt.toISOString());
+    // …and cannot recover the credential from the epitaph.
+    expect(marker).not.toContain(token);
+    expect(statSync(expiredSetupTokenPath(scratch)).mode & 0o777).toBe(0o600);
+  });
+
+  it("still tells EXPIRED apart from NONE afterwards", () => {
+    // The marker earns its existence here: without it, a swept token would be
+    // indistinguishable from an install where nobody ever issued one, and
+    // those two have different explanations even though they share a remedy.
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    expect(setupTokenStatus(scratch, late).state).toBe("EXPIRED");
+    expect(setupTokenStatus(scratch, late).state).toBe("EXPIRED");
+
+    const fresh = env();
+    expect(setupTokenStatus(fresh, late).state).toBe("NONE");
+  });
+
+  it("refuses a swept token with EXPIRED, not NO_TOKEN_ISSUED", () => {
+    // The wizard's message per refusal is the operator's instruction, and
+    // "there is no token" would send them looking for a problem they do not
+    // have. Both paths reach `setup:token --new`; only one of them is true.
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    const token = tokenValue(scratch);
+
+    setupTokenStatus(scratch, late);
+    expect(consumeSetupToken(token, scratch, late)).toEqual({
+      ok: false,
+      refusal: "EXPIRED",
+    });
+  });
+
+  it("lets --new recover from it, and clears the marker", () => {
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    setupTokenStatus(scratch, late);
+
+    issueSetupToken(scratch, late);
+    expect(setupTokenStatus(scratch, late).state).toBe("VALID");
+    expect(existsSync(expiredSetupTokenPath(scratch))).toBe(false);
+    expect(consumeSetupToken(tokenValue(scratch), scratch, late)).toEqual({
+      ok: true,
+    });
+  });
+
+  it("is what --ensure does on a restart after the hour", () => {
+    const scratch = env();
+    issueSetupToken(scratch, issuedAt);
+    const original = tokenValue(scratch);
+
+    expect(ensureSetupToken(scratch, late).issued).toBe(true);
+    expect(tokenValue(scratch)).not.toBe(original);
+    expect(existsSync(expiredSetupTokenPath(scratch))).toBe(false);
   });
 });
 
@@ -303,6 +400,20 @@ describe("the claim marker", () => {
     issueSetupToken(scratch);
     consumeSetupToken(tokenValue(scratch), scratch);
     expect(statSync(usedSetupTokenPath(scratch)).mode & 0o777).toBe(0o600);
+  });
+
+  it("does not carry the spent token value", () => {
+    // The other way a token dies. A claimed token is inert, but "inert" is not
+    // "absent", and leaving the value on the volume of a live installation is
+    // how a support answer that says "paste it" comes to exist.
+    const scratch = env();
+    issueSetupToken(scratch);
+    const token = tokenValue(scratch);
+    consumeSetupToken(token, scratch);
+
+    expect(readFileSync(usedSetupTokenPath(scratch), "utf8")).not.toContain(
+      token,
+    );
   });
 
   it("does not make a freshly issued token look used", () => {

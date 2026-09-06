@@ -80,6 +80,35 @@ export const SETUP_TOKEN_FILENAME = "setup-token";
 export const SETUP_TOKEN_USED_FILENAME = "setup-token.used";
 
 /**
+ * Where an EXPIRED token's epitaph goes, for the same reason the claim marker
+ * exists: "expired" and "never issued" have different remedies, and the status
+ * command must keep being able to tell them apart after the credential itself
+ * is gone.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE DEFECT THIS CLOSES — a dead credential that reads like a live one.
+ *
+ * The token expires by a timestamp INSIDE the file, and nothing used to touch
+ * the file when that moment passed. So an hour after issue, `cat
+ * $DATA_DIR/setup-token` still printed 32 characters that look exactly like a
+ * working token, with the expiry buried in a JSON field beside a warning
+ * banner that draws the eye away from it. The operator pasted them, the wizard
+ * said no, and they had three suspects — the token, the wizard, or their own
+ * typing — with no way to tell which. `setup:token`'s own help text sent them
+ * down that path: it told them to `cat` the file.
+ *
+ * A credential that has stopped working must FAIL AT THE POINT OF READING, not
+ * at the point of use. So expiry removes the file. `cat` then fails with
+ * `No such file or directory`, which is unambiguous and needs no
+ * interpretation, and `setup:token` reports EXPIRED from this marker and names
+ * the one command that fixes it.
+ *
+ * The marker holds NO TOKEN VALUE. Neither does the claim marker, for the same
+ * reason: the whole point is that the dead value stops being readable.
+ */
+export const SETUP_TOKEN_EXPIRED_FILENAME = "setup-token.expired";
+
+/**
  * D-101: *"expires in ≤60 minutes"*. Sixty exactly — the ceiling the decision
  * permits, because the operator's realistic path is `docker compose up`, read
  * the log, exec into the container, read the file, open a browser, choose a
@@ -108,6 +137,17 @@ export interface SetupTokenRecord {
   usedAt: string | null;
 }
 
+/**
+ * What a marker holds — the record with the credential taken out of it. Both
+ * the claim marker and the expiry marker are this shape, because a token that
+ * can no longer be used has no business still being readable on disk.
+ */
+export interface SetupTokenMarker {
+  issuedAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
 /** What `setup:token --status` may say. Never includes the value. */
 export interface SetupTokenStatus {
   path: string;
@@ -130,6 +170,10 @@ export function setupTokenPath(env: SetupEnv = process.env): string {
 
 export function usedSetupTokenPath(env: SetupEnv = process.env): string {
   return dataPath(SETUP_TOKEN_USED_FILENAME, env);
+}
+
+export function expiredSetupTokenPath(env: SetupEnv = process.env): string {
+  return dataPath(SETUP_TOKEN_EXPIRED_FILENAME, env);
 }
 
 /**
@@ -161,9 +205,11 @@ export function issueSetupToken(
   const file = setupTokenPath(env);
   writeFileSync(file, serialize(record), { mode: 0o600 });
   chmodSync(file, 0o600);
-  // A previous token's claim marker would otherwise make `--status` report
-  // USED for a token that was just issued.
+  // A previous token's markers would otherwise make `--status` report USED or
+  // EXPIRED for a token that was just issued. Both go, together: they describe
+  // the token this one replaces.
   rmSync(usedSetupTokenPath(env), { force: true });
+  rmSync(expiredSetupTokenPath(env), { force: true });
 
   return { path: file, expiresAt };
 }
@@ -178,8 +224,8 @@ export function ensureSetupToken(
   env: SetupEnv = process.env,
   now: Date = new Date(),
 ): { path: string; expiresAt: Date; issued: boolean } {
-  const existing = readSetupToken(env);
-  if (existing && Date.parse(existing.expiresAt) > now.getTime()) {
+  const existing = retireExpiredSetupToken(env, now);
+  if (existing) {
     return {
       path: setupTokenPath(env),
       expiresAt: new Date(existing.expiresAt),
@@ -187,6 +233,52 @@ export function ensureSetupToken(
     };
   }
   return { ...issueSetupToken(env, now), issued: true };
+}
+
+/**
+ * The expiry sweep: reads the token, and if its moment has passed, REPLACES the
+ * file with a value-free marker. Returns the record only while it is still
+ * usable.
+ *
+ * WHY A READ HAS A SIDE EFFECT, DELIBERATELY. There is no timer in this
+ * process — the token's whole lifecycle is a file on a volume, and the instance
+ * may be stopped for the entire hour the token was valid for. So expiry has to
+ * be enforced by whoever looks next, and every caller that knows what time it
+ * is calls this first: the status command, the wizard's submission, and the
+ * entrypoint's `--ensure` on every start. The sweep is idempotent and it only
+ * ever destroys a credential that has already stopped working.
+ *
+ * It is deliberately NOT in `readSetupToken`, which takes no clock and is used
+ * by callers that only want the bytes.
+ */
+export function retireExpiredSetupToken(
+  env: SetupEnv = process.env,
+  now: Date = new Date(),
+): SetupTokenRecord | null {
+  const record = readSetupToken(env);
+  if (!record) return null;
+  if (Date.parse(record.expiresAt) > now.getTime()) return record;
+
+  const marker = expiredSetupTokenPath(env);
+  writeFileSync(
+    marker,
+    serializeMarker(
+      {
+        issuedAt: record.issuedAt,
+        expiresAt: record.expiresAt,
+        usedAt: null,
+      },
+      EXPIRED_MARKER_WARNING,
+    ),
+    { mode: 0o600 },
+  );
+  chmodSync(marker, 0o600);
+  // AND THE CREDENTIAL ITSELF GOES. This is the line the whole marker exists to
+  // make safe: after it, `cat $DATA_DIR/setup-token` fails loudly instead of
+  // printing 32 dead characters.
+  rmSync(setupTokenPath(env), { force: true });
+
+  return null;
 }
 
 /** The record, or null when no token file exists or it is unreadable. */
@@ -212,29 +304,41 @@ export function setupTokenStatus(
   now: Date = new Date(),
 ): SetupTokenStatus {
   const path = setupTokenPath(env);
-  const record = readSetupToken(env);
+  const record = retireExpiredSetupToken(env, now);
 
-  if (!record) {
-    const used = readUsed(env);
-    if (used) {
-      return {
-        path,
-        state: "USED",
-        issuedAt: used.issuedAt,
-        expiresAt: used.expiresAt,
-        usedAt: used.usedAt ?? undefined,
-      };
-    }
-    return { path, state: "NONE" };
+  if (record) {
+    return {
+      path,
+      state: "VALID",
+      issuedAt: record.issuedAt,
+      expiresAt: record.expiresAt,
+    };
   }
 
-  const expired = Date.parse(record.expiresAt) <= now.getTime();
-  return {
-    path,
-    state: expired ? "EXPIRED" : "VALID",
-    issuedAt: record.issuedAt,
-    expiresAt: record.expiresAt,
-  };
+  // A claimed token is the stronger fact, so it is asked first. In practice
+  // only one marker is ever present: issuing clears both.
+  const used = readMarker(usedSetupTokenPath(env));
+  if (used) {
+    return {
+      path,
+      state: "USED",
+      issuedAt: used.issuedAt,
+      expiresAt: used.expiresAt,
+      usedAt: used.usedAt ?? undefined,
+    };
+  }
+
+  const expired = readMarker(expiredSetupTokenPath(env));
+  if (expired) {
+    return {
+      path,
+      state: "EXPIRED",
+      issuedAt: expired.issuedAt,
+      expiresAt: expired.expiresAt,
+    };
+  }
+
+  return { path, state: "NONE" };
 }
 
 /**
@@ -256,16 +360,18 @@ export function consumeSetupToken(
   env: SetupEnv = process.env,
   now: Date = new Date(),
 ): SetupTokenVerdict {
-  const record = readSetupToken(env);
+  // The sweep runs first, so a submission arriving after the hour is refused by
+  // the ABSENCE of the token rather than by a timestamp inside it — the same
+  // verdict, reached from the same state the operator's `cat` now sees.
+  const record = retireExpiredSetupToken(env, now);
   if (!record) {
-    return {
-      ok: false,
-      refusal: readUsed(env) ? "ALREADY_USED" : "NO_TOKEN_ISSUED",
-    };
-  }
-
-  if (Date.parse(record.expiresAt) <= now.getTime()) {
-    return { ok: false, refusal: "EXPIRED" };
+    if (readMarker(usedSetupTokenPath(env))) {
+      return { ok: false, refusal: "ALREADY_USED" };
+    }
+    if (readMarker(expiredSetupTokenPath(env))) {
+      return { ok: false, refusal: "EXPIRED" };
+    }
+    return { ok: false, refusal: "NO_TOKEN_ISSUED" };
   }
 
   if (!matches(submitted, record.token)) {
@@ -281,9 +387,23 @@ export function consumeSetupToken(
     return { ok: false, refusal: "ALREADY_USED" };
   }
 
-  const claimed: SetupTokenRecord = { ...record, usedAt: now.toISOString() };
+  // The claim marker replaces the renamed file, and it carries NO TOKEN VALUE.
+  // The rename is what makes the claim atomic; overwriting the result with a
+  // redacted marker is what stops a spent credential from staying readable —
+  // the same rule expiry now follows, applied to the other way a token dies.
   const usedFile = usedSetupTokenPath(env);
-  writeFileSync(usedFile, serialize(claimed), { mode: 0o600 });
+  writeFileSync(
+    usedFile,
+    serializeMarker(
+      {
+        issuedAt: record.issuedAt,
+        expiresAt: record.expiresAt,
+        usedAt: now.toISOString(),
+      },
+      USED_MARKER_WARNING,
+    ),
+    { mode: 0o600 },
+  );
   chmodSync(usedFile, 0o600);
 
   return { ok: true };
@@ -300,6 +420,7 @@ export function consumeSetupToken(
 export function clearSetupToken(env: SetupEnv = process.env): void {
   rmSync(setupTokenPath(env), { force: true });
   rmSync(usedSetupTokenPath(env), { force: true });
+  rmSync(expiredSetupTokenPath(env), { force: true });
 }
 
 /** True when a token exists, is unclaimed and has not expired. */
@@ -349,9 +470,27 @@ function matches(submitted: string, stored: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-function readUsed(env: SetupEnv): SetupTokenRecord | null {
+/**
+ * A marker, or null when it is absent or unreadable. Deliberately LENIENT about
+ * the token field: a marker has none, and `parse` requires one.
+ */
+function readMarker(file: string): SetupTokenMarker | null {
   try {
-    return parse(readFileSync(usedSetupTokenPath(env), "utf8"));
+    const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<
+      Record<keyof SetupTokenMarker, unknown>
+    >;
+    if (
+      typeof raw.issuedAt !== "string" ||
+      typeof raw.expiresAt !== "string" ||
+      Number.isNaN(Date.parse(raw.expiresAt))
+    ) {
+      return null;
+    }
+    return {
+      issuedAt: raw.issuedAt,
+      expiresAt: raw.expiresAt,
+      usedAt: typeof raw.usedAt === "string" ? raw.usedAt : null,
+    };
   } catch {
     return null;
   }
@@ -374,6 +513,25 @@ function serialize(record: SetupTokenRecord): string {
     null,
     2,
   )}\n`;
+}
+
+const USED_MARKER_WARNING =
+  "This token has been USED and is gone. It is not in this file: a spent " +
+  "credential has no reason to stay readable. Issue a new one with " +
+  "`splashtrack setup:token --new`.";
+
+const EXPIRED_MARKER_WARNING =
+  "This token EXPIRED and is gone. It is not in this file, and neither is it " +
+  "in `setup-token` any more — that is deliberate, so that reading it fails " +
+  "instead of handing you 32 characters that no longer work. Issue a new one " +
+  "with `splashtrack setup:token --new`.";
+
+/**
+ * A marker's text: the record's dates, the reason it is a marker, and NO TOKEN.
+ * Anything reading a marker is diagnosing, never authenticating.
+ */
+function serializeMarker(marker: SetupTokenMarker, warning: string): string {
+  return `${JSON.stringify({ _note: warning, ...marker }, null, 2)}\n`;
 }
 
 function parse(text: string): SetupTokenRecord {
