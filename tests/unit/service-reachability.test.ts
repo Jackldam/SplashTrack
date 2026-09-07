@@ -159,15 +159,23 @@ describe("every write a module exports is reachable from a screen", () => {
     const all = MODULES.flatMap(exportedCapabilities);
     expect(all.length).toBeGreaterThan(20);
     expect(all.filter(isWrite).length).toBeGreaterThan(10);
-    // The five that opened this file, by name. A parser change that quietly
-    // stopped seeing them would leave the test green and useless.
+    // The six Jack found in ten minutes on 2026-09-06, by name. A parser change
+    // that quietly stopped seeing them would leave the test green and useless.
+    //
+    // `updateRecurrence` and the two SessionLane writers were added on
+    // 2026-09-07: the generic write-verb rule below already covered them, but
+    // not by name, so the one thing this list exists to catch — the parser
+    // going blind — would not have been caught for half the incident.
     expect(all).toEqual(
       expect.arrayContaining([
         "createLane",
         "deactivateRecurrence",
+        "updateRecurrence",
         "updateClosure",
         "updatePool",
         "setRecurrenceLanes",
+        "overrideSessionLanes",
+        "clearSessionLaneOverride",
       ]),
     );
   });
