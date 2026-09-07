@@ -144,6 +144,9 @@ export default async function LandingPage() {
               <Link className="btn btn-primary" href="/groups">
                 {t("landing.toGroups")}
               </Link>
+              <Link className="btn btn-primary" href="/courses">
+                {t("landing.toCourses")}
+              </Link>
             </div>
           )}
         </>

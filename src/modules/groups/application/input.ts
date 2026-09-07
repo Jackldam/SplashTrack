@@ -16,6 +16,8 @@ export const TEXT_MAX = {
   instructorRole: 60,
   /** A search box. */
   query: 120,
+  /** An id arriving from a form field — a `CourseLevel`, a unit. */
+  id: 40,
 } as const;
 
 /**

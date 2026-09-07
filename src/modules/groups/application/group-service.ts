@@ -184,9 +184,40 @@ export interface UpdateGroupInput {
   name: unknown;
   capacity?: unknown;
   active?: unknown;
+  /**
+   * The `CourseLevel` this group is taught at (phase 2.0, §3.2).
+   *
+   * An EMPTY STRING clears it, which is the only way an administrator can undo
+   * a level chosen by mistake — `optionalText` maps empty to null and the
+   * column is nullable, so "geen niveau" is a value rather than an absence of
+   * one. `undefined` (the field not posted at all) leaves it alone, on exactly
+   * the reading `active` uses.
+   *
+   * The id is NOT validated against `CourseLevel` here: that table belongs to
+   * the `courses` module and this module does not read it (`CLAUDE.md` §4). The
+   * foreign key refuses a level that does not exist, which is the control; the
+   * screen offers only levels the caller reaches, which is the ordinary path.
+   */
+  courseLevelId?: unknown;
 }
 
-/** An ordinary edit, audited like every other write. */
+/**
+ * An ordinary edit, audited like every other write.
+ *
+ * IT IS ALSO WHERE A GROUP GETS ITS LEVEL, and that is deliberate rather than a
+ * shortcut. Phase 1.6 recorded that a group's level lived in its free-text name
+ * until `courses` landed; the column exists now, and giving it its own
+ * operation and its own screen would make recording the level feel like an
+ * administrative extra rather than part of describing the group. It is one
+ * field on the form that already says what this group is.
+ *
+ * SETTING IT CHANGES WHO CAN SEE THE GROUP. `groupsOfCourse` walks
+ * `Group -> CourseLevel -> Course`, so attaching a group to a level brings it
+ * inside every `COURSE` grant for that course — and clearing it takes the group
+ * back out, on the next query. That is D-145's live evaluation working as
+ * intended and it is worth knowing about; the audit event records that the
+ * field changed for exactly that reason.
+ */
 export async function updateGroup(
   actor: ActorContext,
   groupId: string,
@@ -206,16 +237,27 @@ export async function updateGroup(
     name: requiredText("name", input.name, TEXT_MAX.groupName),
     capacity: optionalInt("capacity", input.capacity, 1, CAPACITY_MAX),
     active: input.active === undefined ? undefined : input.active === "on",
+    courseLevelId:
+      input.courseLevelId === undefined
+        ? undefined
+        : optionalText("courseLevelId", input.courseLevelId, TEXT_MAX.id),
   };
 
   await prisma.$transaction(async (tx) => {
     const before = await tx.group.findUnique({
       where: { id: groupId },
-      select: { name: true, capacity: true, active: true },
+      select: {
+        name: true,
+        capacity: true,
+        active: true,
+        courseLevelId: true,
+      },
     });
     if (!before) return;
 
-    const changed = (["name", "capacity", "active"] as const).filter(
+    const changed = (
+      ["name", "capacity", "active", "courseLevelId"] as const
+    ).filter(
       (field) => data[field] !== undefined && before[field] !== data[field],
     );
     if (changed.length === 0) return;

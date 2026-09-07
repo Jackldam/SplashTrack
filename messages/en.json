@@ -13,7 +13,8 @@
     "toPeople": "Go to People",
     "enrolNotice": "You have not set up an authenticator yet. Until you do, this account can do nothing else.",
     "toEnrolment": "Set up your authenticator",
-    "toGroups": "Go to groups"
+    "toGroups": "Go to groups",
+    "toCourses": "Go to courses"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -225,6 +226,24 @@
       "auditNotice": "The fact that you opened this has been recorded in the audit trail, with your name and the moment.",
       "none": "No evidence was recorded for this relationship.",
       "claimNotice": "This is what the school was told and how it was established. It is evidence of a claim, not a legal determination of guardianship."
+    },
+    "enrolments": {
+      "title": "Enrolments",
+      "none": "This pupil is not signed up for anything.",
+      "course": "Course",
+      "courseWithheld": "(course outside your access)",
+      "status": "Kind",
+      "from": "From",
+      "to": "To",
+      "open": "still running",
+      "add": "Enrol",
+      "addTitle": "Enrol in a course",
+      "end": "End",
+      "endTitle": "End an enrolment",
+      "endDate": "End date",
+      "startDate": "Start date",
+      "denied": "You may not see this pupil's enrolments. The permission needed: {permission}.",
+      "noCourses": "There are no courses you may see, so there is nothing to choose."
     }
   },
   "mfaEnrolment": {
@@ -314,7 +333,11 @@
       "name": "Name",
       "capacity": "Capacity",
       "capacityHelp": "Places in the group. Leaving it empty means 'not stated', not 'unlimited'.",
-      "active": "Active"
+      "active": "Active",
+      "courseLevel": "Level",
+      "courseLevelNone": "No level recorded",
+      "courseLevelHelp": "Which course level this group is taught at. Leaving it empty is fine: it then records nothing, which is not the same as 'beginners'. Note that it also helps decide who may see this group.",
+      "courseLevelUnavailable": "There are no course levels you may see, so there is nothing to choose here."
     },
     "create": {
       "title": "New group",
@@ -331,7 +354,8 @@
       "members": "Pupils",
       "noMembers": "No pupils in this group yet.",
       "occupancy": "{occupied} of {capacity} places taken",
-      "occupancyUnknown": "{occupied} pupils · capacity not stated"
+      "occupancyUnknown": "{occupied} pupils · capacity not stated",
+      "level": "Level"
     },
     "instructor": {
       "assign": "Assign instructor",
@@ -505,6 +529,74 @@
       "name": "Lane name",
       "namePlaceholder": "lane 1",
       "sequence": "Order"
+    }
+  },
+  "courses": {
+    "title": "Courses",
+    "subtitle": "What is taught, in which levels, and who is signed up for it.",
+    "empty": "There are no courses yet.",
+    "inactive": "no longer in use",
+    "backToList": "Back to courses",
+    "denied": {
+      "title": "No access",
+      "explanation": "You do not have access to this. The permission needed: {permission}. This is not a fault — ask an administrator for access if you need it."
+    },
+    "columns": {
+      "name": "Course",
+      "description": "Description",
+      "levels": "Levels",
+      "enrolments": "Open enrolments"
+    },
+    "fields": {
+      "name": "Name",
+      "description": "Description",
+      "descriptionHelp": "What this course is, for whoever has to pick it from a list. No information about pupils.",
+      "active": "In use",
+      "activeHelp": "Switching this off takes the course out of the list. Levels, enrolments and history stay — deleting is not possible and should not be."
+    },
+    "create": {
+      "title": "Add a course",
+      "submit": "Add course"
+    },
+    "edit": {
+      "title": "Edit course",
+      "submit": "Save"
+    },
+    "detail": {
+      "title": "Course",
+      "notFound": "This course does not exist.",
+      "levels": "Levels",
+      "noLevels": "No levels recorded yet.",
+      "enrolments": "{count} open enrolment(s).",
+      "awardNote": "Which award a level prepares for is not recorded here yet: the award module does not exist, and an empty field would pretend it did."
+    },
+    "level": {
+      "name": "Level",
+      "sequence": "Position",
+      "sequenceHelp": "Leave empty to add the level at the end. It only orders lists — never whether a pupil moves up or back down.",
+      "groups": "Groups at this level",
+      "add": "Add level",
+      "save": "Save",
+      "addTitle": "Add a level"
+    },
+    "enrolmentStatus": {
+      "ENROLLED": "Enrolled",
+      "TRIAL": "Trial"
+    },
+    "errors": {
+      "denied": "You do not have permission for this action.",
+      "validation": "The values entered are not valid.",
+      "SEQUENCE_TAKEN": "Another level already sits at that position. Choose another one.",
+      "ALREADY_ENROLLED": "This pupil already has an open enrolment in this course. End that one first — that is what keeps a trial or an earlier period visible.",
+      "NOT_ENROLLED": "There is no open enrolment to end. Starting again creates a new enrolment; a closed one is never reopened.",
+      "ENDS_BEFORE_IT_STARTS": "The end date falls before the start date."
+    },
+    "saved": {
+      "course": "Course saved.",
+      "level": "Level added.",
+      "levelUpdated": "Level saved.",
+      "enrolled": "Enrolment recorded.",
+      "enrolmentEnded": "Enrolment ended."
     }
   }
 }

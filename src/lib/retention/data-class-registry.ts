@@ -96,4 +96,15 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   RetentionPolicy: "ORGANIZATION_SETTINGS",
   InstallationBootstrap: "ORGANIZATION_SETTINGS",
   BreakGlassAlert: "ORGANIZATION_SETTINGS",
+  // --- phase 2.0, the `courses` module -------------------------------------
+  // Teaching configuration, not personal data — see the `/// @dataClass`
+  // comment above `model Course` / `model CourseLevel` in
+  // `prisma/schema.prisma` for the `Group`/`GroupMembership`-precedent split.
+  Course: "ORGANIZATION_SETTINGS",
+  CourseLevel: "ORGANIZATION_SETTINGS",
+  // Shares the pupil's own class, on the StudentProfile/StudentLifecycleEvent
+  // and GroupMembership/GroupMove precedent: same purpose, same
+  // `LAST_ENROLMENT_END` trigger — see the schema comment above `model
+  // Enrolment`.
+  Enrolment: "STUDENT_PROFILE",
 };

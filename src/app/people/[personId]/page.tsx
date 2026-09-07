@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import {
+  ENROLMENT_STATUSES,
+  getStudentEnrolments,
+  listCoursesForPrincipal,
+} from "@/modules/courses";
+import {
   describeRelationshipAuthority,
   getPersonForPrincipal,
   LIFECYCLE_EVENT_TYPES,
@@ -11,6 +16,11 @@ import {
   type GuardianAuthority,
   type PersonRelationshipView,
 } from "@/modules/people";
+
+import {
+  endEnrolmentAction,
+  enrolStudentAction,
+} from "@/app/courses/actions";
 
 import { guarded, requireSignedIn } from "../access";
 import {
@@ -119,6 +129,47 @@ export default async function PersonDetailPage({
   const currentPeriod = person.membership
     ? openPeriod(person.membership.periods)
     : null;
+
+  // ── Enrolments (phase 2.0) ────────────────────────────────────────────────
+  //
+  // BOTH READS ARE `guarded`, and both denials are ordinary. `courses.read` is
+  // a permission most staff do not hold — §2.2 makes `COURSE` (or
+  // `ORGANIZATION`) the only reach that covers a course at all — so a Member
+  // Administrator who can see this person's membership may legitimately not be
+  // able to see what they are signed up for. That is a sentence on the section,
+  // not a 500 and not a silently missing block.
+  //
+  // The two are separate questions on purpose: `getStudentEnrolments` reads
+  // THIS pupil's rows (guarded on `{ student }`, then narrowed to the courses
+  // the caller reaches), while `listCoursesForPrincipal` supplies the dropdown
+  // for a NEW enrolment. A caller can be entitled to the first and not the
+  // second.
+  const enrolments = person.studentProfile
+    ? await guarded(() =>
+        getStudentEnrolments(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
+  const enrolmentCourses = person.studentProfile
+    ? await guarded(() =>
+        listCoursesForPrincipal({
+          principal: { personId: session.person.id },
+          at,
+        }),
+      )
+    : null;
+  // Withheld entries are excluded from the actionable list: `endEnrolment`
+  // re-checks `enrolments.manage` on the course itself, so a caller who
+  // cannot see the course's name cannot end it either — offering the form
+  // would only produce a denial. The entry itself still appears in the
+  // read-only history above, withheld as intended.
+  const openEnrolments = enrolments?.ok
+    ? enrolments.value.filter(
+        (entry) => entry.endedAt === null && !entry.courseWithheld,
+      )
+    : [];
 
   return (
     <main className="container py-5">
@@ -542,6 +593,205 @@ export default async function PersonDetailPage({
           </form>
         )}
       </section>
+
+      {/* ── What this pupil is signed up for (phase 2.0) ───────────────────
+          Only for a person who HAS a pupil record: an `Enrolment` references a
+          `StudentProfile`, and offering to enrol a member with no profile
+          would be offering something the model cannot represent. D-053's split
+          rendered rather than merely stored, the same way the sections above
+          do it. */}
+      {person.studentProfile ? (
+        <section className="mt-5">
+          <h2 className="h4">{t("people.enrolments.title")}</h2>
+
+          {enrolments && !enrolments.ok ? (
+            <p className="text-muted">
+              {t("people.enrolments.denied", {
+                permission: enrolments.permission,
+              })}
+            </p>
+          ) : enrolments && enrolments.value.length === 0 ? (
+            <p className="text-muted">{t("people.enrolments.none")}</p>
+          ) : enrolments ? (
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("people.enrolments.course")}</th>
+                  <th scope="col">{t("people.enrolments.status")}</th>
+                  <th scope="col">{t("people.enrolments.from")}</th>
+                  <th scope="col">{t("people.enrolments.to")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enrolments.value.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      {/* A WITHHELD COURSE SAYS SO. The enrolment is this
+                          child's history and belongs in the list; what is
+                          withheld is the course's NAME, and rendering that as
+                          a blank would read as "no course". */}
+                      {entry.courseWithheld ? (
+                        <span className="text-muted">
+                          {t("people.enrolments.courseWithheld")}
+                        </span>
+                      ) : (
+                        entry.courseName
+                      )}
+                    </td>
+                    <td>
+                      {t(
+                        `courses.enrolmentStatus.${entry.status}` as "courses.enrolmentStatus.ENROLLED",
+                      )}
+                    </td>
+                    <td>{formatCalendarDate(entry.startedAt)}</td>
+                    <td>
+                      {entry.endedAt === null ? (
+                        <span className="text-muted">
+                          {t("people.enrolments.open")}
+                        </span>
+                      ) : (
+                        formatCalendarDate(entry.endedAt)
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+
+          {/* ENROL. The course list is the caller's own reach, so a principal
+              who reaches no course is told there is nothing to choose rather
+              than shown an empty dropdown. */}
+          <details className="mt-3">
+            <summary>{t("people.enrolments.addTitle")}</summary>
+            {enrolmentCourses && enrolmentCourses.ok &&
+            enrolmentCourses.value.length > 0 ? (
+              <form action={enrolStudentAction} className="row g-2 mt-2">
+                <input
+                  type="hidden"
+                  name="back"
+                  value={`/people/${person.id}`}
+                />
+                <input
+                  type="hidden"
+                  name="studentProfileId"
+                  value={person.studentProfile.id}
+                />
+                <div className="col-md-5">
+                  <label className="form-label" htmlFor="enrolCourseId">
+                    {t("people.enrolments.course")}
+                  </label>
+                  <select
+                    className="form-select"
+                    id="enrolCourseId"
+                    name="courseId"
+                    required
+                  >
+                    {enrolmentCourses.value.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-auto">
+                  <label className="form-label" htmlFor="enrolStatus">
+                    {t("people.enrolments.status")}
+                  </label>
+                  <select
+                    className="form-select"
+                    id="enrolStatus"
+                    name="status"
+                    required
+                  >
+                    {ENROLMENT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {t(
+                          `courses.enrolmentStatus.${status}` as "courses.enrolmentStatus.ENROLLED",
+                        )}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-auto">
+                  <label className="form-label" htmlFor="enrolStartedAt">
+                    {t("people.enrolments.startDate")}
+                  </label>
+                  <input
+                    className="form-control"
+                    id="enrolStartedAt"
+                    name="startedAt"
+                    type="date"
+                    required
+                  />
+                </div>
+                <div className="col-auto align-self-end">
+                  <button className="btn btn-outline-primary" type="submit">
+                    {t("people.enrolments.add")}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <p className="form-text">{t("people.enrolments.noCourses")}</p>
+            )}
+          </details>
+
+          {/* END. One form per OPEN enrolment, because ending names which one:
+              a pupil taking two courses has two, and a single form with a
+              course dropdown would let somebody end the wrong one by leaving
+              the default selected. */}
+          {openEnrolments.length > 0 ? (
+            <details className="mt-2">
+              <summary>{t("people.enrolments.endTitle")}</summary>
+              <ul className="list-group mt-2">
+                {openEnrolments.map((entry) => (
+                  <li
+                    className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                    key={entry.id}
+                  >
+                    <span>
+                      {entry.courseWithheld
+                        ? t("people.enrolments.courseWithheld")
+                        : entry.courseName}
+                    </span>
+                    <form action={endEnrolmentAction} className="d-flex gap-2">
+                      <input
+                        type="hidden"
+                        name="back"
+                        value={`/people/${person.id}`}
+                      />
+                      <input
+                        type="hidden"
+                        name="studentProfileId"
+                        value={person.studentProfile!.id}
+                      />
+                      <input
+                        type="hidden"
+                        name="courseId"
+                        value={entry.courseId}
+                      />
+                      <input
+                        aria-label={t("people.enrolments.endDate")}
+                        className="form-control form-control-sm"
+                        name="endedAt"
+                        type="date"
+                        defaultValue={toDateInputValue(new Date())}
+                        required
+                      />
+                      <button
+                        className="btn btn-outline-secondary btn-sm"
+                        type="submit"
+                      >
+                        {t("people.enrolments.end")}
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* ── Who answers for this person, and who they answer for ──────────── */}
       <section className="mt-5">

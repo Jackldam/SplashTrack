@@ -13,7 +13,8 @@
     "toPeople": "Naar Mensen",
     "enrolNotice": "Je hebt nog geen authenticator ingesteld. Tot dat gebeurt kan dit account niets anders.",
     "toEnrolment": "Authenticator instellen",
-    "toGroups": "Naar groepen"
+    "toGroups": "Naar groepen",
+    "toCourses": "Naar cursussen"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
@@ -225,6 +226,24 @@
       "auditNotice": "Dat je dit hebt geopend is vastgelegd in het auditlogboek, met je naam en het moment.",
       "none": "Er is geen onderbouwing vastgelegd bij deze relatie.",
       "claimNotice": "Dit is wat de school is verteld en hoe dat is vastgesteld. Het is bewijs van een claim, geen juridische vaststelling van het gezag."
+    },
+    "enrolments": {
+      "title": "Inschrijvingen",
+      "none": "Deze leerling is nergens voor ingeschreven.",
+      "course": "Cursus",
+      "courseWithheld": "(cursus buiten je toegang)",
+      "status": "Soort",
+      "from": "Van",
+      "to": "Tot",
+      "open": "loopt nog",
+      "add": "Inschrijven",
+      "addTitle": "Inschrijven voor een cursus",
+      "end": "Beëindigen",
+      "endTitle": "Inschrijving beëindigen",
+      "endDate": "Einddatum",
+      "startDate": "Begindatum",
+      "denied": "Je mag de inschrijvingen van deze leerling niet zien. De benodigde rechten: {permission}.",
+      "noCourses": "Er zijn geen cursussen die je mag zien, dus er valt niets te kiezen."
     }
   },
   "mfaEnrolment": {
@@ -314,7 +333,11 @@
       "name": "Naam",
       "capacity": "Capaciteit",
       "capacityHelp": "Aantal plekken in de groep. Leeg laten mag: dat betekent 'niet vastgesteld', niet 'onbeperkt'.",
-      "active": "Actief"
+      "active": "Actief",
+      "courseLevel": "Niveau",
+      "courseLevelNone": "Geen niveau vastgelegd",
+      "courseLevelHelp": "Aan welk cursusniveau deze groep les krijgt. Leeg laten mag: dan staat er niets vast, en dat is iets anders dan 'beginners'. Let op: dit bepaalt mede wie deze groep mag zien.",
+      "courseLevelUnavailable": "Er zijn geen cursusniveaus die je mag zien, dus er valt hier niets te kiezen."
     },
     "create": {
       "title": "Nieuwe groep",
@@ -331,7 +354,8 @@
       "members": "Leerlingen",
       "noMembers": "Nog geen leerlingen in deze groep.",
       "occupancy": "{occupied} van {capacity} plekken bezet",
-      "occupancyUnknown": "{occupied} leerlingen · capaciteit niet vastgesteld"
+      "occupancyUnknown": "{occupied} leerlingen · capaciteit niet vastgesteld",
+      "level": "Niveau"
     },
     "instructor": {
       "assign": "Lesgever toewijzen",
@@ -505,6 +529,74 @@
       "name": "Naam van de baan",
       "namePlaceholder": "baan 1",
       "sequence": "Volgorde"
+    }
+  },
+  "courses": {
+    "title": "Cursussen",
+    "subtitle": "Wat er wordt aangeleerd, in welke niveaus, en wie ervoor is ingeschreven.",
+    "empty": "Er zijn nog geen cursussen.",
+    "inactive": "niet meer in gebruik",
+    "backToList": "Terug naar cursussen",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je hebt hier geen toegang toe. De benodigde rechten: {permission}. Dit is geen storing — vraag een beheerder om toegang als je die nodig hebt."
+    },
+    "columns": {
+      "name": "Cursus",
+      "description": "Omschrijving",
+      "levels": "Niveaus",
+      "enrolments": "Lopende inschrijvingen"
+    },
+    "fields": {
+      "name": "Naam",
+      "description": "Omschrijving",
+      "descriptionHelp": "Waar deze cursus over gaat, voor wie hem uit een lijst moet kiezen. Geen informatie over leerlingen.",
+      "active": "In gebruik",
+      "activeHelp": "Uitzetten haalt een cursus uit de lijst. Niveaus, inschrijvingen en geschiedenis blijven staan — verwijderen kan niet en hoort ook niet."
+    },
+    "create": {
+      "title": "Cursus toevoegen",
+      "submit": "Cursus toevoegen"
+    },
+    "edit": {
+      "title": "Cursus aanpassen",
+      "submit": "Opslaan"
+    },
+    "detail": {
+      "title": "Cursus",
+      "notFound": "Deze cursus bestaat niet.",
+      "levels": "Niveaus",
+      "noLevels": "Nog geen niveaus vastgelegd.",
+      "enrolments": "{count} lopende inschrijving(en).",
+      "awardNote": "Aan welk diploma een niveau opleidt wordt hier nog niet vastgelegd: de diplomamodule bestaat nog niet, en een leeg veld zou doen alsof dat wel zo was."
+    },
+    "level": {
+      "name": "Niveau",
+      "sequence": "Volgorde",
+      "sequenceHelp": "Laat leeg om het niveau achteraan toe te voegen. Bepaalt alleen de volgorde in lijsten — nooit of een leerling doorstroomt of terugvalt.",
+      "groups": "Groepen op dit niveau",
+      "add": "Niveau toevoegen",
+      "save": "Opslaan",
+      "addTitle": "Niveau toevoegen"
+    },
+    "enrolmentStatus": {
+      "ENROLLED": "Ingeschreven",
+      "TRIAL": "Proefzwemmer"
+    },
+    "errors": {
+      "denied": "Je hebt geen rechten voor deze handeling.",
+      "validation": "De ingevoerde gegevens kloppen niet.",
+      "SEQUENCE_TAKEN": "Er staat al een niveau op die plek in de volgorde. Kies een andere plek.",
+      "ALREADY_ENROLLED": "Deze leerling heeft al een lopende inschrijving voor deze cursus. Beëindig die eerst — zo blijft zichtbaar dat er een proefles of een eerdere periode was.",
+      "NOT_ENROLLED": "Er is geen lopende inschrijving om te beëindigen. Opnieuw beginnen maakt een nieuwe inschrijving; een afgesloten inschrijving wordt nooit heropend.",
+      "ENDS_BEFORE_IT_STARTS": "De einddatum ligt vóór de begindatum."
+    },
+    "saved": {
+      "course": "Cursus opgeslagen.",
+      "level": "Niveau toegevoegd.",
+      "levelUpdated": "Niveau opgeslagen.",
+      "enrolled": "Inschrijving vastgelegd.",
+      "enrolmentEnded": "Inschrijving beëindigd."
     }
   }
 }

@@ -23,9 +23,16 @@
  *
  * D-108: *"Recording the direction explicitly, rather than deriving it from
  * level sequence, also keeps a lateral move — a different evening, the same
- * level — from being reported as a demotion."* Deriving would also be
- * impossible today for a second reason: `Group` carries no `courseLevelId`
- * until the `courses` module lands, so there is no sequence to compare.
+ * level — from being reported as a demotion."*
+ *
+ * Phase 1.6 noted a second reason: `Group` carried no `courseLevelId`, so there
+ * was no sequence to compare. **That reason is gone as of phase 2.0** — the
+ * column is real and `CourseLevel.sequence` is a number sitting right there —
+ * and the rule is unchanged, which is why it is worth writing down. D-108's
+ * argument was never about what was available; it is about what a derived
+ * direction would SAY. A move to a different evening at the same level derives
+ * as `LATERAL` only by luck, and two groups at one level whose sequences differ
+ * would derive as a promotion nobody made.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHY THE REASON IS MANDATORY

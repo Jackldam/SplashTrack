@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { listCourseLevelsForPrincipal } from "@/modules/courses";
 import {
   getGroupForPrincipal,
   listGroupsForPrincipal,
   GROUP_MOVE_DIRECTIONS,
 } from "@/modules/groups";
 
+import { courseLevelOptionLabel } from "@/app/courses/format";
 import { guarded, requireSignedIn } from "../access";
 import {
   assignInstructorAction,
@@ -37,6 +39,24 @@ import { formatCalendarDate, toDateInputValue } from "../format";
  * colour or an icon. The help text under the field says so explicitly, because
  * the person filling it in is the one who needs to know that recording *down* is
  * expected rather than an admission.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE LEVEL IS A FIELD ON THE EDIT FORM, NOT A SCREEN OF ITS OWN (PHASE 2.0)
+ *
+ * Until `courses` landed, a group's level lived in its free-text name. The
+ * column is real now, and it goes where the name goes — one form that says what
+ * this group is — rather than into a separate "assign a level" flow that would
+ * make recording it feel like an administrative extra.
+ *
+ * The options come from `courses`, guarded there on `courses.read`: this page
+ * never reads `CourseLevel` itself (`CLAUDE.md` §4), and a caller who reaches no
+ * course is told so rather than shown an empty dropdown. It is also how the
+ * CURRENT level gets a name — the group repository returns an id, deliberately,
+ * because naming another module's row is that module's job.
+ *
+ * AND THE FIELD SAYS WHAT IT DOES TO ACCESS. Attaching a group to a level
+ * brings it inside every `COURSE` grant for that course, live, on the next
+ * query. That is worth one sentence under the field rather than a surprise.
  */
 export default async function GroupDetailPage({
   params,
@@ -93,6 +113,16 @@ export default async function GroupDetailPage({
     (candidate) => candidate.id !== group.id,
   );
 
+  // The levels this caller may choose between. `guarded`, because a principal
+  // with no course reach is an ordinary and expected case here — an instructor
+  // editing their own group's name should not get a 500 for a dropdown they
+  // cannot fill.
+  const levels = await guarded(() => listCourseLevelsForPrincipal(actor));
+  const levelOptions = levels.ok ? levels.value : [];
+  const currentLevel =
+    levelOptions.find((option) => option.levelId === group.courseLevelId) ??
+    null;
+
   const today = toDateInputValue(new Date());
 
   return (
@@ -113,6 +143,17 @@ export default async function GroupDetailPage({
         <Link href={`/groups/${group.id}/schedule`}>
           {t("groups.columns.scheduleLink")}
         </Link>
+      </p>
+      <p className="text-muted">
+        {t("groups.detail.level")}:{" "}
+        {/* THREE STATES, AND THEY ARE NOT THE SAME. A named level; no level
+            recorded at all; and a level recorded that this caller may not read
+            — which renders as the withheld dash rather than as "geen niveau",
+            because telling an instructor the group has no level when it has one
+            they cannot see is a lie the screen would be telling. */}
+        {group.courseLevelId === null
+          ? t("groups.fields.courseLevelNone")
+          : (currentLevel && courseLevelOptionLabel(currentLevel)) || "—"}
       </p>
 
       {query.error ? (
@@ -482,6 +523,43 @@ export default async function GroupDetailPage({
             <label className="form-check-label" htmlFor="editActive">
               {t("groups.fields.active")}
             </label>
+          </div>
+          <div className="col-md-6">
+            <label className="form-label" htmlFor="editCourseLevel">
+              {t("groups.fields.courseLevel")}
+            </label>
+            {levelOptions.length === 0 ? (
+              // NO SELECT AT ALL rather than an empty one — and no hidden
+              // field either, so a save from this form leaves the column
+              // alone instead of clearing a level the caller cannot see.
+              <p className="form-text mb-0">
+                {t("groups.fields.courseLevelUnavailable")}
+              </p>
+            ) : (
+              <>
+                <select
+                  className="form-select"
+                  id="editCourseLevel"
+                  name="courseLevelId"
+                  defaultValue={group.courseLevelId ?? ""}
+                >
+                  {/* The empty option is a real choice: "nobody has recorded a
+                      level", which is what the nullable column means and is
+                      not the same as a default level. */}
+                  <option value="">
+                    {t("groups.fields.courseLevelNone")}
+                  </option>
+                  {levelOptions.map((option) => (
+                    <option key={option.levelId} value={option.levelId}>
+                      {courseLevelOptionLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                <div className="form-text">
+                  {t("groups.fields.courseLevelHelp")}
+                </div>
+              </>
+            )}
           </div>
           <div className="col-12">
             <button className="btn btn-primary" type="submit">

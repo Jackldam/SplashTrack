@@ -336,7 +336,7 @@ describe("the list filters mirror coversResource", () => {
       const reach = await resolveReach({ personId }, "groups.read", {
         at: NOW,
       });
-      const filter = groupFilterForReach(reach);
+      const filter = await groupFilterForReach(reach);
 
       const visible =
         filter.kind === "DENIED"

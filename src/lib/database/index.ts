@@ -39,3 +39,10 @@ export {
   UserAccountStatus,
   SessionMfaEvidence,
 } from "@/generated/prisma/client";
+
+// Enum TYPES a module binds its own vocabulary to with `satisfies`, so a member
+// added to the schema and not to the module's list fails to compile. The VALUES
+// are deliberately not re-exported: a module states its own order and its own
+// meaning (see `ENROLMENT_STATUSES`), and importing the generated object would
+// make that order an accident of the schema's line order.
+export type { EnrolmentStatus } from "@/generated/prisma/client";

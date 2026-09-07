@@ -55,6 +55,17 @@ export interface GroupMemberView {
 
 export interface GroupDetail extends GroupListItem {
   readonly unitId: string | null;
+  /**
+   * The `CourseLevel` this group is taught at, or null when nobody has recorded
+   * one (phase 2.0).
+   *
+   * AN ID AND NOT A NAME. `CourseLevel` belongs to the `courses` module, and
+   * naming it here would mean this repository reading that module's table for
+   * a label (`CLAUDE.md` §4). The screen that renders a group already asks
+   * `courses` for the level list it offers in the edit form, and resolves the
+   * name from it.
+   */
+  readonly courseLevelId: string | null;
   /** Current members — open intervals only. */
   readonly members: readonly GroupMemberView[];
 }
@@ -73,7 +84,7 @@ export async function listGroups(
   at: Date,
   options: { includeInactive?: boolean } = {},
 ): Promise<GroupListItem[]> {
-  const filter = groupFilterForReach(reach);
+  const filter = await groupFilterForReach(reach);
   if (filter.kind === "DENIED") throw new ReachCoversNoGroupError();
 
   const rows = await prisma.group.findMany({
@@ -137,6 +148,7 @@ export async function findGroupDetail(
       capacity: true,
       active: true,
       unitId: true,
+      courseLevelId: true,
       _count: { select: { memberships: { where: activeAt(at) } } },
       instructors: {
         where: activeAt(at),
@@ -170,6 +182,7 @@ export async function findGroupDetail(
     capacity: row.capacity,
     active: row.active,
     unitId: row.unitId,
+    courseLevelId: row.courseLevelId,
     occupied: row._count.memberships,
     instructors: row.instructors.map((assignment) => ({
       personId: assignment.person.id,
@@ -274,7 +287,7 @@ export async function findStudentGroupHistory(
   memberships: GroupHistoryEntry[];
   moves: GroupMoveEntry[];
 }> {
-  const filter = groupFilterForReach(reach);
+  const filter = await groupFilterForReach(reach);
   if (filter.kind === "DENIED") throw new ReachCoversNoGroupError();
 
   // NULL means "no narrowing", and it is kept distinct from an empty object on
@@ -392,4 +405,30 @@ export async function activeMemberIds(
 /** Whether a reach names any group at all, for a caller that only needs to know. */
 export function reachNamesAGroup(reach: Reach): boolean {
   return reachVariant(reach).kind !== "NONE";
+}
+
+/**
+ * The groups taught at any of these levels — the answer the `courses` module
+ * builds `groupsOfCourse` from.
+ *
+ * UNGUARDED, and that is correct: it returns `Group` ids and nothing about
+ * anybody. It is the mirror image of {@link activeMemberIds}, which `sessions`
+ * uses for the same reason — a module asking the OWNER of a table for ids,
+ * rather than reading that table itself (`CLAUDE.md` §4). Making it a
+ * permission check here would be circular, because the caller is the relation
+ * that `resolveReach` and `coversResource` are in the middle of computing.
+ *
+ * `courses` supplies the level ids because it owns `CourseLevel`; this module
+ * supplies the group ids because it owns `Group`. Neither reads the other's
+ * table.
+ */
+export async function groupIdsForCourseLevels(
+  courseLevelIds: readonly string[],
+): Promise<string[]> {
+  if (courseLevelIds.length === 0) return [];
+  const rows = await prisma.group.findMany({
+    where: { courseLevelId: { in: [...courseLevelIds] } },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
 }

@@ -27,9 +27,31 @@
  * assignment has ended resolves to `NONE`, not to `GROUPS([])` — so this
  * function is never even reached, and the caller reports a DENIAL rather than an
  * empty list.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THIS IS ASYNCHRONOUS, AS OF PHASE 2.0
+ *
+ * The `COURSES` branch needs to know which groups a course has, and that answer
+ * belongs to the `courses` module — `groupsOfCourse`, registered through
+ * `configureScopeRelations`. Asking the REGISTRY rather than writing a second
+ * `where` clause over `CourseLevel` here is the whole point: `coversResource`'s
+ * `COURSES`/`group` branch already asks the same relation, so the predicate and
+ * the filter cannot disagree about what a course contains. A hand-written
+ * traversal beside it would be a second home for one rule (D-134), and the two
+ * homes would be a list returning a group its own detail page refuses — the
+ * defect this file's header opens with.
+ *
+ * The relation is asynchronous because coverage is evaluated LIVE (D-145), so
+ * this is too. Every caller was already async.
  */
-import { reachVariant, type Reach } from "@/lib/authorization";
+import {
+  reachVariant,
+  ScopeRelationUnavailableError,
+  scopeRelations,
+  type Reach,
+} from "@/lib/authorization";
 import type { Prisma } from "@/lib/database";
+import { logger } from "@/lib/logging";
 
 /**
  * How a reach narrows a query over `Group`.
@@ -44,7 +66,9 @@ export type GroupReachFilter =
   | { readonly kind: "DENIED" };
 
 /** The `Group` predicate this reach permits, or `DENIED`. */
-export function groupFilterForReach(reach: Reach): GroupReachFilter {
+export async function groupFilterForReach(
+  reach: Reach,
+): Promise<GroupReachFilter> {
   const variant = reachVariant(reach);
 
   switch (variant.kind) {
@@ -67,14 +91,48 @@ export function groupFilterForReach(reach: Reach): GroupReachFilter {
     case "GROUPS":
       return { kind: "WHERE", where: { id: { in: [...variant.groupIds] } } };
 
-    // A course covers its groups (§2.2) — and answering that needs
-    // `groupsOfCourse`, which the `courses` module owns and has not registered
-    // because it does not exist. DENIED is the honest answer today and it is the
-    // SAFE direction: it refuses a reader rather than admitting one. When
-    // `courses` lands, this branch becomes a `courseId IN (...)` filter and the
-    // matching branch of `coversResource` is already written.
-    case "COURSES":
-      return { kind: "DENIED" };
+    // A course covers its groups (§2.2), through `Group -> CourseLevel ->
+    // Course`. The ids come from `groupsOfCourse`, which the `courses` module
+    // owns and registered in phase 2.0 — the same relation
+    // `coversResource(reach, { group })` asks, so the two cannot disagree.
+    //
+    // A group with no `courseLevelId` belongs to no course and appears in no
+    // answer, which is the safe direction: the column is nullable and was NOT
+    // backfilled, so "we do not know this group's level" reads as "no COURSE
+    // grant reaches it" rather than as a guess.
+    case "COURSES": {
+      const groupIds = new Set<string>();
+      try {
+        for (const courseId of variant.courseIds) {
+          for (const groupId of await scopeRelations().groupsOfCourse(
+            courseId,
+          )) {
+            groupIds.add(groupId);
+          }
+        }
+      } catch (error) {
+        // Deny by default on ANY failure (§1.1 rule 2), and say so loudly —
+        // "the courses module is not registered" and "this course has no
+        // groups" must be distinguishable to whoever reads the log.
+        logger[
+          error instanceof ScopeRelationUnavailableError ? "warn" : "error"
+        ](
+          {
+            component: "authorization",
+            event: "group_filter.course_relation_unavailable",
+            err: error,
+          },
+          "COURSE reach over groups denied — groupsOfCourse could not be read",
+        );
+        return { kind: "DENIED" };
+      }
+      // An empty course reaches no group. `DENIED` and not `WHERE id IN ()`,
+      // because the `ALL`/`WHERE`/`DENIED` split exists precisely so that "no
+      // groups" is never spelled as an empty predicate somebody later reads as
+      // "no filter".
+      if (groupIds.size === 0) return { kind: "DENIED" };
+      return { kind: "WHERE", where: { id: { in: [...groupIds] } } };
+    }
 
     // §2.2 is explicit that a SESSION grant reaches "that one session's roster
     // only ... nothing else, not the course, not the students' other records".
@@ -91,7 +149,7 @@ export function groupFilterForReach(reach: Reach): GroupReachFilter {
     case "UNION": {
       const clauses: Prisma.GroupWhereInput[] = [];
       for (const member of variant.of) {
-        const filter = groupFilterForReach(member);
+        const filter = await groupFilterForReach(member);
         if (filter.kind === "ALL") return { kind: "ALL" };
         if (filter.kind === "WHERE") clauses.push(filter.where);
       }

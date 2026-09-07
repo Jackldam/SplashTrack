@@ -87,6 +87,19 @@ export {
 export { instructorAssignmentSource } from "./infrastructure/instructor-relationship-source";
 
 /**
+ * The groups taught at any of these `CourseLevel`s — the published answer
+ * `courses` builds `groupsOfCourse` from (phase 2.0).
+ *
+ * UNGUARDED for the same reason `activeGroupMemberIds` is: it returns `Group`
+ * ids and nothing about anybody, and its caller is the scope relation that
+ * `resolveReach` and `coversResource` are in the middle of computing — a
+ * permission check here would be circular. `courses` owns `CourseLevel` and
+ * supplies the ids; this module owns `Group` and answers. Neither reads the
+ * other's table (`CLAUDE.md` §4).
+ */
+export { groupIdsForCourseLevels } from "./infrastructure/group-repository";
+
+/**
  * Who is in this group at this instant — the published answer `sessions` builds
  * a roster from.
  *
