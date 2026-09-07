@@ -800,6 +800,11 @@ model StudentProfile {
   groupMoves       GroupMove[]
   rosterEntries    SessionRosterEntry[]
 
+  /// Phase 2.0, and the same shape for the same reason: an `Enrolment`
+  /// references this profile rather than the `Person`, so it cascades here and
+  /// stays out of both erasure registries by construction.
+  enrolments Enrolment[]
+
   @@index([unitId])
 }
 
@@ -1044,10 +1049,34 @@ model Group {
   /// membership test — so the nullable column fails safe.
   unitId String?
 
+  /// WHAT THIS GROUP IS TAUGHT AT — §3.2's `courseLevelId?`, real at last.
+  ///
+  /// Phase 1.6 refused to add this column: `CourseLevel` did not exist, and an
+  /// id with no table behind it is the stub column D-163 forbids — nothing
+  /// could write it, nothing could read it, and it would look like a level had
+  /// been recorded. Until now a group's level lived in its free-text NAME
+  /// (*"Diploma B donderdag"*), which no query can group by, filter on or
+  /// compare. Phase 2.0 brings the table, so the column becomes a real foreign
+  /// key.
+  ///
+  /// NULLABLE, and there is NO BACKFILL. Existing groups keep their names and
+  /// their null: guessing a level from a name would write a fact nobody
+  /// stated, and a wrong level is worse than an absent one — D-180's placement
+  /// decision reads this column to find "a group at the right level", and a
+  /// guess would send a child to the wrong water. The screens show null as
+  /// *"geen niveau vastgelegd"*, never as a default level.
+  ///
+  /// It is also the second half of `COURSE` reach over a group: `groupsOfCourse`
+  /// walks `Group -> CourseLevel -> Course`, so a group with no level belongs to
+  /// no course and is reachable by no `COURSE` grant. Null DENIES, which is the
+  /// safe direction every coverage rule in this schema fails toward.
+  courseLevelId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  unit OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  unit        OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  courseLevel CourseLevel?      @relation(fields: [courseLevelId], references: [id], onDelete: Restrict)
 
   memberships GroupMembership[]
   moves       GroupMove[]            @relation("GroupMoveTo")
@@ -1059,6 +1088,9 @@ model Group {
 
   @@index([unitId])
   @@index([active])
+  /// The index `groupsOfCourse` reads — one query per `COURSE` grant, on every
+  /// coverage check and every group list a `COURSE`-scoped principal makes.
+  @@index([courseLevelId])
 }
 
 /// *groepsindeling* — that a pupil is in a group, AS AN INTERVAL.
@@ -1635,6 +1667,203 @@ model SessionRosterEntry {
   @@index([studentProfileId])
   /// The index `isOnSessionRoster` reads.
   @@index([sessionId, studentProfileId])
+}
+
+// ---------------------------------------------------------------------------
+// What is taught, its levels, and who is signed up for it
+// (phase 2.0, the `courses` module — D-093, D-109, D-134, D-163, D-170)
+//
+// `01-domain-model.md` §2.3: **`Group` is separate from `Course`.** A course is
+// *what is taught* (Zwemmen A, niveau 3); a group is *who is taught together,
+// when, by whom*. Conflating them is "the single most common modelling error in
+// this domain": it makes it impossible to move a child between groups without
+// re-enrolling them, or to run two groups of the same course. `Group` carries a
+// nullable `courseLevelId` pointing here, and nothing else joins the two.
+// ---------------------------------------------------------------------------
+
+/// *cursus* — what the club teaches. §3.2: name, description, active.
+///
+/// TEACHING CONFIGURATION, NOT PERSONAL DATA. A course is a name and a
+/// paragraph; every person-shaped fact about it lives on `Enrolment` beside it.
+/// That is why its `@dataClass` is `ORGANIZATION_SETTINGS` and `Enrolment`'s is
+/// `STUDENT_PROFILE`, on exactly the `Group`/`GroupMembership` split above.
+///
+/// **THERE IS NO END DATE, AND ITS ABSENCE IS A GAP THIS PHASE COULD NOT CLOSE
+/// ON ITS OWN.** D-170 bounds a `COURSE` grant's `validUntil` at *"the course's
+/// own end date + 7 days"*, and §3.2's field list — the authority on what this
+/// entity holds — gives a course no dates at all. Inventing one would be
+/// inventing a fact the club has to maintain for a grant type nothing issues
+/// yet (the `exams` module owns the internal-examiner role that needs it). So
+/// `courseEndDate` resolves to NULL, `assertGrantable` refuses every `COURSE`
+/// proposal as `UNRESOLVABLE`, and that refusal is the SAFE direction — the
+/// alternative, defaulting the ceiling, puts the value back under the control
+/// of the person typing the date, which is the thing D-052 could never enforce.
+/// Recorded as an open question in
+/// `docs/build/phase-2.0-courses-report.md`.
+///
+/// `active` is the same retirement flag `Group` and `Pool` carry: a course the
+/// club has stopped running keeps its levels, its enrolments and its history.
+/// Deleting it would take a child's record of what they learned with it.
+/// @dataClass ORGANIZATION_SETTINGS
+model Course {
+  id String @id @default(cuid(2))
+
+  /// The club's own name — *"Zwem-ABC"*, *"Snorkelen"*. Bounded at the
+  /// validation layer, not here.
+  name String
+
+  /// What this course is, for the administrator choosing between two of them.
+  /// Free text and NOT encrypted: it describes a course, never a child, so it
+  /// is not in D-148's protected class (medical remarks, pastoral notes,
+  /// assessment remarks, inquiry text). The same judgement
+  /// `StudentLifecycleEvent.reason` records, on text that is one step further
+  /// from a person than that one is.
+  description String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  levels     CourseLevel[]
+  enrolments Enrolment[]
+
+  @@index([active])
+}
+
+/// *niveau* — one step of a course: Diploma A, then B, then C.
+///
+/// **NO `awardTypeId`, ON PURPOSE.** §3.2 gives this entity `name, sequence,
+/// awardTypeId?`, and `AwardType` belongs to the `assessment`/`exams` modules,
+/// which are not built. A nullable id with no table behind it is precisely the
+/// stub column D-163 refuses and phase 1.6 refused once already — for this very
+/// column, from the other end, when it declined to give `Group` a
+/// `courseLevelId` before `CourseLevel` existed. Nothing could write it,
+/// nothing could read it, and a screen rendering "geen diploma gekoppeld" would
+/// be reporting an absence that is really an unbuilt module. It arrives with
+/// `AwardType`, whose `CriterionSet` is where the requirements themselves live
+/// (`15-assessment-and-fees.md` §2.6).
+///
+/// `sequence` is what makes "A then B then C" a fact rather than an alphabetical
+/// accident. It is an ORDER, not a level number the club types on a form: two
+/// levels of one course may not share one, which the unique index in the
+/// migration enforces, because a tie makes "what comes next" a question with two
+/// answers — and D-108 already refuses to DERIVE a group move's direction from
+/// level order for the neighbouring reason (a lateral move must not read as a
+/// demotion). Nothing in this module reads `sequence` to decide anything; it
+/// orders a list.
+/// @dataClass ORGANIZATION_SETTINGS
+model CourseLevel {
+  id       String @id @default(cuid(2))
+  courseId String
+
+  /// *"Diploma A"*, *"Niveau 3"*. The club's own words.
+  name String
+
+  /// Where this level sits in the course's order. Unique per course.
+  sequence Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Restrict, like every other structural edge in this schema: retiring a
+  /// course is `active = false`, and a delete that silently took its levels —
+  /// and with them the level every group and every future award points at —
+  /// would destroy the record of what the club taught.
+  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  groups Group[]
+
+  @@unique([courseId, sequence])
+  @@index([courseId])
+}
+
+/// The two kinds of participation the design set names, and exactly those.
+///
+/// **`TRIAL` IS D-109, AND D-109 IS A MODEL AND NOT A WORKFLOW.** It marks a
+/// *proefzwemmer* — a prospective pupil attending once — and that is the whole
+/// of it: there is no booking flow, no conversion funnel, no shortened
+/// onboarding path and no entitlement counter anywhere in this module. The
+/// domain expert asked to be allowed for while stating that his own school does
+/// not run trials; the DATA shape is expensive to retrofit and the workflow
+/// would be built for a customer who does not exist.
+///
+/// **WHY THERE IS NO `ACTIVE` OR `ENDED` MEMBER.** Whether an enrolment is
+/// running is `endedAt IS NULL` — one home for one fact (D-134), and the same
+/// interval rule `MembershipPeriod` and `GroupMembership` already follow
+/// (D-059). A status member spelling the same thing would be a second answer to
+/// "is this pupil enrolled right now", which is the exact failure a status flag
+/// has and the reason D-059 exists. §6 of `15-assessment-and-fees.md` reads
+/// *"active `Enrolment`"* and gets it from the interval.
+///
+/// **AND NO PAYMENT STATE, EVER.** D-093 and P-03: `Enrolment.status` is a
+/// lifecycle, never a payment state. Once money is in the same database as the
+/// class list somebody asks why the class list does not flag arrears — which
+/// would put a family's finances in front of a volunteer instructor, on a
+/// shared device, at the poolside, in front of the child. No member of this
+/// enum may ever mean "unpaid".
+///
+/// The design set names `TRIAL` and no other value. `ENROLLED` is this phase's
+/// name for the ordinary case, recorded as an open question rather than as a
+/// settled vocabulary — see `docs/build/phase-2.0-courses-report.md`.
+enum EnrolmentStatus {
+  /// An ordinary pupil, signed up for the course.
+  ENROLLED
+  /// *proefzwemmen* — a prospective pupil attending once (D-109, R-38).
+  TRIAL
+}
+
+/// *inschrijving* — that a pupil is signed up for a course, AS AN INTERVAL.
+///
+/// **TIME-BOUNDED, NEVER A STATUS FLAG**, on the `GroupMembership` pattern
+/// beside it. D-059: leaving and returning creates a NEW `Enrolment` row and
+/// never mutates or duplicates the profile. The old row stays closed, which is
+/// what keeps "was this child enrolled last March?" answerable — and it is what
+/// D-066's retention clock reads through `LAST_ENROLMENT_END`.
+///
+/// It is also the `enrolments` half of `COURSE` coverage: §2.2 gives a `COURSE`
+/// grant *"that course, its levels, its **enrolments**, and all its exam
+/// sessions"*, and `isEnrolledInCourse` reads these rows LIVE, at query time,
+/// never from a value captured when the grant was issued (D-145). A closed
+/// enrolment grants nobody sight of anybody — the same sentence that closes
+/// F-114 for `GroupMembership`.
+///
+/// A CORRECTION IS NOT AN UPDATE OF THE STATUS. Converting a *proefzwemmer*
+/// into a pupil is a new `ENROLLED` row, not a `TRIAL` row edited in place:
+/// the trial happened, and rewriting it would destroy the only record that it
+/// did. There is no service in this module that changes `status` after the
+/// fact.
+/// @dataClass STUDENT_PROFILE
+model Enrolment {
+  id               String @id @default(cuid(2))
+  studentProfileId String
+  courseId         String
+
+  status EnrolmentStatus
+
+  /// When the enrolment began.
+  startedAt DateTime
+  /// When it ended. NULL = currently enrolled. The ONLY signal there is.
+  endedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// CASCADE from the profile, on the `GroupMembership` pattern: this row
+  /// references `StudentProfile`, not `Person`, so it appears in neither the
+  /// erasure registry nor `PERSON_REFERENCE_CLASSIFICATION`, and it leaves when
+  /// the profile an erasure deletes explicitly goes.
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  /// Restrict: a course with enrolments against it is a course the club ran.
+  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@index([studentProfileId])
+  @@index([courseId])
+  /// The index `isEnrolledInCourse` reads — the hot path of `COURSE` coverage,
+  /// run on every check a `COURSE`-scoped principal makes.
+  @@index([courseId, studentProfileId, endedAt])
+  @@index([studentProfileId, endedAt])
 }
 
 // ---------------------------------------------------------------------------
