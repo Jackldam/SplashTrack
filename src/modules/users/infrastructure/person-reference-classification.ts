@@ -203,6 +203,17 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "is precisely why it needs a classification now rather than when " +
       "someone finally writes to it.",
   },
+  "SkillProgress.assessedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO RECORDED a per-lesson progress observation — accountability " +
+      "evidence about somebody else's record, on the exact " +
+      "GroupMove.decidedByPersonId pattern beside it. The row belongs to the " +
+      "PUPIL's teaching log and is theirs to keep; the instructor's name is " +
+      "not the fact worth preserving once they leave. The foreign key is " +
+      "onDelete: SetNull as defence in depth; the erasure severs it " +
+      "explicitly regardless.",
+  },
   "RetentionPolicy.confirmedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

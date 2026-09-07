@@ -174,7 +174,11 @@ export async function updateCourseLevelAction(
     await updateCourseLevel(
       await actor(),
       String(formData.get("levelId") ?? ""),
-      { name: formData.get("name"), sequence: formData.get("sequence") },
+      {
+        name: formData.get("name"),
+        sequence: formData.get("sequence"),
+        awardTypeId: formData.get("awardTypeId"),
+      },
     );
   });
   revalidatePath(`/courses/${courseId}`);

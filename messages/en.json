@@ -14,7 +14,8 @@
     "enrolNotice": "You have not set up an authenticator yet. Until you do, this account can do nothing else.",
     "toEnrolment": "Set up your authenticator",
     "toGroups": "Go to groups",
-    "toCourses": "Go to courses"
+    "toCourses": "Go to courses",
+    "toSkills": "Go to skills"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -244,6 +245,16 @@
       "startDate": "Start date",
       "denied": "You may not see this pupil's enrolments. The permission needed: {permission}.",
       "noCourses": "There are no courses you may see, so there is nothing to choose."
+    },
+    "skillProgress": {
+      "title": "Progress",
+      "none": "No progress has been recorded for this pupil yet.",
+      "denied": "You may not see this pupil's progress. The permission needed: {permission}.",
+      "criterion": "Requirement",
+      "awardType": "Diploma/certificate",
+      "state": "State",
+      "date": "Date",
+      "note": "Note"
     }
   },
   "mfaEnrolment": {
@@ -288,6 +299,8 @@
     "errors": {
       "denied": "You do not have access to this action.",
       "validation": "The details entered are not valid.",
+      "NOT_A_GROUP_MEMBER": "This pupil is not an active member of this group. Progress is recorded for a pupil who currently belongs to it.",
+      "CRITERION_NOT_ACTIVE": "This requirement belongs to a requirement set that is not active. Progress is only recorded against the set currently in force.",
       "groupFull": "This group is full. Tick 'place above capacity' if you mean to do this.",
       "sameGroup": "That is not a move: the pupil is already in this group.",
       "reasonRequired": "Give a reason. Without one, a move later reads as a mistake.",
@@ -327,7 +340,28 @@
       "closureUpdated": "Closure updated.",
       "recurrenceLanes": "The series' lanes are saved. Lessons that have already happened keep the lanes they were swum in.",
       "lanesOverridden": "This lesson's lanes are changed. This lesson only; the series and every other lesson stay as they were.",
-      "lanesCleared": "This lesson follows the series' lanes again."
+      "lanesCleared": "This lesson follows the series' lanes again.",
+      "progress": "Progress recorded."
+    },
+    "skillProgress": {
+      "title": "Record progress",
+      "denied": "You do not have access to this. The permission needed: {permission}.",
+      "pupil": "Pupil",
+      "criterion": "Requirement",
+      "state": "State",
+      "note": "Note",
+      "submit": "Record",
+      "reason": {
+        "NO_LEVEL": "No course level is linked to this group yet, so there is nothing to record progress against.",
+        "NO_AWARD_TYPE": "This group's level is not yet linked to a diploma or certificate.",
+        "NO_ACTIVE_SET": "The linked diploma or certificate has no active requirement set yet."
+      },
+      "states": {
+        "INTRODUCED": "Introduced",
+        "PRACTISING": "Practising",
+        "ACHIEVED": "Achieved",
+        "REVOKED": "Revoked"
+      }
     },
     "fields": {
       "name": "Name",
@@ -567,8 +601,7 @@
       "notFound": "This course does not exist.",
       "levels": "Levels",
       "noLevels": "No levels recorded yet.",
-      "enrolments": "{count} open enrolment(s).",
-      "awardNote": "Which award a level prepares for is not recorded here yet: the award module does not exist, and an empty field would pretend it did."
+      "enrolments": "{count} open enrolment(s)."
     },
     "level": {
       "name": "Level",
@@ -577,7 +610,10 @@
       "groups": "Groups at this level",
       "add": "Add level",
       "save": "Save",
-      "addTitle": "Add a level"
+      "addTitle": "Add a level",
+      "awardType": "Diploma/certificate",
+      "awardTypeNone": "None linked",
+      "awardTypeUnavailable": "You do not have access to the skills catalogue, so this link is not offered here."
     },
     "enrolmentStatus": {
       "ENROLLED": "Enrolled",
@@ -597,6 +633,118 @@
       "levelUpdated": "Level saved.",
       "enrolled": "Enrolment recorded.",
       "enrolmentEnded": "Enrolment ended."
+    }
+  },
+  "skills": {
+    "title": "Diplomas and certificates",
+    "subtitle": "The requirements catalogue: which diplomas and certificates exist, and what they take. Empty on delivery — every club fills it in itself.",
+    "empty": "No diploma or certificate has been recorded yet.",
+    "backToList": "Back to diplomas and certificates",
+    "backToAwardType": "Back to this diploma/certificate",
+    "hasActiveSet": "active requirement set",
+    "noActiveSet": "no active requirement set yet",
+    "denied": {
+      "title": "No access",
+      "explanation": "You do not have access to this. The permission needed: {permission}. This is not a fault — ask an administrator for access if you need it."
+    },
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "kind": "Kind",
+      "issuingBody": "Issuing body",
+      "criterionSets": "Requirement sets",
+      "status": "Status"
+    },
+    "fields": {
+      "code": "Code",
+      "name": "Name",
+      "kind": "Kind",
+      "issuingBody": "Issuing body",
+      "source": "Provenance",
+      "sourceHelp": "NRZ = our own transcription of the national requirements; Own = a requirement set the club wrote or adapted itself."
+    },
+    "kind": {
+      "DIPLOMA": "Diploma",
+      "CERTIFICATE": "Certificate"
+    },
+    "issuingBody": {
+      "NRZ": "NRZ",
+      "ORG": "Own"
+    },
+    "create": {
+      "title": "Add a diploma or certificate",
+      "submit": "Add"
+    },
+    "edit": {
+      "title": "Edit",
+      "submit": "Save",
+      "codeKindNote": "Code and kind cannot be edited here: the code is used as an identifier everywhere, and the kind decides which requirement set belongs to it. For a mistake: create a new diploma or certificate."
+    },
+    "detail": {
+      "title": "Diploma/certificate",
+      "notFound": "This diploma or certificate does not exist."
+    },
+    "criterionSetStatus": {
+      "DRAFT": "Draft",
+      "ACTIVE": "Active",
+      "RETIRED": "Retired"
+    },
+    "criterionSets": {
+      "title": "Requirement sets",
+      "empty": "No requirement set recorded yet.",
+      "openDraftNote": "A draft requirement set is already open. Finish or publish it before starting a new one.",
+      "addTitle": "Start a new requirement set",
+      "add": "Start draft",
+      "columns": {
+        "version": "Version",
+        "status": "Status",
+        "source": "Provenance",
+        "criteria": "Requirements",
+        "effectiveFrom": "Effective from",
+        "effectiveTo": "Effective to"
+      }
+    },
+    "set": {
+      "title": "Requirement set",
+      "notFound": "This requirement set does not exist.",
+      "editTitle": "Edit requirement set",
+      "notEditable": "This requirement set is published or retired and can no longer be changed. A correction becomes a new version.",
+      "passFloor": "Minimum grade (pass floor)",
+      "passFloorPlaceholder": "Choose a grade",
+      "passFloorHelp": "The grade every requirement in this set must reach at minimum, unless a requirement carries its own floor.",
+      "publish": "Publish",
+      "publishHelp": "Makes this version active and retires the previous active version. Cannot be changed afterwards."
+    },
+    "criteria": {
+      "title": "Requirements",
+      "empty": "No requirement recorded yet.",
+      "addTitle": "Add a requirement",
+      "add": "Add requirement",
+      "save": "Save",
+      "sequenceHelp": "Leave empty to add the requirement at the end.",
+      "useSetFloor": "Set's own floor",
+      "columns": {
+        "sequence": "Position",
+        "code": "Code",
+        "name": "Name",
+        "minimumGrade": "Minimum grade"
+      }
+    },
+    "errors": {
+      "denied": "You do not have permission for this action.",
+      "validation": "The values entered are not valid.",
+      "SEQUENCE_TAKEN": "Another requirement already sits at that position in this set. Choose another one.",
+      "SET_NOT_DRAFT": "This requirement set is published or retired and can no longer be changed.",
+      "NOT_DRAFT": "This requirement set is not a draft and cannot be changed or published again.",
+      "EMPTY_SET": "This requirement set has no requirements yet. Add at least one before publishing it.",
+      "NO_PASS_FLOOR": "This requirement set has no minimum grade set yet."
+    },
+    "saved": {
+      "awardType": "Saved.",
+      "criterionSet": "Requirement set saved.",
+      "criterion": "Requirement added.",
+      "criterionUpdated": "Requirement saved.",
+      "published": "Requirement set published. The previous version has been retired."
     }
   }
 }

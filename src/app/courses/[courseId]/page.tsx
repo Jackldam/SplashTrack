@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { getCourseForPrincipal } from "@/modules/courses";
+import { listAwardTypesForPrincipal } from "@/modules/skills";
 
 import { guarded, requireSignedIn } from "../access";
 import {
@@ -31,11 +32,13 @@ import {
  * Listing children here would also make this the widest personal-data surface
  * in the application for the one grant type nobody has issued yet.
  *
- * **A field saying which diploma a level prepares for.** §3.2 gives
- * `CourseLevel` an `awardTypeId?` and `AwardType` belongs to the assessment
- * module, which is not built. A disabled dropdown or an empty column would
- * report an absence that is really an unbuilt module, so the screen says so in
- * one line instead (D-163).
+ * **`awardTypeId`, REAL AS OF PHASE 2.1.** The level row's own edit form now
+ * offers a `<select>` of `AwardType`s, sourced from `@/modules/skills`
+ * (`listAwardTypesForPrincipal`), on the exact `courseLevelId` dropdown
+ * `src/app/groups/[groupId]/page.tsx` already uses for the reverse link. A
+ * caller with no `skills.read` reach is offered nothing rather than an empty
+ * dropdown (`awardTypeOptions.length === 0` — the same precedent), and saving
+ * with none offered leaves the column untouched.
  *
  * **A delete button, for either.** A course is retired with `In gebruik`
  * switched off and keeps everything under it; a level is pointed at by every
@@ -89,6 +92,15 @@ export default async function CourseDetailPage({
     );
   }
 
+  // The award types a level may point at (phase 2.1). `guarded`: `skills.read`
+  // is `{ organization: true} `-only (`@/modules/skills` has no narrower
+  // scope for its catalogue), so most callers reaching this screen will not
+  // hold it — an ordinary case, not a 500. Without it the column is simply
+  // not offered, on the `levelOptions.length === 0` precedent
+  // `src/app/groups/[groupId]/page.tsx` already uses for `courseLevelId`.
+  const awardTypes = await guarded(() => listAwardTypesForPrincipal(actor));
+  const awardTypeOptions = awardTypes.ok ? awardTypes.value : [];
+
   return (
     <main className="container py-5">
       <nav aria-label="kruimelpad" className="mb-3">
@@ -130,6 +142,7 @@ export default async function CourseDetailPage({
             <tr>
               <th scope="col">{t("courses.level.sequence")}</th>
               <th scope="col">{t("courses.level.name")}</th>
+              <th scope="col">{t("courses.level.awardType")}</th>
               <th scope="col">{t("courses.level.groups")}</th>
               <th scope="col">
                 <span className="visually-hidden">
@@ -144,7 +157,7 @@ export default async function CourseDetailPage({
                 {/* ONE ROW IS ONE FORM. Renaming a level and moving it in the
                     order are the same edit, so they save together — two forms
                     would let somebody save half of a correction. */}
-                <td colSpan={4} className="p-0">
+                <td colSpan={5} className="p-0">
                   <form
                     action={updateCourseLevelAction}
                     className="row g-2 align-items-end p-2 m-0"
@@ -170,7 +183,7 @@ export default async function CourseDetailPage({
                         style={{ width: "6rem" }}
                       />
                     </div>
-                    <div className="col-md-5">
+                    <div className="col-md-4">
                       <label
                         className="form-label visually-hidden"
                         htmlFor={`level-name-${level.id}`}
@@ -185,6 +198,40 @@ export default async function CourseDetailPage({
                         required
                         maxLength={120}
                       />
+                    </div>
+                    <div className="col-md-3">
+                      <label
+                        className="form-label visually-hidden"
+                        htmlFor={`level-award-${level.id}`}
+                      >
+                        {t("courses.level.awardType")}
+                      </label>
+                      {awardTypeOptions.length === 0 ? (
+                        // NO SELECT AT ALL, on the group screen's
+                        // `courseLevelId` precedent: a caller with no
+                        // `skills.read` reach is offered nothing rather than
+                        // an empty dropdown, and a save from this form leaves
+                        // the column alone (no `awardTypeId` field posted).
+                        <span className="form-text">
+                          {t("courses.level.awardTypeUnavailable")}
+                        </span>
+                      ) : (
+                        <select
+                          className="form-select form-select-sm"
+                          id={`level-award-${level.id}`}
+                          name="awardTypeId"
+                          defaultValue={level.awardTypeId ?? ""}
+                        >
+                          <option value="">
+                            {t("courses.level.awardTypeNone")}
+                          </option>
+                          {awardTypeOptions.map((awardType) => (
+                            <option key={awardType.id} value={awardType.id}>
+                              {awardType.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <div className="col-auto text-muted">
                       {t("courses.level.groups")}: {level.groupCount}
@@ -204,11 +251,6 @@ export default async function CourseDetailPage({
           </tbody>
         </table>
       )}
-
-      {/* The honest line about `awardTypeId`. D-163: the column is not there,
-          and an empty field would report an absence that is really an unbuilt
-          module. */}
-      <p className="form-text">{t("courses.detail.awardNote")}</p>
 
       <details className="mt-3">
         <summary>{t("courses.level.addTitle")}</summary>

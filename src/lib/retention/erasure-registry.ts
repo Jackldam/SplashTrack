@@ -103,6 +103,10 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     // answer is `PERSON_REFERENCE_CLASSIFICATION`'s, not this file's.
     InstructorAssignment: { kind: "erase" },
     GroupMove: { kind: "erase" },
+    // Phase 2.1. `SkillProgress` references `Person` directly through
+    // `assessedByPersonId` (`SEVER_AND_RETAIN`, on the `GroupMove` pattern
+    // immediately above), so it is an ordinary participant in erasure.
+    SkillProgress: { kind: "erase" },
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },

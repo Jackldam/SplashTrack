@@ -91,3 +91,12 @@ export {
 } from "./infrastructure/course-repository";
 
 export { enrolmentRelationshipSource } from "./infrastructure/enrolment-relationship-source";
+
+/**
+ * The `AwardType` a `CourseLevel` trains towards, or `null` — the published
+ * answer the `skills` module (phase 2.1) builds its per-group criterion
+ * picker from. UNGUARDED, on the `groupIdsForCourseLevels`/`activeGroupMemberIds`
+ * precedent: one id, nothing about anybody, and the caller has already
+ * guarded before it asks.
+ */
+export { awardTypeOfCourseLevel } from "./infrastructure/course-repository";

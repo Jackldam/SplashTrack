@@ -14,7 +14,8 @@
     "enrolNotice": "Je hebt nog geen authenticator ingesteld. Tot dat gebeurt kan dit account niets anders.",
     "toEnrolment": "Authenticator instellen",
     "toGroups": "Naar groepen",
-    "toCourses": "Naar cursussen"
+    "toCourses": "Naar cursussen",
+    "toSkills": "Naar vaardigheden"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
@@ -244,6 +245,16 @@
       "startDate": "Begindatum",
       "denied": "Je mag de inschrijvingen van deze leerling niet zien. De benodigde rechten: {permission}.",
       "noCourses": "Er zijn geen cursussen die je mag zien, dus er valt niets te kiezen."
+    },
+    "skillProgress": {
+      "title": "Voortgang",
+      "none": "Er is nog geen voortgang vastgelegd voor deze leerling.",
+      "denied": "Je mag de voortgang van deze leerling niet zien. De benodigde rechten: {permission}.",
+      "criterion": "Eis",
+      "awardType": "Diploma/certificaat",
+      "state": "Status",
+      "date": "Datum",
+      "note": "Notitie"
     }
   },
   "mfaEnrolment": {
@@ -288,6 +299,8 @@
     "errors": {
       "denied": "Je hebt geen toegang tot deze actie.",
       "validation": "De ingevoerde gegevens kloppen niet.",
+      "NOT_A_GROUP_MEMBER": "Deze leerling is geen actief lid van deze groep. Voortgang wordt vastgelegd voor een leerling die er nu bij hoort.",
+      "CRITERION_NOT_ACTIVE": "Deze eis hoort bij een eisenset die niet actief is. Voortgang wordt alleen vastgelegd tegen de geldende versie van een eisenset.",
       "groupFull": "Deze groep zit vol. Vink 'boven de capaciteit plaatsen' aan als je dit bewust doet.",
       "sameGroup": "Dit is geen verplaatsing: de leerling zit al in deze groep.",
       "reasonRequired": "Geef een reden op. Zonder reden leest een overplaatsing later als een fout.",
@@ -327,7 +340,28 @@
       "closureUpdated": "Sluiting bijgewerkt.",
       "recurrenceLanes": "Banen van de lesreeks opgeslagen. Lessen die al geweest zijn houden de banen waarin ze gezwommen zijn.",
       "lanesOverridden": "Banen voor deze les aangepast. Alleen deze les; de lesreeks en de andere lessen blijven zoals ze waren.",
-      "lanesCleared": "Deze les volgt weer de banen van de lesreeks."
+      "lanesCleared": "Deze les volgt weer de banen van de lesreeks.",
+      "progress": "Voortgang vastgelegd."
+    },
+    "skillProgress": {
+      "title": "Voortgang vastleggen",
+      "denied": "Je hebt hier geen toegang toe. De benodigde rechten: {permission}.",
+      "pupil": "Leerling",
+      "criterion": "Eis",
+      "state": "Status",
+      "note": "Notitie",
+      "submit": "Vastleggen",
+      "reason": {
+        "NO_LEVEL": "Aan deze groep is nog geen cursusniveau gekoppeld, dus is er niets om voortgang tegen vast te leggen.",
+        "NO_AWARD_TYPE": "Het niveau van deze groep is nog niet gekoppeld aan een diploma of certificaat.",
+        "NO_ACTIVE_SET": "Het gekoppelde diploma of certificaat heeft nog geen actieve eisenset."
+      },
+      "states": {
+        "INTRODUCED": "Geïntroduceerd",
+        "PRACTISING": "In oefening",
+        "ACHIEVED": "Behaald",
+        "REVOKED": "Ingetrokken"
+      }
     },
     "fields": {
       "name": "Naam",
@@ -567,8 +601,7 @@
       "notFound": "Deze cursus bestaat niet.",
       "levels": "Niveaus",
       "noLevels": "Nog geen niveaus vastgelegd.",
-      "enrolments": "{count} lopende inschrijving(en).",
-      "awardNote": "Aan welk diploma een niveau opleidt wordt hier nog niet vastgelegd: de diplomamodule bestaat nog niet, en een leeg veld zou doen alsof dat wel zo was."
+      "enrolments": "{count} lopende inschrijving(en)."
     },
     "level": {
       "name": "Niveau",
@@ -577,7 +610,10 @@
       "groups": "Groepen op dit niveau",
       "add": "Niveau toevoegen",
       "save": "Opslaan",
-      "addTitle": "Niveau toevoegen"
+      "addTitle": "Niveau toevoegen",
+      "awardType": "Diploma/certificaat",
+      "awardTypeNone": "Geen gekoppeld",
+      "awardTypeUnavailable": "Je hebt geen toegang tot de vaardighedencatalogus, dus deze koppeling wordt hier niet aangeboden."
     },
     "enrolmentStatus": {
       "ENROLLED": "Ingeschreven",
@@ -597,6 +633,118 @@
       "levelUpdated": "Niveau opgeslagen.",
       "enrolled": "Inschrijving vastgelegd.",
       "enrolmentEnded": "Inschrijving beëindigd."
+    }
+  },
+  "skills": {
+    "title": "Diploma's en certificaten",
+    "subtitle": "De eisencatalogus: welke diploma's en certificaten er zijn, en wat ervoor nodig is. Leeg bij oplevering — elke club vult 'm zelf.",
+    "empty": "Er is nog geen enkel diploma of certificaat vastgelegd.",
+    "backToList": "Terug naar diploma's en certificaten",
+    "backToAwardType": "Terug naar dit diploma/certificaat",
+    "hasActiveSet": "actieve eisenset",
+    "noActiveSet": "nog geen actieve eisenset",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je hebt hier geen toegang toe. De benodigde rechten: {permission}. Dit is geen storing — vraag een beheerder om toegang als je die nodig hebt."
+    },
+    "columns": {
+      "code": "Code",
+      "name": "Naam",
+      "kind": "Soort",
+      "issuingBody": "Uitgevende instantie",
+      "criterionSets": "Eisensets",
+      "status": "Status"
+    },
+    "fields": {
+      "code": "Code",
+      "name": "Naam",
+      "kind": "Soort",
+      "issuingBody": "Uitgevende instantie",
+      "source": "Herkomst",
+      "sourceHelp": "NRZ = onze eigen overname van de landelijke eisen; Eigen = een eisenset die de club zelf heeft opgesteld of aangepast."
+    },
+    "kind": {
+      "DIPLOMA": "Diploma",
+      "CERTIFICATE": "Certificaat"
+    },
+    "issuingBody": {
+      "NRZ": "NRZ",
+      "ORG": "Eigen"
+    },
+    "create": {
+      "title": "Diploma of certificaat toevoegen",
+      "submit": "Toevoegen"
+    },
+    "edit": {
+      "title": "Aanpassen",
+      "submit": "Opslaan",
+      "codeKindNote": "Code en soort zijn hier niet aan te passen: de code wordt overal bij id gebruikt, en het soort bepaalt welke eisenset erbij hoort. Bij een fout: een nieuw diploma of certificaat aanmaken."
+    },
+    "detail": {
+      "title": "Diploma/certificaat",
+      "notFound": "Dit diploma of certificaat bestaat niet."
+    },
+    "criterionSetStatus": {
+      "DRAFT": "Concept",
+      "ACTIVE": "Actief",
+      "RETIRED": "Ingetrokken"
+    },
+    "criterionSets": {
+      "title": "Eisensets",
+      "empty": "Nog geen eisenset vastgelegd.",
+      "openDraftNote": "Er staat al een concept-eisenset open. Werk die af of publiceer hem voordat er een nieuwe wordt begonnen.",
+      "addTitle": "Nieuwe eisenset beginnen",
+      "add": "Concept beginnen",
+      "columns": {
+        "version": "Versie",
+        "status": "Status",
+        "source": "Herkomst",
+        "criteria": "Eisen",
+        "effectiveFrom": "Geldig vanaf",
+        "effectiveTo": "Geldig tot"
+      }
+    },
+    "set": {
+      "title": "Eisenset",
+      "notFound": "Deze eisenset bestaat niet.",
+      "editTitle": "Eisenset aanpassen",
+      "notEditable": "Deze eisenset is gepubliceerd of ingetrokken en kan niet meer worden gewijzigd. Een correctie wordt een nieuwe versie.",
+      "passFloor": "Minimale beoordeling (ondergrens)",
+      "passFloorPlaceholder": "Kies een beoordeling",
+      "passFloorHelp": "De beoordeling die voor elke eis in deze set minimaal gehaald moet worden, tenzij een eis een eigen ondergrens heeft.",
+      "publish": "Publiceren",
+      "publishHelp": "Maakt deze versie actief en trekt de vorige actieve versie in. Kan daarna niet meer worden aangepast."
+    },
+    "criteria": {
+      "title": "Eisen",
+      "empty": "Nog geen eis vastgelegd.",
+      "addTitle": "Eis toevoegen",
+      "add": "Eis toevoegen",
+      "save": "Opslaan",
+      "sequenceHelp": "Laat leeg om de eis achteraan toe te voegen.",
+      "useSetFloor": "Ondergrens van de set",
+      "columns": {
+        "sequence": "Volgorde",
+        "code": "Code",
+        "name": "Naam",
+        "minimumGrade": "Minimale beoordeling"
+      }
+    },
+    "errors": {
+      "denied": "Je hebt geen rechten voor deze handeling.",
+      "validation": "De ingevoerde gegevens kloppen niet.",
+      "SEQUENCE_TAKEN": "Er staat al een eis op die plek in de volgorde van deze set. Kies een andere plek.",
+      "SET_NOT_DRAFT": "Deze eisenset is gepubliceerd of ingetrokken en kan niet meer worden gewijzigd.",
+      "NOT_DRAFT": "Deze eisenset is niet in concept en kan niet worden gewijzigd of opnieuw gepubliceerd.",
+      "EMPTY_SET": "Deze eisenset heeft nog geen enkele eis. Voeg er minstens één toe voordat de set wordt gepubliceerd.",
+      "NO_PASS_FLOOR": "Deze eisenset heeft nog geen minimale beoordeling ingesteld."
+    },
+    "saved": {
+      "awardType": "Opgeslagen.",
+      "criterionSet": "Eisenset opgeslagen.",
+      "criterion": "Eis toegevoegd.",
+      "criterionUpdated": "Eis opgeslagen.",
+      "published": "Eisenset gepubliceerd. De vorige versie is ingetrokken."
     }
   }
 }
