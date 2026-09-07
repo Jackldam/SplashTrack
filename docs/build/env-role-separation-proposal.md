@@ -1,11 +1,101 @@
 # Proposal — separate the database roles `.env` and `.env.uat` share
 
-**Status:** proposal only. Nothing in this document has been executed: no role
-was created, no password was rotated, no `.env*` file was touched, no DDL ran
-against any database. Inventory only, per the task that produced this file.
+**Status: SUPERSEDED IN PART, AND EXECUTED — 2026-09-07.** Read §0 before
+anything else. The separation was carried out, but *not* by the method proposed
+below, because four of this document's load-bearing claims turned out to be
+wrong when they were checked against the running cluster instead of against the
+`.env*` files.
 
-**Owned by:** whoever runs the migration (Jack). This is preparation for that
-decision, not the decision itself.
+**Owned by:** whoever runs the migration (Jack). §0 records what was actually
+done; §§1-8 are kept unedited as the original reasoning, including its errors.
+
+---
+
+## 0. What was verified on 2026-09-07, and what it changed
+
+Jack approved the separation. Before executing, the running system was checked
+rather than the files. Four corrections:
+
+**0.1 — There is ONE Postgres cluster, not two.** §1 concludes dev and UAT "are
+not the same physical instance" from the fact that their URLs name different
+hosts. They do not: `localhost:5432` (from the host, via the published port)
+and `postgres:5432` (from inside the compose network) are the *same container*,
+`splashtrack-postgres-1`. It holds `splashtrack`, `splashtrack_uat`,
+`splashtrack_test` and `splashtrack_migrationcheck`.
+
+**0.2 — So the shared password was never a copied secret; it was one role.**
+Postgres roles are cluster-wide. `splashtrack_app` was not two roles that
+happened to hold the same password — it was a single role object that both
+environments authenticated as. §2's hypothesis (a fresh credential written into
+both files during the 2026-09-03 response) explains a coincidence that did not
+need explaining.
+
+**0.3 — Therefore §5 steps 1-2 are impossible as written.** "Rotate the UAT
+password, then rotate the dev password" cannot separate anything: a role has
+exactly one password, so rotating it changes both environments at once. Password
+rotation was never the fix. Creating per-environment roles — §5 step 4, filed
+here as optional and last — was the *only* thing that could work, and it became
+step one.
+
+**0.4 — Role renaming is not a pure config change.** §3 says "nothing hardcodes
+`splashtrack_app`". That is true of the application (`role-model.ts` reads role
+names out of the URLs) and false of `infra/provision-roles.sql`, which names the
+three roles literally in 30 places. That file was therefore *not* used; the two
+new login roles were created with a small purpose-built statement mirroring the
+attributes captured from the live cluster, and `db:apply-grants` — which reads
+role names from the URLs — put the ADR-0002 grants on them.
+
+### What was executed
+
+Per environment, two new LOGIN roles with independently generated passwords:
+
+| Environment | Application role | Retention role | Database |
+| - | - | - | - |
+| dev | `splashtrack_app_dev` | `splashtrack_retention_dev` (CREATEDB) | `splashtrack` |
+| uat | `splashtrack_app_uat` | `splashtrack_retention_uat` (NOCREATEDB) | `splashtrack_uat` |
+
+`splashtrack_owner` stays shared **on purpose**: it is NOLOGIN, so it holds no
+password and carries no shared-credential risk. Suffixing it would mean
+re-owning the database, the schema and every object for no security gain today.
+That is a deliberate narrowing of §4's table, not an oversight.
+
+UAT retention lost `CREATEDB`, which the shared role carried only because dev's
+test tooling needs it — a least-privilege gain that came free with the split.
+
+Old `splashtrack_app` and `splashtrack_retention`: **`NOLOGIN`, not dropped.**
+They still own `splashtrack_test` and `splashtrack_migrationcheck`, and a
+revoked-login role is cheap rollback insurance. This also retires the credential
+exposed on 2026-09-06 — it now authenticates nothing.
+
+### Verification
+
+- Dev: `db:apply-grants` and `audit:grants` both report `splashtrack_app_dev`
+  with SELECT+INSERT on `AuditEvent`, owning nothing; "D-149 part 2 is IN FORCE".
+  Full suite 677/677 after the switch.
+- UAT: same report for `splashtrack_app_uat`; container healthy, HTTP 200, and
+  `pg_stat_activity` shows the app connected as `splashtrack_app_uat`.
+- Two integration tests failed on the dev switch and were fixed rather than
+  worked around: `database-role-model.test.ts` and `attendance-append-only.test.ts`
+  asserted the `REFERENCE_*_ROLE` constants, contradicting `role-model.ts`'s own
+  "ROLE NAMES ARE READ, NOT ASSUMED". They now derive the role from the URL, so
+  they test the separation instead of the naming convention.
+
+### Rollback
+
+`.env.pre-role-split` and `.env.uat.pre-role-split` hold the previous files.
+Restoring one and running `ALTER ROLE splashtrack_app LOGIN;
+ALTER ROLE splashtrack_retention LOGIN;` returns that environment to the shared
+pair; the old roles were never dropped and their password is unchanged. Both
+new roles can then be dropped, or simply left unused.
+
+### Still open
+
+- Secret storage: `.env*` remains what the app reads. The values are in
+  Bitwarden (`openclaw/splashtrack/{dev,uat}/…`) but nothing rewires the app to
+  fetch them; that is an application change, not a database one.
+- `prd` was not touched — there is still no `.env.prd` to inventory.
+- Dropping the two NOLOGIN roles, once a full deploy cycle has passed without
+  needing them.
 
 ---
 

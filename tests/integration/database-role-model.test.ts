@@ -8,7 +8,6 @@ import { prisma } from "@/lib/database";
 import { claimSchemaForOwner } from "@/lib/database/apply-role-model";
 import {
   migrationUrlFrom,
-  REFERENCE_APP_ROLE,
   REFERENCE_OWNER_ROLE,
   REFERENCE_RETENTION_ROLE,
   roleNameFrom,
@@ -229,12 +228,20 @@ describe("the runtime role is neither a superuser nor an owner (D-116)", () => {
   it("is a different role from the one in DATABASE_MAINTENANCE_URL", async () => {
     // Two credentials, not one wearing two hats. If these ever collapse into
     // the same role, every separation above is notional.
-    expect(roleNameFrom(process.env.DATABASE_URL as string)).toBe(
-      REFERENCE_APP_ROLE,
+    //
+    // Asserted as "these two differ", not as "these two are the reference
+    // names". role-model.ts says role names belong to the operator and are
+    // READ, not assumed — pinning the constants here contradicted that, and
+    // did so invisibly until 2026-09-07, when dev and UAT were given their own
+    // per-environment roles and this test failed for the one reason it should
+    // never fail: the separation got stronger.
+    const app = roleNameFrom(process.env.DATABASE_URL as string);
+    const retention = roleNameFrom(
+      process.env.DATABASE_MAINTENANCE_URL as string,
     );
-    expect(roleNameFrom(process.env.DATABASE_MAINTENANCE_URL as string)).toBe(
-      REFERENCE_RETENTION_ROLE,
-    );
+    expect(app).not.toBe(retention);
+    expect(app).not.toBe(REFERENCE_OWNER_ROLE);
+    expect(retention).not.toBe(REFERENCE_OWNER_ROLE);
   });
 });
 
@@ -426,7 +433,9 @@ describe("audit:grants tells the truth in both directions", () => {
     await asOwner.connect();
     try {
       await asOwner.query(
-        `GRANT CREATE, USAGE ON SCHEMA public TO "${REFERENCE_APP_ROLE}"`,
+        `GRANT CREATE, USAGE ON SCHEMA public TO "${roleNameFrom(
+          process.env.DATABASE_URL as string,
+        )}"`,
       );
     } finally {
       await asOwner.end();
@@ -449,7 +458,9 @@ describe("audit:grants tells the truth in both directions", () => {
       // and only the ownership check can tell the difference. This is the exact
       // state ADR-0002 §3 found: green grants over an absent control.
       await asApp.query(
-        `REVOKE ALL ON TABLE "AuditEvent" FROM "${REFERENCE_APP_ROLE}"`,
+        `REVOKE ALL ON TABLE "AuditEvent" FROM "${roleNameFrom(
+          process.env.DATABASE_URL as string,
+        )}"`,
       );
     } finally {
       await asApp.end();
@@ -490,7 +501,9 @@ describe("audit:grants tells the truth in both directions", () => {
     // The ownership line is part of the report and not a detail: the grant list
     // alone cannot distinguish "revoked" from "revoked and re-grantable".
     expect(output).toContain(`AuditEvent       ${REFERENCE_OWNER_ROLE}`);
-    expect(output).toContain(`AuditEvent       ${REFERENCE_APP_ROLE}`);
+    expect(output).toContain(
+      `AuditEvent       ${roleNameFrom(process.env.DATABASE_URL as string)}`,
+    );
   });
 
   it("reports NOT in force when ownership is put back the wrong way", async () => {

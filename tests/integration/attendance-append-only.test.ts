@@ -42,7 +42,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/database";
-import { REFERENCE_APP_ROLE } from "@/lib/database/role-model";
+import { roleNameFrom } from "@/lib/database/role-model";
+
+/** The role this environment actually connects as — not the reference name. */
+const APP_ROLE = roleNameFrom(process.env.DATABASE_URL as string);
 import {
   createPool,
   createRecurrence,
@@ -134,7 +137,7 @@ describe("the nearest thing attendance has today: SessionRosterEntry", () => {
         SELECT privilege_type
           FROM information_schema.role_table_grants
          WHERE table_name = 'SessionRosterEntry'
-           AND grantee = ${REFERENCE_APP_ROLE}
+           AND grantee = ${APP_ROLE}
          ORDER BY privilege_type
       `;
       const granted = new Set(privileges.map((row) => row.privilege_type));
