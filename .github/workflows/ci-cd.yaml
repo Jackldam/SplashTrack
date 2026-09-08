@@ -7,6 +7,17 @@ on:
   pull_request:
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Een ongeldig workflowbestand faalt stil: GitHub maakt er een run van 0s
+      # van en niemand kijkt. Deze stap laat het luidruchtig falen.
+      - name: Lint workflow files
+        uses: docker://rhysd/actionlint:1.7.12
+
   web-build:
     runs-on: ubuntu-latest
     env:
