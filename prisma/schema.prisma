@@ -1094,6 +1094,7 @@ model Group {
   recurrences SessionRecurrence[]
   sessions    ScheduledSession[]
   exceptions  ScheduleException[]
+  skillProgressEntries SkillProgress[]
 
   @@index([unitId])
   @@index([active])
@@ -2188,7 +2189,17 @@ enum SkillProgressState {
 /// `02-security-privacy.md` §2.2 gives almost verbatim) — the group, not the
 /// session — so a row can be written with no session at all (a correction made
 /// after the fact, an import) without inventing a lesson that did not carry it.
-/// See the phase 2.1 report for the read-side narrowing this leaves open.
+///
+/// **`groupId` IS A WRITE-TIME SNAPSHOT, AND IS THE READ-SIDE NARROWING
+/// `sessionId` COULD NOT BE.** Jack decided (phase 2.1 follow-up): a
+/// `GROUP`-scoped instructor's `skills.read` must return only the rows this
+/// column ties to a group they hold, per D-145 rule 2 — not a pupil's whole
+/// history. `recordSkillProgress` already resolves the group from its own
+/// required argument, so this is stamped at write time, the same
+/// `groupId: groupId`-from-the-guarded-call shape every write in this schema
+/// uses; there is no backfill for rows written before this column existed.
+/// See the phase 2.1 report §1.5 for why this is `groupId` and not a
+/// `sessionId`-routed narrowing.
 /// @dataClass STUDENT_PROFILE
 model SkillProgress {
   id               String @id @default(cuid(2))
@@ -2207,6 +2218,13 @@ model SkillProgress {
   /// The lesson this was recorded in, when known. See the file comment.
   sessionId String?
 
+  /// The group this observation was recorded in. NULLABLE: a correction made
+  /// after the fact or a bulk import may carry no group at all, and such a row
+  /// is deliberately NOT visible to a `GROUP`-scoped reach (narrower is safer
+  /// than guessing which group it belongs to) — see
+  /// `skill-progress-reach-filter.ts`.
+  groupId String?
+
   /// Free text, in the instructor's own words. NOT currently in D-148's
   /// protected free-text class (medical remarks, pastoral notes, assessment
   /// remarks, inquiry text) — that table names `AssessmentCriterionResult`'s
@@ -2221,11 +2239,13 @@ model SkillProgress {
   criterion      Criterion         @relation(fields: [criterionId], references: [id], onDelete: Restrict)
   assessedBy     Person?           @relation("SkillProgressAssessedBy", fields: [assessedByPersonId], references: [id], onDelete: SetNull)
   session        ScheduledSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  group          Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@index([studentProfileId, assessedAt])
   @@index([criterionId])
   @@index([sessionId])
   @@index([assessedByPersonId])
+  @@index([groupId])
 }
 
 // ---------------------------------------------------------------------------

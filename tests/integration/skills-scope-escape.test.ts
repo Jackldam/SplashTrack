@@ -27,6 +27,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { PermissionDeniedError } from "@/lib/authorization";
+import { prisma } from "@/lib/database";
 import { assignInstructor } from "@/modules/groups";
 import {
   createAwardType,
@@ -364,5 +365,142 @@ describe("getSkillProgressForStudent — { student }-scoped", () => {
         studentProfileId,
       ),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
+  });
+
+  it("a GROUP-scoped instructor of group A does not see group B's rows for the same pupil (D-145 rule 2, Jack's follow-up decision)", async () => {
+    const awardTypeSuffix = "esc_read_cross_group";
+    const awardTypeId = await makeAwardType(awardTypeSuffix);
+    const { gradeIds } = await makeFiveGradeScale(awardTypeSuffix);
+    const setId = await makeCriterionSet(awardTypeId, awardTypeSuffix, {
+      status: "ACTIVE",
+      passFloorGradeId: gradeIds.voldoende,
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+    });
+    const criterionId = await makeCriterion(setId, awardTypeSuffix, {
+      sequence: 1,
+    });
+
+    const courseId = await makeCourse("esc_read_cross_group_course");
+    const levelId = await makeCourseLevel(
+      courseId,
+      "esc_read_cross_group_level",
+      { awardTypeId },
+    );
+    const groupA = await makeGroupAtLevel("esc_read_cross_group_a", levelId);
+    const groupB = await makeGroupAtLevel("esc_read_cross_group_b", levelId);
+    const { studentProfileId } = await makeStudent(
+      "esc_read_cross_group_student",
+    );
+    // The pupil has been in BOTH groups — the coarse-grain scenario the
+    // report's §1.5 named explicitly.
+    await placeInGroup(groupA, studentProfileId);
+    await placeInGroup(groupB, studentProfileId);
+
+    await recordSkillProgress(admin(), groupA, {
+      studentProfileId,
+      criterionId,
+      state: "INTRODUCED",
+    });
+    await recordSkillProgress(admin(), groupB, {
+      studentProfileId,
+      criterionId,
+      state: "ACHIEVED",
+    });
+
+    const instructorId = await makePerson("esc_read_cross_group_instructor");
+    await grantTo({
+      personId: instructorId,
+      roleId: groupPrincipalRoleId,
+      scopeType: "GROUP",
+      scopeId: groupA,
+    });
+    await assignInstructor(admin(), groupA, {
+      personId: instructorId,
+      fromDate: "2026-01-01",
+    });
+
+    const entries = await getSkillProgressForStudent(
+      { principal: { personId: instructorId }, at: NOW },
+      studentProfileId,
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.state).toBe("INTRODUCED");
+
+    // The same reach, resolved through an ORGANIZATION grant instead, sees
+    // both rows — proving the narrowing above is about the GROUP scope, not
+    // about the rows themselves being unreadable.
+    const allEntries = await getSkillProgressForStudent(
+      admin(),
+      studentProfileId,
+    );
+    expect(allEntries).toHaveLength(2);
+  });
+
+  it("a row with no groupId (a correction, an import) does not leak into a GROUP-scoped reach", async () => {
+    const awardTypeSuffix = "esc_read_orphan_row";
+    const awardTypeId = await makeAwardType(awardTypeSuffix);
+    const { gradeIds } = await makeFiveGradeScale(awardTypeSuffix);
+    const setId = await makeCriterionSet(awardTypeId, awardTypeSuffix, {
+      status: "ACTIVE",
+      passFloorGradeId: gradeIds.voldoende,
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+    });
+    const criterionId = await makeCriterion(setId, awardTypeSuffix, {
+      sequence: 1,
+    });
+
+    const courseId = await makeCourse("esc_read_orphan_row_course");
+    const levelId = await makeCourseLevel(
+      courseId,
+      "esc_read_orphan_row_level",
+      { awardTypeId },
+    );
+    const groupId = await makeGroupAtLevel(
+      "esc_read_orphan_row_group",
+      levelId,
+    );
+    const { studentProfileId } = await makeStudent(
+      "esc_read_orphan_row_student",
+    );
+    await placeInGroup(groupId, studentProfileId);
+
+    // Written outside `recordSkillProgress`, the way a bulk import or a
+    // pre-migration row would be: no `groupId` at all.
+    await prisma.skillProgress.create({
+      data: {
+        studentProfileId,
+        criterionId,
+        state: "PRACTISING",
+        assessedAt: new Date("2026-02-01T00:00:00Z"),
+        groupId: null,
+      },
+    });
+
+    const instructorId = await makePerson("esc_read_orphan_row_instructor");
+    await grantTo({
+      personId: instructorId,
+      roleId: groupPrincipalRoleId,
+      scopeType: "GROUP",
+      scopeId: groupId,
+    });
+    await assignInstructor(admin(), groupId, {
+      personId: instructorId,
+      fromDate: "2026-01-01",
+    });
+
+    const entries = await getSkillProgressForStudent(
+      { principal: { personId: instructorId }, at: NOW },
+      studentProfileId,
+    );
+    expect(entries).toHaveLength(0);
+
+    // An ORGANIZATION-scoped reach still sees it — the row is not lost, only
+    // withheld from the GROUP-scoped reach that cannot attribute it.
+    const allEntries = await getSkillProgressForStudent(
+      admin(),
+      studentProfileId,
+    );
+    expect(allEntries).toHaveLength(1);
   });
 });

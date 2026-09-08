@@ -167,10 +167,10 @@ a correction flow for a case nobody asked for is the premature machinery
 `CLAUDE.md` warns against. A mistake today is fixed by creating a new award
 type — administratively wasteful, never data-destructive.
 
-### 1.5 `getSkillProgressForStudent` does not narrow per row beyond `{ student }` — the open question with the most teeth
+### 1.5 `getSkillProgressForStudent` narrows a `GROUP`-scoped reach by a `groupId` snapshot — closed by Jack in a follow-up slice
 
-This is the one worth reading slowly, because it is a real gap against D-145
-rule 2, not a shortcut.
+This is the one worth reading slowly even now that it is closed, because the
+close is narrower than it looks.
 
 **What the design asks for.** §2.2: *"`GROUP` … the group-scoped relations of
 the students in it. Not the whole student record."* D-145 rule 2 makes that a
@@ -180,18 +180,20 @@ elsewhere. Phase 2.0's `EnrolmentEntry` closes the equivalent question for
 enrolments: a course the caller cannot see is rendered `courseWithheld: true`
 rather than silently included.
 
-**What this module actually does.** `getSkillProgressForStudent` guards
-`{ student: studentProfileId }` — the same single-resource gate
-`getStudentEnrolments` uses — and once that gate is cleared, returns **every**
-`SkillProgress` row for that pupil. There is no per-row narrowing to "the
-rows this reach can attribute to a group it holds."
+**What this module did at first release (`8e4b964`).**
+`getSkillProgressForStudent` guarded `{ student: studentProfileId }` — the
+same single-resource gate `getStudentEnrolments` uses — and once that gate
+was cleared, returned **every** `SkillProgress` row for that pupil. There was
+no per-row narrowing to "the rows this reach can attribute to a group it
+holds." The reasoning below is what that first release worked through, and
+why it shipped that way rather than guessing.
 
-**Why closing it properly needs a fact the schema does not carry.**
-`SkillProgress` has no `courseId` or `groupId` column — §3.3's field list gives
-it `studentProfileId, criterionId, state, assessedByPersonId, assessedAt,
-sessionId?, note?`, full stop. The only relational hook that could narrow by
-group is the **optional** `sessionId`, and even a full per-row resolution
-through it does not give the right answer:
+**Why closing it properly needed a fact the schema did not carry.**
+`SkillProgress` had no `courseId` or `groupId` column — §3.3's field list
+gave it `studentProfileId, criterionId, state, assessedByPersonId,
+assessedAt, sessionId?, note?`, full stop. The only relational hook that
+could narrow by group was the **optional** `sessionId`, and even a full
+per-row resolution through it would not have given the right answer:
 
 - Rows with no `sessionId` (a correction made after the fact, a bulk import)
   cannot be attributed to any group at all through that path — narrowing would
@@ -211,29 +213,36 @@ through it does not give the right answer:
   sits an exam — sees **nothing**, ever, through that path. That is a worse
   defect than the one being fixed.
 
-**What was rejected, and why.** Inventing a `groupId` column on
-`SkillProgress` was rejected — the domain model (§3.3) does not give it one,
-and adding a field to satisfy an authorization nuance the design never states
-is exactly the kind of invention `CLAUDE.md` §7 asks not to guess at.
-Routing narrowing through `sessionId` was rejected for the reason above: it
-would produce a *worse* failure (an aftest assessor blind to the log) while
-fixing a narrower one (an off-duty instructor slightly over-sighted). Between
-an unclosed rule and a closed rule that breaks the person the chapter is
-written for, this phase left the rule unclosed and wrote it down.
+**What was rejected, and why — this part still holds.** Inventing a
+`groupId` column to satisfy an authorization nuance the design never states,
+with no stated reason, is exactly the kind of invention `CLAUDE.md` §7 asks
+not to guess at. Routing narrowing through `sessionId` is rejected outright,
+permanently: it would produce a *worse* failure (an aftest assessor blind to
+the log) while fixing a narrower one (an off-duty instructor slightly
+over-sighted).
 
-**What this means in practice today.** A `GROUP`-scoped instructor who
-currently teaches a pupil in *any* group sees that pupil's *entire* skill
-history — every criterion, every award type, every group they have ever been
-taught in. That is coarser than D-145 rule 2 asks for. It is bounded by the
-outer gate (`{ student }` still requires an active, live relation — a lapsed
-instructor sees nothing, per D-145 rule 1), and it is the same shape
-`getStudentEnrolments` would have had before phase 2.0 added course-level
-narrowing specifically because `Enrolment.courseId` exists to narrow by.
-**This is a decision for Jack, not a guess:** either accept the coarser
-grain as the v1 shape for a per-lesson log (arguably defensible — the
-alternative, silently hiding half a child's swimming history from the
-instructor teaching them, has its own cost), or add the schema hook (a
-`groupId` snapshot, most likely) in a follow-up slice with a stated reason.
+**What closed it: Jack's decision, in a follow-up slice.** Given the coarser
+grain above stated plainly — a `GROUP`-scoped instructor who currently
+teaches a pupil in *any* group saw that pupil's *entire* skill history, every
+criterion, every award type, every group ever taught in — Jack chose to
+close it rather than accept it. `SkillProgress.groupId` is now a nullable,
+write-time snapshot column (migration `20260908090000_skill_progress_group_scope`):
+`recordSkillProgress` already resolves its group from its own required
+argument, so the column is stamped from a fact the write path already has,
+not derived or guessed. `getSkillProgressForStudent` passes the `Reach` that
+satisfied its guard down to the repository, which narrows via
+`skillProgressFilterForReach` — but **only for the `GROUP` variant**. Every
+other reach (`ORGANIZATION`, `UNIT`, `COURSE`, `SESSION`, `SELF`) still sees
+the full history, unchanged: narrowing those was not asked for, and doing so
+for `COURSE` in particular would reopen the aftest-assessor defect above,
+which this decision does not touch. A row with no `groupId` — a correction
+made after the fact, a bulk import, or any row written before this column
+existed — is **not visible** to a `GROUP`-scoped reach: narrower is the safe
+direction when a row cannot be attributed, the same call this section already
+made for the column that did not exist. `tests/integration/skills-scope-escape.test.ts`
+pins both properties: a `GROUP`-scoped instructor of group A does not see
+group B's rows for the same pupil, and a `groupId: null` row does not leak
+into a `GROUP`-scoped read.
 
 ---
 
@@ -249,15 +258,15 @@ it.
 This mattered for exactly one design choice (§1.5): whether `skills` could
 lean on `sessions`' `sessionFilterForReach` to narrow `SkillProgress` reads.
 It could have, mechanically — the module exists. It was rejected on its own
-merits regardless (the COURSE-branch defect above), so the DAG mismatch ended
-up costing nothing this phase. But it is worth recording plainly: **`skills`
-depends on `courses` and `groups`, and on neither `sessions` nor `people`
-directly** (the `SkillProgress.assessedByPersonId`/`.studentProfileId` foreign
-keys are schema-level references, not module imports — no file under
+merits regardless (the COURSE-branch defect above), and still is — the
+follow-up slice that closed §1.5 did so through a `groupId` snapshot, not
+through `sessions`, for the same reason. So the DAG mismatch cost nothing:
+**`skills` depends on `courses` and `groups`, and on neither `sessions` nor
+`people` directly** (the `SkillProgress.assessedByPersonId`/`.studentProfileId`
+foreign keys are schema-level references, not module imports — no file under
 `src/modules/skills/` imports `@/modules/sessions` or `@/modules/people`).
-That is a narrower dependency footprint than the stated DAG implies is
-possible at this position, and it is narrower because §1.5 stayed an open
-question rather than being closed through `sessions`.
+That remains a narrower dependency footprint than the stated DAG implies is
+possible at this position.
 
 ---
 
@@ -281,5 +290,5 @@ question rather than being closed through `sessions`.
 2. §1.2 — D-188's JSON authoring surface is unbuilt; the form editor is the only surface this phase ships.
 3. §1.3 — the D-164 fork rule (re-stamping `source = ORG` on a threshold change) is administrator-trusted, not detected.
 4. §1.4 — `AwardType.code`/`.kind` have no correction path; recorded as a scope decision, not an oversight.
-5. §1.5 — **the one that needs a decision, not just a reading**: `getSkillProgressForStudent` does not narrow per row to a `GROUP`-scoped reach's own relation, against D-145 rule 2's letter. The reasoning for leaving it open, and the two real alternatives, are in §1.5.
+5. §1.5 — **closed by Jack in a follow-up slice**: `getSkillProgressForStudent` now narrows a `GROUP`-scoped reach to its own group(s), via the `SkillProgress.groupId` snapshot added in migration `20260908090000_skill_progress_group_scope`. Every other reach still sees the full history, unchanged — see §1.5 for why that narrower scope (not `UNIT`/`COURSE`/`SESSION`) was the one closed.
 6. A domain question, not a technical one: **`SkillProgress.note` is free text about a child's body, written far more often than any other free-text field in this schema, and it is not currently in D-148's protected class** (medical remarks, pastoral notes, assessment remarks, inquiry text — see the schema comment on the field). D-148's own reasoning for including `AssessmentCriterionResult`'s remark — *"a developmental observation about a minor's body"* — reads as equally true of this field. Not decided here; flagged for Jack, who is the domain authority CLAUDE.md §7 says this kind of question belongs to.

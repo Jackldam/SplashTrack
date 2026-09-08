@@ -2,23 +2,22 @@
  * Reads and writes over `SkillProgress` — the append-only, per-lesson teaching
  * log (`01-domain-model.md` §3.3).
  *
- * NO RECHECK-BY-REACH ON THE READ SIDE. Every function here is reached only
- * after the service has guarded `skills.read` on `{ student: studentProfileId }`
- * — the same single-resource guard `getStudentEnrolments` uses. Unlike that
- * function's `EnrolmentEntry`, this module does NOT narrow the rows returned
- * to what the caller's `Reach` covers beyond that one gate: `SkillProgress`
- * carries no `courseId` or `groupId` of its own to narrow by (§3.3 gives it
- * `studentProfileId, criterionId, state, assessedByPersonId, assessedAt,
- * sessionId?, note?`, no more), and its only relational hook — `sessionId` —
- * is OPTIONAL. See `docs/build/phase-2.1-skills-report.md` for why this is
- * recorded as an open question rather than solved by inventing a column or a
- * narrowing rule the design set does not state.
+ * READ-SIDE NARROWING, VIA `skillProgressFilterForReach`. Every read here is
+ * reached only after the service has guarded `skills.read` on
+ * `{ student: studentProfileId }` — the same single-resource guard
+ * `getStudentEnrolments` uses — and, as of the phase 2.1 follow-up, is then
+ * narrowed to what the caller's `Reach` covers per row, on the
+ * `findStudentEnrolments` shape. Only the `GROUP` case narrows; see
+ * `skill-progress-reach-filter.ts` for why every other variant still returns
+ * the full history, deliberately.
  *
  * SERVER-ONLY.
  */
+import { type Reach } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 
 import type { SkillProgressStateValue } from "../domain/skill-progress";
+import { skillProgressFilterForReach } from "./skill-progress-reach-filter";
 
 export interface SkillProgressEntry {
   readonly id: string;
@@ -32,12 +31,21 @@ export interface SkillProgressEntry {
   readonly sessionId: string | null;
 }
 
-/** A pupil's full progress log, most recent first. */
+/**
+ * A pupil's progress log, most recent first, narrowed to what `reach` covers.
+ */
 export async function findSkillProgressForStudent(
   studentProfileId: string,
+  reach: Reach,
 ): Promise<SkillProgressEntry[]> {
+  const filter = skillProgressFilterForReach(reach);
+  if (filter.kind === "DENIED") return [];
+
   const rows = await prisma.skillProgress.findMany({
-    where: { studentProfileId },
+    where:
+      filter.kind === "WHERE"
+        ? { studentProfileId, ...filter.where }
+        : { studentProfileId },
     orderBy: [{ assessedAt: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,

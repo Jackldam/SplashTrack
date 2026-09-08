@@ -20,23 +20,20 @@
  * `attendance.record`/`attendance.amend` split applied to §2.5's actual pair.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * READS GUARD `{ student: studentProfileId }`, ON THE `getStudentEnrolments`
- * SHAPE — AND DO NOT NARROW FURTHER
+ * READS GUARD `{ student: studentProfileId }`, THEN NARROW BY `Reach` —
+ * THE `findStudentEnrolments` SHAPE, AS OF THE PHASE 2.1 FOLLOW-UP
  *
  * `getSkillProgressForStudent` guards the same single resource
- * `getStudentEnrolments` does, and — UNLIKE that function — returns every row
- * once the gate is cleared, with no per-row "withheld" narrowing to a
- * narrower scope. That is a real simplification against D-145 rule 2's "this
- * group's progress only" language, and it is deliberate rather than missed:
- * `SkillProgress` carries no `courseId` or `groupId` column to narrow by
- * (§3.3's field list, unchanged by this phase), and its only relational hook
- * — the optional `sessionId` — cannot be used for it either, because
- * `sessions`' own `sessionFilterForReach` denies every `COURSE`-scoped reach
- * outright (courses supplies no exam-session relation yet), which would make
- * an aftest assessor — whose entire job is reading this log before an exam —
- * see NOTHING through that path. Recorded as an open question in
- * `docs/build/phase-2.1-skills-report.md` rather than solved by inventing a
- * column or a rule the design set does not state.
+ * `getStudentEnrolments` does, then passes the `Reach` that satisfied the
+ * guard down to the repository, which narrows per row — the
+ * `findStudentEnrolments` shape. Only the `GROUP` case narrows: a
+ * `GROUP`-scoped reach's rows are limited to the group(s) it holds, via the
+ * `groupId` snapshot this phase added to `SkillProgress`. Every other reach
+ * (`ORGANIZATION`, `UNIT`, `COURSE`, `SESSION`, `SELF`) still sees the full
+ * history, unchanged — narrowing those was never asked for, and doing so
+ * would risk the exact defect the phase 2.1 report's §1.5 already declined:
+ * a `COURSE`-scoped aftest assessor going blind. See
+ * `skill-progress-reach-filter.ts` and the report §1.5 for the reasoning.
  *
  * SERVER-ONLY.
  */
@@ -140,6 +137,11 @@ export async function recordSkillProgress(
         assessedByPersonId: actor.principal.personId,
         assessedAt,
         sessionId,
+        // The read-side narrowing snapshot (phase 2.1 follow-up): the group
+        // this observation was recorded in is exactly the `groupId` the
+        // guard above already checked, so it is stamped here rather than
+        // re-derived.
+        groupId,
         note,
       },
       select: { id: true },
@@ -174,22 +176,21 @@ export async function recordSkillProgress(
 }
 
 /**
- * A pupil's full progress log, most recent observation first. See the file
- * comment for why this returns every row once `{ student }` is cleared,
- * rather than narrowing further.
+ * A pupil's progress log, most recent observation first, narrowed to what the
+ * caller's `Reach` covers. See the file comment for which reaches narrow.
  */
 export async function getSkillProgressForStudent(
   actor: ActorContext,
   studentProfileId: string,
 ): Promise<SkillProgressEntry[]> {
   const at = instant(actor);
-  await requirePermission(
+  const reach = await requirePermission(
     actor.principal,
     "skills.read",
     { student: studentProfileId },
     { at },
   );
-  return findSkillProgressForStudent(studentProfileId);
+  return findSkillProgressForStudent(studentProfileId, reach);
 }
 
 /** Why a group has no criteria to pick from — rendered as a sentence, not a blank list. */
