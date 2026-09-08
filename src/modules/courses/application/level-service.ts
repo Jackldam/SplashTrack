@@ -31,7 +31,7 @@
  */
 import { requirePermission } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
-import { requiredInt, requiredText } from "@/lib/validation";
+import { optionalText, requiredInt, requiredText } from "@/lib/validation";
 import { recordAuditEvent } from "@/modules/audit";
 
 import {
@@ -123,6 +123,18 @@ export async function createCourseLevel(
 export interface UpdateCourseLevelInput {
   name: unknown;
   sequence: unknown;
+  /**
+   * What this level trains towards — an `AwardType` id, or empty to clear it.
+   * OPTIONAL: `undefined` leaves the column alone (a form with no field for it
+   * posts nothing), while an empty string writes `null` explicitly — the same
+   * three-way reading `updateGroup` gives `courseLevelId`. Not validated
+   * against `AwardType` here: `courses` does not own that table
+   * (`CLAUDE.md` §4), and a dangling id left by a later `AwardType` correction
+   * is not a case this module invents machinery for — `skills` never corrects
+   * one in place (D-081/D-164), so the id an administrator picks from a live
+   * `<select>` never goes stale under them.
+   */
+  awardTypeId?: unknown;
 }
 
 /** Renames a level, or moves it in the order. */
@@ -150,6 +162,10 @@ export async function updateCourseLevel(
 
   const name = requiredText("name", input.name, TEXT_MAX.levelName);
   const sequence = requiredInt("sequence", input.sequence, 1, SEQUENCE_MAX);
+  const awardTypeId =
+    input.awardTypeId === undefined
+      ? undefined
+      : optionalText("awardTypeId", input.awardTypeId, TEXT_MAX.id);
 
   await prisma.$transaction(async (tx) => {
     const siblings = await tx.courseLevel.findMany({
@@ -160,19 +176,22 @@ export async function updateCourseLevel(
 
     const before = await tx.courseLevel.findUnique({
       where: { id: levelId },
-      select: { name: true, sequence: true },
+      select: { name: true, sequence: true, awardTypeId: true },
     });
     if (!before) return;
 
     const changed = [
       ...(before.name === name ? [] : ["name"]),
       ...(before.sequence === sequence ? [] : ["sequence"]),
+      ...(awardTypeId === undefined || before.awardTypeId === awardTypeId
+        ? []
+        : ["awardTypeId"]),
     ];
     if (changed.length === 0) return;
 
     await tx.courseLevel.update({
       where: { id: levelId },
-      data: { name, sequence },
+      data: { name, sequence, awardTypeId },
     });
 
     await recordAuditEvent(

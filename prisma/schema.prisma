@@ -335,6 +335,10 @@ model Person {
   /// child's record does not lose the fact that a move was a considered
   /// decision when the instructor who made it leaves.
   groupMovesDecided     GroupMove[]            @relation("GroupMoveDecidedBy")
+  /// Skill-progress observations this person RECORDED (phase 2.1). Somebody
+  /// else's history — the pupil's — so severed, not deleted, on erasure, on the
+  /// `groupMovesDecided` pattern beside it.
+  skillProgressRecorded SkillProgress[]        @relation("SkillProgressAssessedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -805,6 +809,11 @@ model StudentProfile {
   /// stays out of both erasure registries by construction.
   enrolments Enrolment[]
 
+  /// Phase 2.1, the same shape again: `SkillProgress` references this profile,
+  /// not the `Person`, so it cascades here and stays out of both erasure
+  /// registries by construction.
+  skillProgress SkillProgress[]
+
   @@index([unitId])
 }
 
@@ -1085,6 +1094,7 @@ model Group {
   recurrences SessionRecurrence[]
   sessions    ScheduledSession[]
   exceptions  ScheduleException[]
+  skillProgressEntries SkillProgress[]
 
   @@index([unitId])
   @@index([active])
@@ -1548,6 +1558,11 @@ model ScheduledSession {
 
   lanes         SessionLane[]
   rosterEntries SessionRosterEntry[]
+  /// Skill-progress rows recorded as observed IN this lesson (phase 2.1,
+  /// optional — see `SkillProgress.sessionId`). `SetNull`, matching
+  /// `recurrence` above: this session is never deleted by application code
+  /// (cancelling is a status), so the edge is defence in depth.
+  skillProgress SkillProgress[]
 
   /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
   /// so hand-scheduled lessons (`recurrenceId IS NULL`) never collide with each
@@ -1733,16 +1748,16 @@ model Course {
 
 /// *niveau* — one step of a course: Diploma A, then B, then C.
 ///
-/// **NO `awardTypeId`, ON PURPOSE.** §3.2 gives this entity `name, sequence,
-/// awardTypeId?`, and `AwardType` belongs to the `assessment`/`exams` modules,
-/// which are not built. A nullable id with no table behind it is precisely the
-/// stub column D-163 refuses and phase 1.6 refused once already — for this very
-/// column, from the other end, when it declined to give `Group` a
-/// `courseLevelId` before `CourseLevel` existed. Nothing could write it,
-/// nothing could read it, and a screen rendering "geen diploma gekoppeld" would
-/// be reporting an absence that is really an unbuilt module. It arrives with
-/// `AwardType`, whose `CriterionSet` is where the requirements themselves live
-/// (`15-assessment-and-fees.md` §2.6).
+/// **`awardTypeId`, REAL AT LAST.** §3.2 gives this entity `name, sequence,
+/// awardTypeId?`; phase 2.0 declined it because `AwardType` did not exist yet —
+/// a nullable id with no table behind it is precisely the stub column D-163
+/// refuses, the same refusal `Group.courseLevelId` gave phase 1.6 from the other
+/// end. `AwardType` exists now (phase 2.1), and this is the column that says
+/// which diploma or certificate a level prepares a pupil for. It stays
+/// NULLABLE and unbackfilled, on the `Group.courseLevelId` precedent: "we have
+/// not recorded what this level leads to" is a real and common state (a house
+/// level between two diplomas, or a level nobody has linked up yet), not an
+/// error.
 ///
 /// `sequence` is what makes "A then B then C" a fact rather than an alphabetical
 /// accident. It is an ORDER, not a level number the club types on a form: two
@@ -1763,6 +1778,14 @@ model CourseLevel {
   /// Where this level sits in the course's order. Unique per course.
   sequence Int
 
+  /// What this level trains a pupil towards — the `AwardType` its
+  /// `CriterionSet` (`15-assessment-and-fees.md` §2.6) is authored against.
+  /// NULL means "not recorded", not "trains for nothing". Restrict: an
+  /// `AwardType` a level points at is not deletable out from under it, and
+  /// nothing in the `skills` module deletes one anyway (D-164's catalogue is
+  /// append/version-only).
+  awardTypeId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1770,12 +1793,14 @@ model CourseLevel {
   /// course is `active = false`, and a delete that silently took its levels —
   /// and with them the level every group and every future award points at —
   /// would destroy the record of what the club taught.
-  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  awardType AwardType? @relation(fields: [awardTypeId], references: [id], onDelete: Restrict)
 
   groups Group[]
 
   @@unique([courseId, sequence])
   @@index([courseId])
+  @@index([awardTypeId])
 }
 
 /// The two kinds of participation the design set names, and exactly those.
@@ -1864,6 +1889,363 @@ model Enrolment {
   /// run on every check a `COURSE`-scoped principal makes.
   @@index([courseId, studentProfileId, endedAt])
   @@index([studentProfileId, endedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Skills (phase 2.1): the criterion catalogue, and the informal progress log
+// kept against it — `01-domain-model.md` §3.3, `15-assessment-and-fees.md` §2.
+//
+// D-084 COLLAPSED `Skill`/`SkillRequirement` INTO `Criterion`. An earlier
+// design carried a separate skill catalogue "assessed per student" alongside
+// the versioned `Criterion` the assessment model needs — the same concept with
+// a different result type. `CriterionSet`/`Criterion` is the one catalogue,
+// shared by `SkillProgress` (below — the informal per-lesson log, what this
+// phase builds) and `AssessmentCriterionResult` (the formal graded observation
+// during an *aftest* or exam — a LATER, separate slice; nothing in this schema
+// or module builds it).
+//
+// D-164/D-188: THE CATALOGUE SHIPS EMPTY. `AwardType`, `CriterionSet` and
+// `Criterion` are authored in the application by an administrator, never
+// seeded — the NRZ requirements are reference material, not content this
+// project ships. `GradeScale`/`GradeValue` are the one exception (D-160,
+// OD-17 resolved): precisely one scale, `onvoldoende/matig/voldoende/goed/zeer
+// goed`, seeded once by `seedInstallation()` on the pattern
+// `src/lib/boot/seed.ts` already uses for the permission catalogue and the two
+// system roles — never hand-authored, because there is exactly one correct
+// value and typing it in a form five times is not a feature.
+// ---------------------------------------------------------------------------
+
+/// DIPLOMA or CERTIFICATE — D-082's rename of the old `Certificate` entity
+/// carries the distinction here rather than in a second table. A certificaat
+/// in this domain has weaker requirements than a diploma; both are an
+/// `AwardType` with its own `CriterionSet`, never a branch in code (D-080: "no
+/// award type is branched on anywhere in the codebase").
+enum AwardTypeKind {
+  DIPLOMA
+  CERTIFICATE
+}
+
+/// Who the award is issued under. `NRZ` is the national swim-diploma body;
+/// `ORG` is the club's own — a house certificate with no national standing.
+/// Distinct from `CriterionSet.source` (below), which says where THIS
+/// VERSION's requirements came from, not who the award belongs to: an
+/// `NRZ`-issued diploma can carry an `ORG`-sourced criterion set the day a
+/// school forks its thresholds (D-164's fork rule).
+enum AwardIssuingBody {
+  NRZ
+  ORG
+}
+
+/// *diploma of certificaat* — the award a `CriterionSet` is authored against.
+/// `01-domain-model.md` §3.3 / `15-assessment-and-fees.md` §2.1.
+///
+/// NO STATUS, NO DELETE, NO RETIRE FLAG. Nothing in the `skills` module
+/// removes or deactivates one — a `CourseLevel` may point at it
+/// (`awardTypeId`, above) and a `CriterionSet` always does (Restrict on both).
+/// An award type the club has stopped using simply stops getting a new
+/// `CriterionSet` version; its history stays exactly where every other
+/// append-only record in this schema keeps its history.
+/// @dataClass ORGANIZATION_SETTINGS
+model AwardType {
+  id String @id @default(cuid(2))
+
+  /// The club's own short identifier — *"A"*, *"ZWEMVAARDIGHEID-1"*. Stable;
+  /// an administrator's typo is corrected by editing `name`, not by reusing a
+  /// code for a different award.
+  code String @unique
+
+  /// *"Zwemdiploma A"*, *"Survival brons"*. The club's own words.
+  name String
+
+  kind        AwardTypeKind
+  issuingBody AwardIssuingBody
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courseLevels  CourseLevel[]
+  criterionSets CriterionSet[]
+
+  @@index([kind])
+}
+
+/// *beoordelingsschaal* — an ordinal grading scale. Generic and org-owned
+/// (`15-…` §2.1: *"(ordinal, org-owned)"*), even though v1 seeds and uses
+/// exactly one.
+///
+/// OD-17 IS RESOLVED, NOT ARCHITECTURALLY CLOSED. `15-…` §9 item 5: the scale
+/// is `onvoldoende/matig/voldoende/goed/zeer goed` and it is the only one
+/// seeded — "whether a school may ever define its own scale stays supported
+/// by the model regardless ... but remains unasked as a requirement." So this
+/// table permits a second scale; nothing in this phase's services ever writes
+/// one, and there is no authoring surface for it (D-160 seeds the one that
+/// exists; `GradeScale`/`GradeValue` are read-only in the UI this phase ships,
+/// per the build brief).
+/// @dataClass ORGANIZATION_SETTINGS
+model GradeScale {
+  id String @id @default(cuid(2))
+
+  /// Stable machine key — `seedInstallation()`'s upsert key.
+  /// `SEEDED_GRADE_SCALE_KEY` in `src/lib/boot/seed.ts` is the only writer.
+  code String @unique
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  values GradeValue[]
+}
+
+/// One point on a `GradeScale` — *"voldoende"*, rank 3 of 5.
+///
+/// `rank` IS THE COMPARISON, `code`/`label` ARE NEVER COMPARED. D-080's pass
+/// function reads `rank(result.grade) >= rank(criterion.minimumGrade ??
+/// criterionSet.passFloor)` — an ordinal comparison over `rank`, never a
+/// string match on the Dutch word, so the scale could in principle be
+/// relabelled without touching the rule it backs (`15-…` §2.2). Seeded once,
+/// never authored: `ONVOLDOENDE=1 · MATIG=2 · VOLDOENDE=3 · GOED=4 ·
+/// ZEER_GOED=5` (D-160).
+/// @dataClass ORGANIZATION_SETTINGS
+model GradeValue {
+  id      String @id @default(cuid(2))
+  scaleId String
+
+  /// The seeded machine key — `ONVOLDOENDE`, `MATIG`, `VOLDOENDE`, `GOED`,
+  /// `ZEER_GOED`. English, per D-159; the Dutch word is `label`.
+  code  String
+  rank  Int
+  /// *"onvoldoende"*, *"voldoende"* — what an assessor reads. Dutch by design
+  /// (`CLAUDE.md` §3: UI language, not an identifier).
+  label String
+
+  createdAt DateTime @default(now())
+
+  scale GradeScale @relation(fields: [scaleId], references: [id], onDelete: Restrict)
+
+  criterionSetFloors CriterionSet[] @relation("CriterionSetPassFloor")
+  criterionMinimums  Criterion[]    @relation("CriterionMinimumGrade")
+
+  @@unique([scaleId, code])
+  @@unique([scaleId, rank])
+  @@index([scaleId])
+}
+
+/// DRAFT while an administrator composes it; ACTIVE once published; RETIRED
+/// when a later version replaces it. D-081: exactly one `ACTIVE` version may
+/// exist per `AwardType` at a time, enforced by the migration's partial unique
+/// index (`CriterionSet_one_active_per_award_type_key`) beside the domain
+/// check `publishCriterionSet` runs before it writes.
+enum CriterionSetStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+/// Provenance label an administrator sets, per D-164/§2.5 — NOT who issues the
+/// award (`AwardType.issuingBody`, above). `NRZ` = "our transcription of the
+/// national requirements"; `ORG` = "ours". The fork rule (D-164): a version
+/// that changes a threshold on an `NRZ`-labelled set is meant to be re-stamped
+/// `ORG` by whoever authors it — the schema does not enforce the relabelling
+/// itself, because detecting "a threshold changed" is a diff over the
+/// PREVIOUS version's criteria this phase does not build (see the phase 2.1
+/// report's open questions).
+enum CriterionSetSource {
+  NRZ
+  ORG
+}
+
+/// *eisenpakket* — the versioned requirement set for one `AwardType`.
+/// `01-domain-model.md` §3.3, `15-assessment-and-fees.md` §2.1/§2.3/§2.5.
+///
+/// **PIN THE FOREIGN KEY, NEVER LOOK UP BY DATE (D-081).** `effectiveFrom`/
+/// `effectiveTo` are DOCUMENTATION of when a version was in force; nothing in
+/// this module resolves a set by joining on them against a date. A
+/// `SkillProgress` row's `criterionId` points at a specific version's
+/// `Criterion` permanently, so rendering an old entry always shows the
+/// criterion name and threshold that were in force when it was written — the
+/// same pin `Assessment.criterionSetId` uses in the (unbuilt) assessment
+/// module, stated once here rather than twice.
+///
+/// **NEVER SEEDED (D-164).** `version` starts at 1 the first time an
+/// administrator authors one for an `AwardType`, and `createCriterionSet`
+/// refuses to open a second `DRAFT` while one is already open — one thing
+/// being composed at a time, so "which draft is the real one" never has two
+/// answers.
+///
+/// **AN `ACTIVE` SET IS NEVER EDITED.** `updateCriterionSet` and
+/// `createCriterion`/`updateCriterion` all refuse outside `status = DRAFT`.
+/// Publishing stamps `effectiveFrom = now`, flips `DRAFT -> ACTIVE`, and in the
+/// same transaction stamps the award type's previous `ACTIVE` version (if any)
+/// `effectiveTo = now` and `RETIRED`.
+/// @dataClass ORGANIZATION_SETTINGS
+model CriterionSet {
+  id          String @id @default(cuid(2))
+  awardTypeId String
+
+  /// 1, 2, 3 ... per `awardTypeId`. Allocated by the service, never typed in.
+  version Int
+
+  source CriterionSetSource
+  status CriterionSetStatus @default(DRAFT)
+
+  /// Set by `publishCriterionSet`; NULL for a `DRAFT` that has never been
+  /// published.
+  effectiveFrom DateTime?
+  /// Set when a LATER version is published and this one is retired; NULL
+  /// while this version is the `ACTIVE` one (or still a `DRAFT`).
+  effectiveTo   DateTime?
+
+  /// The default minimum grade every `Criterion` in this set must reach,
+  /// unless the criterion carries its own `minimumGradeId` override (D-080).
+  /// Nullable because a brand-new `DRAFT` has no floor chosen yet; required in
+  /// practice before `publishCriterionSet` accepts it — enforced by the
+  /// service, not the column, because a `DRAFT` mid-composition is allowed to
+  /// be incomplete.
+  passFloorGradeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  awardType      AwardType   @relation(fields: [awardTypeId], references: [id], onDelete: Restrict)
+  passFloorGrade GradeValue? @relation("CriterionSetPassFloor", fields: [passFloorGradeId], references: [id], onDelete: Restrict)
+
+  criteria Criterion[]
+
+  @@unique([awardTypeId, version])
+  @@index([awardTypeId])
+  @@index([passFloorGradeId])
+}
+
+/// One requirement inside a `CriterionSet` — *"borstcrawl 25 meter"*,
+/// *"watertrappen 1 minuut"*. `01-domain-model.md` §3.3, `15-…` §2.1/§2.6.
+///
+/// THE SINGLE CRITERION CATALOGUE (D-084). This row is what `SkillProgress`
+/// (below) points at for the informal log, and what `AssessmentCriterionResult`
+/// (unbuilt) will point at for the formal one — one row, two consumers, never
+/// two catalogues to keep in sync.
+///
+/// NO DELETE. A `DRAFT` set is corrected by editing a criterion's fields in
+/// place — `updateCriterion` refuses once the set is no longer `DRAFT` — and a
+/// published mistake is fixed in the NEXT version, never in this one (D-081:
+/// "a typo in a criterion name requires a new version").
+/// @dataClass ORGANIZATION_SETTINGS
+model Criterion {
+  id             String @id @default(cuid(2))
+  criterionSetId String
+
+  /// The club's own short code within this set — *"A1"*, *"BORSTCRAWL-25"*.
+  code String
+
+  /// *"Borstcrawl 25 meter"*. The club's own words.
+  name String
+
+  /// Where this criterion sits in the set's own order. Unique per set, same
+  /// shape as `CourseLevel.sequence`: it orders a list and decides nothing.
+  sequence Int
+
+  /// NULL = use `criterionSet.passFloorGradeId`; set = a per-criterion
+  /// override, weaker OR stronger than the floor (D-080).
+  minimumGradeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  criterionSet CriterionSet @relation(fields: [criterionSetId], references: [id], onDelete: Restrict)
+  minimumGrade GradeValue?  @relation("CriterionMinimumGrade", fields: [minimumGradeId], references: [id], onDelete: Restrict)
+
+  skillProgress SkillProgress[]
+
+  @@unique([criterionSetId, code])
+  @@unique([criterionSetId, sequence])
+  @@index([criterionSetId])
+  @@index([minimumGradeId])
+}
+
+/// The four states the design set names, and exactly those
+/// (`01-domain-model.md` §3.3).
+enum SkillProgressState {
+  INTRODUCED
+  PRACTISING
+  ACHIEVED
+  REVOKED
+}
+
+/// *voortgangslogboek* — the informal, per-lesson teaching log. What an
+/// instructor writes; it decides NOTHING (`01-domain-model.md` §3.3: *"it
+/// decides nothing"* — the formal, exam-gating observation is
+/// `AssessmentCriterionResult`, unbuilt, a different table against the same
+/// `Criterion`).
+///
+/// **APPEND-ONLY, LIKE ATTENDANCE AND EVERY OTHER EVENT LOG IN THIS SCHEMA
+/// (D-005's pattern, CLAUDE.md rule 4).** A correction is a NEW row, never an
+/// UPDATE of an old one — `REVOKED` is a state written the same way any other
+/// is, not a delete and not an edit. The effective answer for one criterion is
+/// the latest row, derived at read time; nothing here materialises it.
+///
+/// **`sessionId` IS OPTIONAL AND IS NOT AN AUTHORIZATION BOUNDARY IN THIS
+/// PHASE.** It says which lesson the observation was made in, when it is
+/// known. `recordSkillProgress` guards on `{ group: groupId }` (the caller's
+/// own resource reference, on the `attendance.record` example
+/// `02-security-privacy.md` §2.2 gives almost verbatim) — the group, not the
+/// session — so a row can be written with no session at all (a correction made
+/// after the fact, an import) without inventing a lesson that did not carry it.
+///
+/// **`groupId` IS A WRITE-TIME SNAPSHOT, AND IS THE READ-SIDE NARROWING
+/// `sessionId` COULD NOT BE.** Jack decided (phase 2.1 follow-up): a
+/// `GROUP`-scoped instructor's `skills.read` must return only the rows this
+/// column ties to a group they hold, per D-145 rule 2 — not a pupil's whole
+/// history. `recordSkillProgress` already resolves the group from its own
+/// required argument, so this is stamped at write time, the same
+/// `groupId: groupId`-from-the-guarded-call shape every write in this schema
+/// uses; there is no backfill for rows written before this column existed.
+/// See the phase 2.1 report §1.5 for why this is `groupId` and not a
+/// `sessionId`-routed narrowing.
+/// @dataClass STUDENT_PROFILE
+model SkillProgress {
+  id               String @id @default(cuid(2))
+  studentProfileId String
+  criterionId      String
+
+  state SkillProgressState
+
+  /// WHO OBSERVED IT. Nullable so an erasure can SEVER it — this is the
+  /// PUPIL's history, not the instructor's, on the exact
+  /// `GroupMove.decidedByPersonId` pattern: the note belongs to the child's
+  /// record and stands after the observer leaves; only the name goes.
+  assessedByPersonId String?
+  assessedAt         DateTime
+
+  /// The lesson this was recorded in, when known. See the file comment.
+  sessionId String?
+
+  /// The group this observation was recorded in. NULLABLE: a correction made
+  /// after the fact or a bulk import may carry no group at all, and such a row
+  /// is deliberately NOT visible to a `GROUP`-scoped reach (narrower is safer
+  /// than guessing which group it belongs to) — see
+  /// `skill-progress-reach-filter.ts`.
+  groupId String?
+
+  /// Free text, in the instructor's own words. NOT currently in D-148's
+  /// protected free-text class (medical remarks, pastoral notes, assessment
+  /// remarks, inquiry text) — that table names `AssessmentCriterionResult`'s
+  /// remark, not this one, and the two are the same KIND of observation about
+  /// a child's body made far more often by far more people. Flagged as an open
+  /// question in the phase 2.1 report rather than decided here.
+  note String?
+
+  createdAt DateTime @default(now())
+
+  studentProfile StudentProfile    @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  criterion      Criterion         @relation(fields: [criterionId], references: [id], onDelete: Restrict)
+  assessedBy     Person?           @relation("SkillProgressAssessedBy", fields: [assessedByPersonId], references: [id], onDelete: SetNull)
+  session        ScheduledSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  group          Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([studentProfileId, assessedAt])
+  @@index([criterionId])
+  @@index([sessionId])
+  @@index([assessedByPersonId])
+  @@index([groupId])
 }
 
 // ---------------------------------------------------------------------------

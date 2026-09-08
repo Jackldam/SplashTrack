@@ -110,3 +110,13 @@ export { groupIdsForCourseLevels } from "./infrastructure/group-repository";
  * resolving reach per group per session, for ids it then only counts.
  */
 export { activeMemberIds as activeGroupMemberIds } from "./infrastructure/group-repository";
+
+/**
+ * The `CourseLevel` a group is taught at, or `null` — the published answer the
+ * `skills` module (phase 2.1) builds its per-group criterion picker from.
+ *
+ * UNGUARDED, on the {@link activeGroupMemberIds} precedent immediately above:
+ * one id, nothing about anybody, and the caller has already guarded
+ * `{ group }` before it asks.
+ */
+export { courseLevelOfGroup } from "./infrastructure/group-repository";

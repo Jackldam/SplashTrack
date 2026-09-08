@@ -43,6 +43,15 @@ export interface CourseLevelView {
    * is in those groups, which is a question with its own reach.
    */
   readonly groupCount: number;
+  /**
+   * What this level trains towards — an `AwardType` id, or `null` when nobody
+   * has recorded one (phase 2.1). An ID ONLY, never a name: `AwardType`
+   * belongs to the `skills` module, and naming another module's row is that
+   * module's job (`CLAUDE.md` §4) — the same restraint `courseLevelId` itself
+   * is returned with everywhere else in this schema. The screen that shows the
+   * name reads it from `@/modules/skills` itself, at the composition root.
+   */
+  readonly awardTypeId: string | null;
 }
 
 export interface CourseListItem {
@@ -135,6 +144,7 @@ export async function findCourseDetail(
           id: true,
           name: true,
           sequence: true,
+          awardTypeId: true,
           _count: { select: { groups: true } },
         },
       },
@@ -154,6 +164,7 @@ export async function findCourseDetail(
         id: level.id,
         name: level.name,
         sequence: level.sequence,
+        awardTypeId: level.awardTypeId,
         groupCount: level._count.groups,
       })),
     ),
@@ -161,15 +172,35 @@ export async function findCourseDetail(
 }
 
 /** The levels of a course, in order. Used by the level services' own checks. */
-export async function findLevelsOfCourse(courseId: string): Promise<
-  { id: string; name: string; sequence: number }[]
-> {
+export async function findLevelsOfCourse(
+  courseId: string,
+): Promise<{ id: string; name: string; sequence: number }[]> {
   return inSequence(
     await prisma.courseLevel.findMany({
       where: { courseId },
       select: { id: true, name: true, sequence: true },
     }),
   );
+}
+
+/**
+ * The `AwardType` a `CourseLevel` trains towards, or `null` — the answer the
+ * `skills` module (phase 2.1) builds its per-group criterion picker from
+ * (`CourseLevel.awardTypeId`, this phase).
+ *
+ * UNGUARDED, on the {@link courseOfLevel}/`groupIdsForCourseLevels` precedent:
+ * one id, nothing about anybody, and the caller has already guarded before it
+ * asks. `courses` owns `CourseLevel` and supplies the id; `skills` owns
+ * `AwardType` and resolves what it means.
+ */
+export async function awardTypeOfCourseLevel(
+  courseLevelId: string,
+): Promise<string | null> {
+  const row = await prisma.courseLevel.findUnique({
+    where: { id: courseLevelId },
+    select: { awardTypeId: true },
+  });
+  return row?.awardTypeId ?? null;
 }
 
 /** Which course a level belongs to, so a guard can name a resource. */
@@ -204,8 +235,7 @@ export async function listCourseLevelOptions(
   if (filter.kind === "DENIED") throw new ReachCoversNoCourseError();
 
   const rows = await prisma.courseLevel.findMany({
-    where:
-      filter.kind === "WHERE" ? { course: filter.where } : undefined,
+    where: filter.kind === "WHERE" ? { course: filter.where } : undefined,
     orderBy: [{ course: { name: "asc" } }, { sequence: "asc" }],
     select: {
       id: true,

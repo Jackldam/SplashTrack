@@ -107,4 +107,18 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // `LAST_ENROLMENT_END` trigger — see the schema comment above `model
   // Enrolment`.
   Enrolment: "STUDENT_PROFILE",
+  // --- phase 2.1, the `skills` module ---------------------------------------
+  // The criterion catalogue: teaching configuration, not personal data, on the
+  // Course/CourseLevel precedent above — see the `/// @dataClass` comments in
+  // `prisma/schema.prisma`.
+  AwardType: "ORGANIZATION_SETTINGS",
+  GradeScale: "ORGANIZATION_SETTINGS",
+  GradeValue: "ORGANIZATION_SETTINGS",
+  CriterionSet: "ORGANIZATION_SETTINGS",
+  Criterion: "ORGANIZATION_SETTINGS",
+  // Shares the pupil's own class, on the Enrolment precedent immediately
+  // above: same purpose (the informal per-lesson log is part of "administering
+  // a pupil's lessons, groups and progress" — this class's own description),
+  // same `LAST_ENROLMENT_END` trigger.
+  SkillProgress: "STUDENT_PROFILE",
 };

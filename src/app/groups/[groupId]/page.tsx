@@ -7,8 +7,10 @@ import {
   listGroupsForPrincipal,
   GROUP_MOVE_DIRECTIONS,
 } from "@/modules/groups";
+import { listCriteriaForGroup, SKILL_PROGRESS_STATES } from "@/modules/skills";
 
 import { courseLevelOptionLabel } from "@/app/courses/format";
+import { recordSkillProgressAction } from "@/app/skills/actions";
 import { guarded, requireSignedIn } from "../access";
 import {
   assignInstructorAction,
@@ -122,6 +124,12 @@ export default async function GroupDetailPage({
   const currentLevel =
     levelOptions.find((option) => option.levelId === group.courseLevelId) ??
     null;
+
+  // The criteria this group's own level trains towards (phase 2.1), through
+  // `Group.courseLevelId -> CourseLevel.awardTypeId -> ` the ACTIVE
+  // `CriterionSet`. `guarded`: an instructor with no `skills.read` grant on
+  // this group is an ordinary case, not a 500.
+  const criteria = await guarded(() => listCriteriaForGroup(actor, group.id));
 
   const today = toDateInputValue(new Date());
 
@@ -313,6 +321,106 @@ export default async function GroupDetailPage({
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* ── Skill progress (phase 2.1) ──────────────────────────────────────
+          `{ group: groupId }`-guarded, on `02-security-privacy.md` §2.2's own
+          `attendance.record` example — see
+          `@/modules/skills` `skill-progress-service.ts` for why a per-lesson
+          observation is recorded from the group's roster rather than from the
+          pupil's own screen. */}
+      <h2 className="h5">{t("groups.skillProgress.title")}</h2>
+      {group.members.length === 0 ? (
+        <p className="text-muted">{t("groups.detail.noMembers")}</p>
+      ) : !criteria.ok ? (
+        <p className="text-muted">
+          {t("groups.skillProgress.denied", {
+            permission: criteria.permission,
+          })}
+        </p>
+      ) : criteria.value.reason !== null ? (
+        <p className="text-muted">
+          {t(
+            `groups.skillProgress.reason.${criteria.value.reason}` as "groups.skillProgress.reason.NO_LEVEL",
+          )}
+        </p>
+      ) : (
+        <form action={recordSkillProgressAction} className="row g-2 mb-4">
+          <input type="hidden" name="groupId" value={group.id} />
+          <input type="hidden" name="back" value={`/groups/${group.id}`} />
+          <div className="col-md-3">
+            <label className="form-label" htmlFor="progressStudentProfileId">
+              {t("groups.skillProgress.pupil")}
+            </label>
+            <select
+              className="form-select"
+              id="progressStudentProfileId"
+              name="studentProfileId"
+              required
+            >
+              {group.members.map((member) => (
+                <option
+                  key={member.studentProfileId}
+                  value={member.studentProfileId}
+                >
+                  {member.givenName} {member.familyName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-4">
+            <label className="form-label" htmlFor="progressCriterionId">
+              {t("groups.skillProgress.criterion")}
+            </label>
+            <select
+              className="form-select"
+              id="progressCriterionId"
+              name="criterionId"
+              required
+            >
+              {criteria.value.criteria.map((criterion) => (
+                <option key={criterion.id} value={criterion.id}>
+                  {criterion.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-2">
+            <label className="form-label" htmlFor="progressState">
+              {t("groups.skillProgress.state")}
+            </label>
+            <select
+              className="form-select"
+              id="progressState"
+              name="state"
+              required
+            >
+              {SKILL_PROGRESS_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {t(
+                    `groups.skillProgress.states.${state}` as "groups.skillProgress.states.INTRODUCED",
+                  )}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <label className="form-label" htmlFor="progressNote">
+              {t("groups.skillProgress.note")}
+            </label>
+            <input
+              className="form-control"
+              id="progressNote"
+              name="note"
+              maxLength={1000}
+            />
+          </div>
+          <div className="col-12">
+            <button className="btn btn-primary btn-sm" type="submit">
+              {t("groups.skillProgress.submit")}
+            </button>
+          </div>
+        </form>
       )}
 
       <details className="mb-4">
@@ -546,9 +654,7 @@ export default async function GroupDetailPage({
                   {/* The empty option is a real choice: "nobody has recorded a
                       level", which is what the nullable column means and is
                       not the same as a default level. */}
-                  <option value="">
-                    {t("groups.fields.courseLevelNone")}
-                  </option>
+                  <option value="">{t("groups.fields.courseLevelNone")}</option>
                   {levelOptions.map((option) => (
                     <option key={option.levelId} value={option.levelId}>
                       {courseLevelOptionLabel(option)}

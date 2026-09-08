@@ -25,6 +25,17 @@
  *     `requirePermission('students.medical.read', {student: self})` pass for an
  *     authenticated person holding no grant at all.
  *
+ * Phase 2.1 adds a THIRD kind of seeded row, alongside the catalogue and the
+ * two roles: the one `GradeScale` — `onvoldoende/matig/voldoende/goed/zeer
+ * goed` — and its five `GradeValue`s (D-160, OD-17 resolved,
+ * `15-assessment-and-fees.md` §9 item 5). It is seeded, unlike everything
+ * else the `skills` module owns: D-164 keeps the CRITERION catalogue
+ * (`AwardType`, `CriterionSet`, `Criterion`) empty and administrator-authored,
+ * but the grade SCALE is not a club's judgement call — there is exactly one
+ * correct value, and typing it into a form the first time an administrator
+ * opens the catalogue is not a feature. Same idempotent-upsert shape as the
+ * permission catalogue: safe to run on every boot, additive only.
+ *
  * NOT seeded: the other eight starter roles in §2.4 — Location Manager,
  * Planner, Instructor, Internal/External examiner, Independent aftest assessor,
  * Member Administrator, Content Editor, Read-only Viewer. §2.4 gives each a
@@ -58,15 +69,32 @@ export const INSTANCE_ADMINISTRATOR_ROLE_KEY = "instance_administrator";
 /** The seeded `SELF` role's machine key (D-146). Stable; never renamed. */
 export const SELF_ROLE_KEY = "self";
 
+/** The seeded grade scale's machine key (D-160). Stable; never renamed. */
+export const SEEDED_GRADE_SCALE_KEY = "nrz_5punts";
+
+/**
+ * The one grade scale v1 ships, in the order a `<select>` offers it
+ * (`15-assessment-and-fees.md` §2.1, OD-17 resolved).
+ */
+const SEEDED_GRADE_VALUES = [
+  { code: "ONVOLDOENDE", rank: 1, label: "Onvoldoende" },
+  { code: "MATIG", rank: 2, label: "Matig" },
+  { code: "VOLDOENDE", rank: 3, label: "Voldoende" },
+  { code: "GOED", rank: 4, label: "Goed" },
+  { code: "ZEER_GOED", rank: 5, label: "Zeer goed" },
+] as const;
+
 export interface SeedOutcome {
   permissions: number;
   roles: string[];
   organizationCreated: boolean;
+  /** Whether this call created the seeded grade scale (phase 2.1). */
+  gradeScaleCreated: boolean;
 }
 
 /**
- * Seeds the permission catalogue, the organisation singleton and the two system
- * roles. Safe to run repeatedly.
+ * Seeds the permission catalogue, the organisation singleton, the two system
+ * roles and the one grade scale. Safe to run repeatedly.
  */
 export async function seedInstallation(): Promise<SeedOutcome> {
   const organizationCreated = await seedOrganization();
@@ -91,11 +119,48 @@ export async function seedInstallation(): Promise<SeedOutcome> {
     permissions: [...SELF_PERMISSIONS],
   });
 
+  const gradeScaleCreated = await seedGradeScale();
+
   return {
     permissions: PERMISSIONS.size,
     roles: [INSTANCE_ADMINISTRATOR_ROLE_KEY, SELF_ROLE_KEY],
     organizationCreated,
+    gradeScaleCreated,
   };
+}
+
+/**
+ * The seeded grade scale (D-160) — never authored, never a second one in v1.
+ * Upserted on `code`, so a rename of `label` in a later release stays additive
+ * and a rerun is a no-op. Returns whether this call created the scale row.
+ */
+async function seedGradeScale(): Promise<boolean> {
+  const existing = await prisma.gradeScale.findUnique({
+    where: { code: SEEDED_GRADE_SCALE_KEY },
+    select: { id: true },
+  });
+
+  const scale = await prisma.gradeScale.upsert({
+    where: { code: SEEDED_GRADE_SCALE_KEY },
+    update: { name: "NRZ vijfpuntsschaal" },
+    create: { code: SEEDED_GRADE_SCALE_KEY, name: "NRZ vijfpuntsschaal" },
+    select: { id: true },
+  });
+
+  for (const value of SEEDED_GRADE_VALUES) {
+    await prisma.gradeValue.upsert({
+      where: { scaleId_code: { scaleId: scale.id, code: value.code } },
+      update: { rank: value.rank, label: value.label },
+      create: {
+        scaleId: scale.id,
+        code: value.code,
+        rank: value.rank,
+        label: value.label,
+      },
+    });
+  }
+
+  return existing === null;
 }
 
 /**

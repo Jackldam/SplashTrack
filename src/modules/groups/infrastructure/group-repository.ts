@@ -432,3 +432,23 @@ export async function groupIdsForCourseLevels(
   });
   return rows.map((row) => row.id);
 }
+
+/**
+ * The level a group is taught at, or `null` — the answer the `skills` module
+ * (phase 2.1) builds its criterion picker from.
+ *
+ * UNGUARDED, on the {@link groupIdsForCourseLevels}/`activeMemberIds`
+ * precedent immediately above: it returns one id and nothing about anybody,
+ * and its one caller has already guarded `{ group: groupId }` before it asks —
+ * a second permission check here would be redundant, not safer. `skills` owns
+ * neither `Group` nor `CourseLevel`; it asks the module that does.
+ */
+export async function courseLevelOfGroup(
+  groupId: string,
+): Promise<string | null> {
+  const row = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: { courseLevelId: true },
+  });
+  return row?.courseLevelId ?? null;
+}

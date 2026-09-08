@@ -1,0 +1,296 @@
+/**
+ * Reads over `AwardType`, `GradeScale`/`GradeValue`, `CriterionSet` and
+ * `Criterion` — the empty-by-default catalogue D-164 ships and an
+ * administrator authors.
+ *
+ * UNGUARDED. Every function here is reached only after the service has
+ * guarded `skills.read` / `skills.manage_catalogue` at `{ organization: true }`
+ * — the ONLY scope that ever covers these rows, because the catalogue has no
+ * narrower `ResourceRef` kind of its own (`@/lib/authorization/scope.ts` names
+ * `organization | unit | group | course | session | student | person`, and
+ * none of them is "award type" or "criterion set"). So there is no
+ * `xFilterForReach` in this module: unlike `Course` or `ScheduledSession`,
+ * which several scope types can cover in different ways, the catalogue is
+ * either fully visible (an `ORGANIZATION` grant) or not visible at all — the
+ * same reasoning `createCourse`'s `{ organization: true }` reference already
+ * rests on, generalised to every read and write in this file.
+ *
+ * SERVER-ONLY.
+ */
+import { prisma } from "@/lib/database";
+
+import { inSequence } from "../domain/criterion";
+
+export interface GradeValueView {
+  readonly id: string;
+  readonly code: string;
+  readonly rank: number;
+  readonly label: string;
+}
+
+export interface GradeScaleView {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly values: readonly GradeValueView[];
+}
+
+/** The seeded scale(s), values in rank order. Read-only in this phase's UI. */
+export async function listGradeScales(): Promise<GradeScaleView[]> {
+  const rows = await prisma.gradeScale.findMany({
+    orderBy: { code: "asc" },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      values: { select: { id: true, code: true, rank: true, label: true } },
+    },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    values: [...row.values].sort((left, right) => left.rank - right.rank),
+  }));
+}
+
+export interface AwardTypeListItem {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly issuingBody: string;
+  readonly criterionSetCount: number;
+  /** Whether an ACTIVE `CriterionSet` exists — assessable right now, or not. */
+  readonly hasActiveCriterionSet: boolean;
+}
+
+export async function listAwardTypes(): Promise<AwardTypeListItem[]> {
+  const rows = await prisma.awardType.findMany({
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      kind: true,
+      issuingBody: true,
+      _count: { select: { criterionSets: true } },
+      criterionSets: {
+        where: { status: "ACTIVE" },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+    issuingBody: row.issuingBody,
+    criterionSetCount: row._count.criterionSets,
+    hasActiveCriterionSet: row.criterionSets.length > 0,
+  }));
+}
+
+export interface CriterionSetSummary {
+  readonly id: string;
+  readonly version: number;
+  readonly source: string;
+  readonly status: string;
+  readonly effectiveFrom: Date | null;
+  readonly effectiveTo: Date | null;
+  readonly criterionCount: number;
+}
+
+export interface AwardTypeDetail extends AwardTypeListItem {
+  readonly criterionSets: readonly CriterionSetSummary[];
+}
+
+export async function findAwardTypeDetail(
+  awardTypeId: string,
+): Promise<AwardTypeDetail | null> {
+  const row = await prisma.awardType.findUnique({
+    where: { id: awardTypeId },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      kind: true,
+      issuingBody: true,
+      criterionSets: {
+        orderBy: { version: "desc" },
+        select: {
+          id: true,
+          version: true,
+          source: true,
+          status: true,
+          effectiveFrom: true,
+          effectiveTo: true,
+          _count: { select: { criteria: true } },
+        },
+      },
+    },
+  });
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+    issuingBody: row.issuingBody,
+    criterionSetCount: row.criterionSets.length,
+    hasActiveCriterionSet: row.criterionSets.some(
+      (set) => set.status === "ACTIVE",
+    ),
+    criterionSets: row.criterionSets.map((set) => ({
+      id: set.id,
+      version: set.version,
+      source: set.source,
+      status: set.status,
+      effectiveFrom: set.effectiveFrom,
+      effectiveTo: set.effectiveTo,
+      criterionCount: set._count.criteria,
+    })),
+  };
+}
+
+export interface CriterionView {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly sequence: number;
+  readonly minimumGradeId: string | null;
+}
+
+export interface CriterionSetDetail {
+  readonly id: string;
+  readonly awardTypeId: string;
+  readonly awardTypeName: string;
+  readonly version: number;
+  readonly source: string;
+  readonly status: string;
+  readonly effectiveFrom: Date | null;
+  readonly effectiveTo: Date | null;
+  readonly passFloorGradeId: string | null;
+  readonly criteria: readonly CriterionView[];
+}
+
+export async function findCriterionSetDetail(
+  criterionSetId: string,
+): Promise<CriterionSetDetail | null> {
+  const row = await prisma.criterionSet.findUnique({
+    where: { id: criterionSetId },
+    select: {
+      id: true,
+      awardTypeId: true,
+      awardType: { select: { name: true } },
+      version: true,
+      source: true,
+      status: true,
+      effectiveFrom: true,
+      effectiveTo: true,
+      passFloorGradeId: true,
+      criteria: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          sequence: true,
+          minimumGradeId: true,
+        },
+      },
+    },
+  });
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    awardTypeId: row.awardTypeId,
+    awardTypeName: row.awardType.name,
+    version: row.version,
+    source: row.source,
+    status: row.status,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
+    passFloorGradeId: row.passFloorGradeId,
+    criteria: inSequence(row.criteria),
+  };
+}
+
+/** Every version of one `AwardType`'s criterion sets, for version allocation. */
+export async function listCriterionSetVersions(
+  awardTypeId: string,
+): Promise<{ version: number }[]> {
+  return prisma.criterionSet.findMany({
+    where: { awardTypeId },
+    select: { version: true },
+  });
+}
+
+/** The open `DRAFT`, if one exists — `createCriterionSet` refuses a second. */
+export async function findOpenDraft(
+  awardTypeId: string,
+): Promise<{ id: string } | null> {
+  return prisma.criterionSet.findFirst({
+    where: { awardTypeId, status: "DRAFT" },
+    select: { id: true },
+  });
+}
+
+/** The current `ACTIVE` set of an `AwardType`, if one exists. */
+export async function findActiveCriterionSet(
+  awardTypeId: string,
+): Promise<{ id: string } | null> {
+  return prisma.criterionSet.findFirst({
+    where: { awardTypeId, status: "ACTIVE" },
+    select: { id: true },
+  });
+}
+
+/** Which `CriterionSet` a criterion belongs to, and that set's status. */
+export async function criterionSetOfCriterion(criterionId: string): Promise<{
+  criterionSetId: string;
+  status: string;
+} | null> {
+  const row = await prisma.criterion.findUnique({
+    where: { id: criterionId },
+    select: {
+      criterionSetId: true,
+      criterionSet: { select: { status: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    criterionSetId: row.criterionSetId,
+    status: row.criterionSet.status,
+  };
+}
+
+/**
+ * The ACTIVE criterion set's criteria for one `AwardType`, in order — what
+ * `listCriteriaForGroup` renders as the picker. Empty when there is no
+ * `ACTIVE` set yet (a `DRAFT` still being composed is never assessable,
+ * D-081).
+ */
+export async function listActiveCriteria(
+  awardTypeId: string,
+): Promise<CriterionView[]> {
+  const set = await prisma.criterionSet.findFirst({
+    where: { awardTypeId, status: "ACTIVE" },
+    select: {
+      criteria: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          sequence: true,
+          minimumGradeId: true,
+        },
+      },
+    },
+  });
+  if (!set) return [];
+  return inSequence(set.criteria);
+}

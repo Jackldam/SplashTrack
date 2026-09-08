@@ -16,11 +16,10 @@ import {
   type GuardianAuthority,
   type PersonRelationshipView,
 } from "@/modules/people";
+import { getSkillProgressForStudent } from "@/modules/skills";
 
-import {
-  endEnrolmentAction,
-  enrolStudentAction,
-} from "@/app/courses/actions";
+import { endEnrolmentAction, enrolStudentAction } from "@/app/courses/actions";
+import { formatMoment } from "@/app/skills/format";
 
 import { guarded, requireSignedIn } from "../access";
 import {
@@ -170,6 +169,16 @@ export default async function PersonDetailPage({
         (entry) => entry.endedAt === null && !entry.courseWithheld,
       )
     : [];
+
+  // ── Skill progress (phase 2.1) — read-only here; see the section below. ──
+  const skillProgress = person.studentProfile
+    ? await guarded(() =>
+        getSkillProgressForStudent(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
 
   return (
     <main className="container py-5">
@@ -664,7 +673,8 @@ export default async function PersonDetailPage({
               than shown an empty dropdown. */}
           <details className="mt-3">
             <summary>{t("people.enrolments.addTitle")}</summary>
-            {enrolmentCourses && enrolmentCourses.ok &&
+            {enrolmentCourses &&
+            enrolmentCourses.ok &&
             enrolmentCourses.value.length > 0 ? (
               <form action={enrolStudentAction} className="row g-2 mt-2">
                 <input
@@ -789,6 +799,58 @@ export default async function PersonDetailPage({
                 ))}
               </ul>
             </details>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* ── The informal, per-lesson skill-progress log (phase 2.1) ────────
+          READ-ONLY here: recording happens on the GROUP screen, guarded on
+          `{ group }` (`02-security-privacy.md` §2.2's own `attendance.record`
+          example) — see `@/modules/skills` `skill-progress-service.ts`. This
+          section guards `{ student }`, the `getStudentEnrolments` shape, and
+          — UNLIKE that one — shows every reachable row with no further
+          per-course narrowing; the file comment on the service explains why. */}
+      {person.studentProfile ? (
+        <section className="mt-5">
+          <h2 className="h4">{t("people.skillProgress.title")}</h2>
+
+          {skillProgress && !skillProgress.ok ? (
+            <p className="text-muted">
+              {t("people.skillProgress.denied", {
+                permission: skillProgress.permission,
+              })}
+            </p>
+          ) : skillProgress && skillProgress.value.length === 0 ? (
+            <p className="text-muted">{t("people.skillProgress.none")}</p>
+          ) : skillProgress ? (
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("people.skillProgress.criterion")}</th>
+                  <th scope="col">{t("people.skillProgress.awardType")}</th>
+                  <th scope="col">{t("people.skillProgress.state")}</th>
+                  <th scope="col">{t("people.skillProgress.date")}</th>
+                  <th scope="col">{t("people.skillProgress.note")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {skillProgress.value.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.criterionName}</td>
+                    <td>
+                      {entry.awardTypeName} (v{entry.criterionSetVersion})
+                    </td>
+                    <td>
+                      {t(
+                        `groups.skillProgress.states.${entry.state}` as "groups.skillProgress.states.INTRODUCED",
+                      )}
+                    </td>
+                    <td>{formatMoment(entry.assessedAt)}</td>
+                    <td className="text-muted">{entry.note ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : null}
         </section>
       ) : null}
