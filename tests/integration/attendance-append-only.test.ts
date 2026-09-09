@@ -36,12 +36,19 @@
  * explains: the retention role also holds UPDATE there, because severing
  * `assessedByPersonId` may need an explicit `SET NULL` the runtime role can
  * no longer issue. Asserted below beside the attendance proofs.
+ *
+ * `Assessment`/`AssessmentCriterionResult`/`CriterionWaiver` — P-07's FOURTH
+ * member — got the same carve-out from phase 2.3's FIRST commit, not a later
+ * retrofit (`assessmentGrantStatements`). Asserted below on the same
+ * SkillProgress shape: the retention role holds UPDATE (sever) and DELETE
+ * (future prune) on all three tables.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/database";
 import { roleNameFrom } from "@/lib/database/role-model";
 import { registerSessionAttendance } from "@/modules/attendance";
+import { recordAssessment } from "@/modules/assessment";
 
 import {
   aid,
@@ -56,6 +63,19 @@ import {
   placeInGroup,
   resetAttendanceFixtures,
 } from "../support/attendance-fixtures";
+import {
+  addGuestRow as addAssessmentGuestRow,
+  asid,
+  grantTo as assessmentGrantTo,
+  makeAssessableSet,
+  makeGroup as makeAssessmentGroup,
+  makeLesson as makeAssessmentLesson,
+  makePerson as makeAssessmentPerson,
+  makeRole as makeAssessmentRole,
+  makeStudent as makeAssessmentStudent,
+  placeInGroup as placeInAssessmentGroup,
+  resetAssessmentFixtures,
+} from "../support/assessment-fixtures";
 
 /** The role this environment actually connects as — not the reference name. */
 const APP_ROLE = roleNameFrom(process.env.DATABASE_URL as string);
@@ -74,6 +94,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await resetAttendanceFixtures();
+  await resetAssessmentFixtures();
   adminId = await makePerson("ao_admin");
   await grantTo({
     personId: adminId,
@@ -84,6 +105,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await resetAttendanceFixtures();
+  await resetAssessmentFixtures();
 });
 
 /** One registered attendance row, written through the real service. */
@@ -259,5 +281,122 @@ describe("the one deliberate asymmetry, and the retrofit that removed the other"
       await prisma.criterionSet.delete({ where: { id: setId } });
       await prisma.awardType.delete({ where: { id: awardTypeId } });
     }
+  });
+});
+
+describe("Assessment/AssessmentCriterionResult/CriterionWaiver carry the carve-out from day one (phase 2.3)", () => {
+  it("the runtime role holds SELECT and INSERT on all three tables, and nothing else", async () => {
+    for (const table of [
+      "Assessment",
+      "AssessmentCriterionResult",
+      "CriterionWaiver",
+    ]) {
+      const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
+        SELECT privilege_type
+          FROM information_schema.role_table_grants
+         WHERE table_name = ${table}
+           AND grantee = ${APP_ROLE}
+         ORDER BY privilege_type
+      `;
+      expect(
+        privileges.map((row) => row.privilege_type),
+        table,
+      ).toEqual(["INSERT", "SELECT"]);
+    }
+  });
+
+  it("an UPDATE and a DELETE against a real Assessment row are REFUSED by the database", async () => {
+    const groupId = await makeAssessmentGroup("ao_assess");
+    const pupil = await makeAssessmentStudent("ao_assess_p");
+    await placeInAssessmentGroup(groupId, pupil.studentProfileId);
+    const sessionId = await makeAssessmentLesson(groupId, "ao_assess");
+    await addAssessmentGuestRow(sessionId, pupil.studentProfileId);
+    const set = await makeAssessableSet("ao_assess", 1);
+
+    const assessAdminId = await makeAssessmentPerson("ao_assess_admin");
+    await assessmentGrantTo({
+      personId: assessAdminId,
+      roleId: await makeAssessmentRole("ao_assess_role_admin", [
+        "assessment.read",
+        "assessment.record",
+      ]),
+      scopeType: "ORGANIZATION",
+    });
+
+    const written = await recordAssessment(
+      { principal: { personId: assessAdminId }, at: NOW },
+      sessionId,
+      {
+        studentProfileId: pupil.studentProfileId,
+        criterionSetId: set.criterionSetId,
+        clientEventId: asid("ce_ao_assess"),
+        results: [
+          {
+            criterionId: set.criterionIds[0]!,
+            gradeValueId: set.gradeIds.voldoende,
+          },
+        ],
+      },
+    );
+    const row = await prisma.assessment.findUniqueOrThrow({
+      where: { id: written.id },
+    });
+
+    await expect(
+      prisma.assessment.update({
+        where: { id: row.id },
+        data: { outcome: "FAIL" },
+      }),
+    ).rejects.toThrow(/permission denied|denied by|not permitted/i);
+    await expect(
+      prisma.assessment.delete({ where: { id: row.id } }),
+    ).rejects.toThrow(/permission denied|denied by|not permitted/i);
+
+    // Byte-for-byte untouched.
+    await expect(
+      prisma.assessment.findUniqueOrThrow({ where: { id: row.id } }),
+    ).resolves.toEqual(row);
+  });
+
+  it("erasing the PUPIL still takes the rows: the cascade runs as the owner, not as the runtime role", async () => {
+    const groupId = await makeAssessmentGroup("ao_assess_erase");
+    const pupil = await makeAssessmentStudent("ao_assess_erase_p");
+    await placeInAssessmentGroup(groupId, pupil.studentProfileId);
+    const sessionId = await makeAssessmentLesson(groupId, "ao_assess_erase");
+    await addAssessmentGuestRow(sessionId, pupil.studentProfileId);
+    const set = await makeAssessableSet("ao_assess_erase", 1);
+
+    const assessAdminId = await makeAssessmentPerson("ao_assess_erase_admin");
+    await assessmentGrantTo({
+      personId: assessAdminId,
+      roleId: await makeAssessmentRole("ao_assess_erase_role_admin", [
+        "assessment.read",
+        "assessment.record",
+      ]),
+      scopeType: "ORGANIZATION",
+    });
+
+    const written = await recordAssessment(
+      { principal: { personId: assessAdminId }, at: NOW },
+      sessionId,
+      {
+        studentProfileId: pupil.studentProfileId,
+        criterionSetId: set.criterionSetId,
+        clientEventId: asid("ce_ao_assess_erase"),
+        results: [
+          {
+            criterionId: set.criterionIds[0]!,
+            gradeValueId: set.gradeIds.voldoende,
+          },
+        ],
+      },
+    );
+
+    await prisma.studentProfile.delete({
+      where: { id: pupil.studentProfileId },
+    });
+    await expect(
+      prisma.assessment.count({ where: { id: written.id } }),
+    ).resolves.toBe(0);
   });
 });
