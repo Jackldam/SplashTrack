@@ -149,7 +149,10 @@ function hasWritePath(modelName: string): boolean {
   const ormCall = new RegExp(
     `\\b(?:prisma|tx|client)\\.${camel}\\.(?:${WRITE_METHODS.join("|")})\\b`,
   );
-  const rawSql = new RegExp(`(?:INSERT\\s+INTO|UPDATE)\\s+"?${modelName}"?\\b`, "i");
+  const rawSql = new RegExp(
+    `(?:INSERT\\s+INTO|UPDATE)\\s+"?${modelName}"?\\b`,
+    "i",
+  );
   return ormCall.test(PRODUCTION_SOURCE) || rawSql.test(PRODUCTION_SOURCE);
 }
 
@@ -158,7 +161,10 @@ describe("every table people/groups/sessions own has a write path", () => {
 
   it("DOMAIN_MODELS names models that actually exist in the schema", () => {
     const missing = DOMAIN_MODELS.filter((name) => !schemaModels.has(name));
-    expect(missing, `${missing.join(", ")} not found in prisma/schema.prisma — DOMAIN_MODELS has drifted from the schema.`).toEqual([]);
+    expect(
+      missing,
+      `${missing.join(", ")} not found in prisma/schema.prisma — DOMAIN_MODELS has drifted from the schema.`,
+    ).toEqual([]);
   });
 
   it("has a write path, or an allowlisted reason not to", () => {

@@ -560,11 +560,9 @@ describe("people writes (real database, real services)", () => {
 
     it("corrects the pupil number the same way", async () => {
       const personId = await newPerson("Typo", "Leerlingnummer");
-      const { studentProfileId } = await createStudentProfile(
-        actor,
-        personId,
-        { studentNumber: "L-oops" },
-      );
+      const { studentProfileId } = await createStudentProfile(actor, personId, {
+        studentNumber: "L-oops",
+      });
 
       await updateStudentProfile(actor, studentProfileId, {
         studentNumber: "L-fixed",
