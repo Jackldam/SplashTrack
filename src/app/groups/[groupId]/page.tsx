@@ -345,82 +345,99 @@ export default async function GroupDetailPage({
           )}
         </p>
       ) : (
-        <form action={recordSkillProgressAction} className="row g-2 mb-4">
-          <input type="hidden" name="groupId" value={group.id} />
-          <input type="hidden" name="back" value={`/groups/${group.id}`} />
-          <div className="col-md-3">
-            <label className="form-label" htmlFor="progressStudentProfileId">
-              {t("groups.skillProgress.pupil")}
-            </label>
-            <select
-              className="form-select"
-              id="progressStudentProfileId"
-              name="studentProfileId"
-              required
-            >
-              {group.members.map((member) => (
-                <option
-                  key={member.studentProfileId}
-                  value={member.studentProfileId}
-                >
-                  {member.givenName} {member.familyName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-md-4">
-            <label className="form-label" htmlFor="progressCriterionId">
-              {t("groups.skillProgress.criterion")}
-            </label>
-            <select
-              className="form-select"
-              id="progressCriterionId"
-              name="criterionId"
-              required
-            >
-              {criteria.value.criteria.map((criterion) => (
-                <option key={criterion.id} value={criterion.id}>
-                  {criterion.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-md-2">
-            <label className="form-label" htmlFor="progressState">
-              {t("groups.skillProgress.state")}
-            </label>
-            <select
-              className="form-select"
-              id="progressState"
-              name="state"
-              required
-            >
-              {SKILL_PROGRESS_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {t(
-                    `groups.skillProgress.states.${state}` as "groups.skillProgress.states.INTRODUCED",
-                  )}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-md-3">
-            <label className="form-label" htmlFor="progressNote">
-              {t("groups.skillProgress.note")}
-            </label>
-            <input
-              className="form-control"
-              id="progressNote"
-              name="note"
-              maxLength={1000}
-            />
-          </div>
-          <div className="col-12">
-            <button className="btn btn-primary btn-sm" type="submit">
-              {t("groups.skillProgress.submit")}
-            </button>
-          </div>
-        </form>
+        <>
+          <form action={recordSkillProgressAction} className="row g-2 mb-4">
+            <input type="hidden" name="groupId" value={group.id} />
+            <input type="hidden" name="back" value={`/groups/${group.id}`} />
+            <div className="col-md-3">
+              <label className="form-label" htmlFor="progressStudentProfileId">
+                {t("groups.skillProgress.pupil")}
+              </label>
+              <select
+                className="form-select"
+                id="progressStudentProfileId"
+                name="studentProfileId"
+                required
+              >
+                {group.members.map((member) => (
+                  <option
+                    key={member.studentProfileId}
+                    value={member.studentProfileId}
+                  >
+                    {member.givenName} {member.familyName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-4">
+              <label className="form-label" htmlFor="progressCriterionId">
+                {t("groups.skillProgress.criterion")}
+              </label>
+              <select
+                className="form-select"
+                id="progressCriterionId"
+                name="criterionId"
+                required
+              >
+                {criteria.value.criteria.map((criterion) => (
+                  <option key={criterion.id} value={criterion.id}>
+                    {criterion.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label" htmlFor="progressState">
+                {t("groups.skillProgress.state")}
+              </label>
+              <select
+                className="form-select"
+                id="progressState"
+                name="state"
+                required
+              >
+                {SKILL_PROGRESS_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {t(
+                      `groups.skillProgress.states.${state}` as "groups.skillProgress.states.INTRODUCED",
+                    )}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-3">
+              <label className="form-label" htmlFor="progressNote">
+                {t("groups.skillProgress.note")}
+              </label>
+              <input
+                className="form-control"
+                id="progressNote"
+                name="note"
+                maxLength={1000}
+              />
+            </div>
+            <div className="col-12">
+              <button className="btn btn-primary btn-sm" type="submit">
+                {t("groups.skillProgress.submit")}
+              </button>
+            </div>
+          </form>
+          {criteria.value.criteria.some((criterion) => criterion.standard) ? (
+            <details className="mb-4">
+              <summary>{t("groups.skillProgress.standardsTitle")}</summary>
+              <dl className="mt-2">
+                {criteria.value.criteria
+                  .filter((criterion) => criterion.standard)
+                  .map((criterion) => (
+                    <div key={criterion.id}>
+                      <dt>{criterion.name}</dt>
+                      <dd>{criterion.standard}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </details>
+          ) : null}
+        </>
       )}
 
       <details className="mb-4">

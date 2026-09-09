@@ -160,6 +160,7 @@ export interface CriterionView {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  readonly standard: string | null;
   readonly sequence: number;
   readonly minimumGradeId: string | null;
 }
@@ -197,6 +198,7 @@ export async function findCriterionSetDetail(
           id: true,
           code: true,
           name: true,
+          standard: true,
           sequence: true,
           minimumGradeId: true,
         },
@@ -285,6 +287,7 @@ export async function listActiveCriteria(
           id: true,
           code: true,
           name: true,
+          standard: true,
           sequence: true,
           minimumGradeId: true,
         },

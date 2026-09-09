@@ -214,6 +214,26 @@ export default async function CriterionSetDetailPage({
                           ))}
                         </select>
                       </div>
+                      <div className="col-12">
+                        <label
+                          className="form-label"
+                          htmlFor={`standard-${criterion.id}`}
+                        >
+                          {t("skills.criteria.columns.standard")}
+                        </label>
+                        <textarea
+                          aria-label={t("skills.criteria.columns.standard")}
+                          className="form-control form-control-sm"
+                          id={`standard-${criterion.id}`}
+                          name="standard"
+                          defaultValue={criterion.standard ?? ""}
+                          maxLength={2000}
+                          rows={2}
+                        />
+                        <div className="form-text">
+                          {t("skills.criteria.standardHelp")}
+                        </div>
+                      </div>
                       <div className="col-auto">
                         <button
                           className="btn btn-outline-secondary btn-sm"
@@ -229,7 +249,12 @@ export default async function CriterionSetDetailPage({
                 <tr key={criterion.id}>
                   <td>{criterion.sequence}</td>
                   <td>{criterion.code}</td>
-                  <td>{criterion.name}</td>
+                  <td>
+                    {criterion.name}
+                    {criterion.standard ? (
+                      <div className="form-text mb-0">{criterion.standard}</div>
+                    ) : null}
+                  </td>
                   <td>
                     {gradeValues.find((v) => v.id === criterion.minimumGradeId)
                       ?.label ?? t("skills.criteria.useSetFloor")}
@@ -301,6 +326,21 @@ export default async function CriterionSetDetailPage({
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="col-12">
+              <label className="form-label" htmlFor="newCriterionStandard">
+                {t("skills.criteria.columns.standard")}
+              </label>
+              <textarea
+                className="form-control"
+                id="newCriterionStandard"
+                name="standard"
+                maxLength={2000}
+                rows={2}
+              />
+              <div className="form-text">
+                {t("skills.criteria.standardHelp")}
+              </div>
             </div>
             <div className="col-12">
               <div className="form-text mb-2">

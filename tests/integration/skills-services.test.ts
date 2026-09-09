@@ -372,6 +372,79 @@ describe("createCriterion / updateCriterion — DRAFT-only, sequence uniqueness"
       }),
     ).resolves.toBeUndefined();
   });
+
+  it("createCriterion stores the standard ('normering') when given, null when not", async () => {
+    const awardTypeId = await makeAwardType("svc_crit_standard_create");
+    const setId = await createCriterionSet(admin(), awardTypeId, {
+      source: "ORG",
+    }).then((s) => s.id);
+
+    const withStandard = await createCriterion(admin(), setId, {
+      code: "A1",
+      name: "Eerste",
+      standard: "Zwemt 25 meter borstcrawl zonder hulpmiddelen te gebruiken.",
+    });
+    const rowWithStandard = await prisma.criterion.findUniqueOrThrow({
+      where: { id: withStandard.id },
+    });
+    expect(rowWithStandard.standard).toBe(
+      "Zwemt 25 meter borstcrawl zonder hulpmiddelen te gebruiken.",
+    );
+
+    const withoutStandard = await createCriterion(admin(), setId, {
+      code: "A2",
+      name: "Tweede",
+    });
+    const rowWithoutStandard = await prisma.criterion.findUniqueOrThrow({
+      where: { id: withoutStandard.id },
+    });
+    expect(rowWithoutStandard.standard).toBeNull();
+  });
+
+  it("updateCriterion corrects the standard in place, and leaves it unchanged when the field is omitted", async () => {
+    const awardTypeId = await makeAwardType("svc_crit_standard_update");
+    const setId = await createCriterionSet(admin(), awardTypeId, {
+      source: "ORG",
+    }).then((s) => s.id);
+    const { id } = await createCriterion(admin(), setId, {
+      code: "A1",
+      name: "Origineel",
+      standard: "Oude normering.",
+    });
+
+    await updateCriterion(admin(), id, {
+      code: "A1",
+      name: "Origineel",
+      sequence: 1,
+      standard: "Nieuwe normering: volledige ademhalingstechniek.",
+    });
+    expect(
+      (await prisma.criterion.findUniqueOrThrow({ where: { id } })).standard,
+    ).toBe("Nieuwe normering: volledige ademhalingstechniek.");
+
+    // `standard` omitted entirely (not even an empty string) leaves the
+    // stored value alone — the same "undefined means unchanged" reading
+    // `minimumGradeId` already gets in this function.
+    await updateCriterion(admin(), id, {
+      code: "A1",
+      name: "Andere naam",
+      sequence: 1,
+    });
+    expect(
+      (await prisma.criterion.findUniqueOrThrow({ where: { id } })).standard,
+    ).toBe("Nieuwe normering: volledige ademhalingstechniek.");
+
+    // An explicit empty string clears it back to null (`optionalText`).
+    await updateCriterion(admin(), id, {
+      code: "A1",
+      name: "Andere naam",
+      sequence: 1,
+      standard: "",
+    });
+    expect(
+      (await prisma.criterion.findUniqueOrThrow({ where: { id } })).standard,
+    ).toBeNull();
+  });
 });
 
 describe("recordSkillProgress — append-only, and the two permissions", () => {
