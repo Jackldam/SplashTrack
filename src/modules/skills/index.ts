@@ -43,6 +43,15 @@ export {
 
 export { listGradeScalesForPrincipal } from "./application/grade-scale-service";
 
+/**
+ * The seeded grade scale(s), values in rank order, unguarded — the published
+ * answer `assessment` (phase 2.3) renders the grade picker from. On the
+ * `criterionSetDetailForAssessment` precedent: the catalogue has no scope
+ * narrower than `ORGANIZATION`, and an assessor grading a sitting needs the
+ * grade vocabulary exactly as much as the criteria themselves.
+ */
+export { listGradeScales } from "./infrastructure/catalogue-repository";
+
 export {
   createCriterionSet,
   getCriterionSetForPrincipal,
@@ -96,5 +105,29 @@ export type {
   GradeScaleView,
   GradeValueView,
 } from "./infrastructure/catalogue-repository";
+
+/**
+ * The pinned criterion set an `Assessment.criterionSetId` points at — its
+ * status, pass floor and criteria (each with its own override, D-080) — the
+ * published answer `assessment` (phase 2.3) reads to compute the pass rule
+ * and to refuse recording against a set that is not `ACTIVE`. Reused
+ * verbatim from the catalogue's own detail view (D-081: the version is
+ * pinned by id, never resolved by date) rather than a second query shape.
+ */
+export { findCriterionSetDetail as criterionSetDetailForAssessment } from "./infrastructure/catalogue-repository";
+
+/**
+ * The rank of every requested `GradeValue`, by id — see the repository
+ * function's own doc comment.
+ */
+export { gradeValuesByIds } from "./infrastructure/catalogue-repository";
+
+/**
+ * The current `ACTIVE` criterion set of an `AwardType`, if one exists — the
+ * published answer `assessment` (phase 2.3) resolves which set a candidate
+ * must have passed, and the future `exams` module will resolve the same way
+ * (D-081: never by date).
+ */
+export { findActiveCriterionSet as activeCriterionSetOfAwardType } from "./infrastructure/catalogue-repository";
 
 export type { SkillProgressEntry } from "./infrastructure/skill-progress-repository";

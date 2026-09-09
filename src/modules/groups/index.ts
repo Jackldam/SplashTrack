@@ -120,3 +120,10 @@ export { activeMemberIds as activeGroupMemberIds } from "./infrastructure/group-
  * `{ group }` before it asks.
  */
 export { courseLevelOfGroup } from "./infrastructure/group-repository";
+
+/**
+ * Does this person currently instruct a group this student currently belongs
+ * to — the published answer `assessment` (phase 2.3) checks D-085's
+ * independence clause against. See the repository function's own doc comment.
+ */
+export { isActiveInstructorOfStudent } from "./infrastructure/group-repository";

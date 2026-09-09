@@ -5,8 +5,10 @@ import { getTranslations } from "next-intl/server";
 
 import { LiveSearchPicker } from "@/components/live-search-picker/live-search-picker";
 import { getConfiguredLocalization } from "@/lib/settings";
+import { criteriaForSessionAftest } from "@/modules/assessment";
 import { ATTENDANCE_STATES, getSessionRegister } from "@/modules/attendance";
 import { getSessionForPrincipal, resolveTimeZone } from "@/modules/sessions";
+import { listGradeScales } from "@/modules/skills";
 
 import { guarded, requireSignedIn } from "../../../access";
 import {
@@ -14,6 +16,7 @@ import {
   amendAttendanceAction,
   clearSessionLaneOverrideAction,
   overrideSessionLanesAction,
+  recordAssessmentAction,
   registerAttendanceAction,
   removeGuestAction,
 } from "../../../actions";
@@ -120,6 +123,18 @@ export default async function SessionDetailPage({
           .filter((id): id is string => id !== null),
       )
     : new Set<string>();
+
+  // ── Assessment (phase 2.3) ──────────────────────────────────────────────────
+  // `guarded`: an instructor who may see the lesson but holds no
+  // `assessment.read` is an ordinary case, not a 500 — most instructors never
+  // see this section, because most of them are not the independent assessor
+  // D-085 requires. `criteriaForSessionAftest` resolves the same
+  // group -> course -> skills chain `skills` uses for its own picker.
+  const aftest = await guarded(() =>
+    criteriaForSessionAftest(actor, sessionId),
+  );
+  const gradeScales = aftest.ok ? await listGradeScales() : [];
+  const gradeValues = gradeScales[0]?.values ?? [];
 
   return (
     <main className="container py-5">
@@ -564,6 +579,159 @@ export default async function SessionDetailPage({
             </ul>
           </details>
         </>
+      )}
+
+      {/* ── Assessment (phase 2.3) ──────────────────────────────────────────
+          THE AFTEST DOES NOT INHERIT THE THIRTY-SECOND DOCTRINE (D-086). Every
+          grade select below starts on the blank first option — there is no
+          default and no "mark all voldoende" button anywhere on this screen.
+          The outcome is never typed; it is computed by `recordAssessment` from
+          the pinned criterion set the moment every criterion carries either a
+          grade or a waiver, and the whole sitting is refused
+          (`error=INCOMPLETE`) until it does. This is deliberately the slowest
+          form in the product — an aftest is a scheduled, ten-minute act by a
+          qualified assessor, not a poolside tap. */}
+      <h2 className="h5 mt-4">{t("session.assessment.title")}</h2>
+      {!aftest.ok ? (
+        <p className="text-muted">
+          {t("session.assessment.denied", { permission: aftest.permission })}
+        </p>
+      ) : aftest.value.reason !== null ? (
+        <p className="text-muted">
+          {t(
+            `session.assessment.reason.${aftest.value.reason}` as "session.assessment.reason.NO_LEVEL",
+          )}
+        </p>
+      ) : lesson.roster.length === 0 ? (
+        <p className="text-muted">{t("session.roster.empty")}</p>
+      ) : (
+        <form action={recordAssessmentAction} className="mb-4">
+          <input type="hidden" name="groupId" value={groupId} />
+          <input type="hidden" name="sessionId" value={lesson.id} />
+          <input
+            type="hidden"
+            name="criterionSetId"
+            value={aftest.value.criterionSet!.id}
+          />
+          <input type="hidden" name="clientEventId" value={randomUUID()} />
+
+          <p className="form-text">
+            {t("session.assessment.set", {
+              awardType: aftest.value.criterionSet!.awardTypeName,
+              version: aftest.value.criterionSet!.version,
+            })}
+          </p>
+
+          <div className="mb-3 col-md-6">
+            <label className="form-label" htmlFor="assessStudent">
+              {t("groups.columns.pupil")}
+            </label>
+            <select
+              className="form-select"
+              id="assessStudent"
+              name="studentProfileId"
+              defaultValue=""
+              required
+            >
+              <option value="" disabled>
+                {t("session.assessment.pickStudent")}
+              </option>
+              {lesson.roster.map((member) => (
+                <option
+                  key={member.studentProfileId}
+                  value={member.studentProfileId}
+                >
+                  {member.givenName} {member.familyName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <table className="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th scope="col">{t("session.assessment.criterion")}</th>
+                <th scope="col">{t("session.assessment.grade")}</th>
+                <th scope="col">{t("session.assessment.waiver")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aftest.value.criterionSet!.criteria.map((criterion) => (
+                <tr key={criterion.id}>
+                  <td>
+                    {criterion.name}
+                    <input
+                      type="hidden"
+                      name="criterionIds"
+                      value={criterion.id}
+                    />
+                  </td>
+                  <td>
+                    {/* DEFAULT UNSET — the blank option is the initial
+                        selection, on every criterion, every time (D-086). */}
+                    <select
+                      aria-label={t("session.assessment.grade")}
+                      className="form-select form-select-sm"
+                      name={`grade_${criterion.id}`}
+                      defaultValue=""
+                    >
+                      <option value=""></option>
+                      {gradeValues.map((grade) => (
+                        <option key={grade.id} value={grade.id}>
+                          {grade.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <div className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id={`waiver_${criterion.id}`}
+                        name={`waiver_${criterion.id}`}
+                        value="1"
+                      />
+                      <label
+                        className="form-check-label"
+                        htmlFor={`waiver_${criterion.id}`}
+                      >
+                        {t("session.assessment.waived")}
+                      </label>
+                    </div>
+                    <input
+                      aria-label={t("session.assessment.waiverReason")}
+                      className="form-control form-control-sm mt-1"
+                      name={`waiverReason_${criterion.id}`}
+                      placeholder={t("session.assessment.waiverReason")}
+                      maxLength={500}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="mb-3">
+            <label className="form-label" htmlFor="assessRemark">
+              {t("session.assessment.remark")}
+            </label>
+            <textarea
+              className="form-control"
+              id="assessRemark"
+              name="remark"
+              maxLength={1000}
+              rows={2}
+            />
+            <div className="form-text">
+              {t("session.assessment.remarkNote")}
+            </div>
+          </div>
+
+          <button className="btn btn-primary" type="submit">
+            {t("session.assessment.submit")}
+          </button>
+        </form>
       )}
 
       {lesson.status === "SCHEDULED" ? (

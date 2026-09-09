@@ -72,6 +72,7 @@ import {
   AttendanceError,
   registerSessionAttendance,
 } from "@/modules/attendance";
+import { AssessmentError, recordAssessment } from "@/modules/assessment";
 
 const actionLogger = logger.child({ component: "groups.actions" });
 
@@ -119,6 +120,9 @@ function refusal(error: unknown, back: string): never {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof AttendanceError) {
+    redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
+  }
+  if (error instanceof AssessmentError) {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof ApiError) {
@@ -571,6 +575,65 @@ export async function amendAttendanceAction(formData: FormData): Promise<void> {
   });
   revalidatePath(back);
   redirect(`${back}?saved=attendanceAmended`);
+}
+
+// ── assessment (phase 2.3) ───────────────────────────────────────────────────
+
+/**
+ * Records one aftest sitting — one student, every criterion of the pinned
+ * set, in one call. `criterionId_${criterionId}` names the grade select and
+ * `waiver_${criterionId}`/`waiverReason_${criterionId}` the waiver pair; a
+ * criterion with neither posted is left out of `results`/`waivers`
+ * entirely, which is what makes D-086's "never an outcome over an unset
+ * criterion" a server-side refusal (`INCOMPLETE`) rather than a client trick.
+ */
+export async function recordAssessmentAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const back = `/groups/${groupId}/sessions/${sessionId}`;
+  await run(back, async () => {
+    const criterionIds = formData
+      .getAll("criterionIds")
+      .map((raw) => String(raw));
+
+    const results: {
+      criterionId: string;
+      gradeValueId: FormDataEntryValue;
+      remark?: FormDataEntryValue;
+    }[] = [];
+    const waivers: {
+      criterionId: string;
+      reason: FormDataEntryValue;
+    }[] = [];
+
+    for (const criterionId of criterionIds) {
+      const waived = formData.get(`waiver_${criterionId}`);
+      if (waived) {
+        waivers.push({
+          criterionId,
+          reason: formData.get(`waiverReason_${criterionId}`) ?? "",
+        });
+        continue;
+      }
+      const gradeValueId = formData.get(`grade_${criterionId}`);
+      if (gradeValueId && String(gradeValueId).length > 0) {
+        results.push({ criterionId, gradeValueId });
+      }
+    }
+
+    await recordAssessment(await actor(), sessionId, {
+      studentProfileId: formData.get("studentProfileId"),
+      criterionSetId: formData.get("criterionSetId"),
+      clientEventId: formData.get("clientEventId"),
+      remark: formData.get("remark"),
+      results,
+      waivers,
+    });
+  });
+  revalidatePath(back);
+  redirect(`${back}?saved=assessment`);
 }
 
 // ── facilities ──────────────────────────────────────────────────────────────

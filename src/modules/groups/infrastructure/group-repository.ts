@@ -452,3 +452,40 @@ export async function courseLevelOfGroup(
   });
   return row?.courseLevelId ?? null;
 }
+
+/**
+ * Does this person currently hold an ACTIVE `InstructorAssignment` for a
+ * group this student is currently an ACTIVE member of — the published answer
+ * `assessment` (phase 2.3) checks D-085's independence clause against:
+ * *"assessorPersonId is NOT among the InstructorAssignment holders for that
+ * student's group"*.
+ *
+ * UNGUARDED, on the {@link courseLevelOfGroup}/`activeMemberIds` precedent:
+ * one boolean, nothing about anybody's record, and the caller has already
+ * guarded `{ session }` before it asks. Deliberately ONE query rather than
+ * two round trips (the student's groups, then the person's assignments) —
+ * `assessment` needs only the boolean, never the group ids themselves.
+ *
+ * `at` is the assessment's own `assessedAt`, not "now": D-085's clause is
+ * evaluated over the relationship AS IT STOOD when the aftest was recorded,
+ * the same instant every other check in this call already uses.
+ */
+export async function isActiveInstructorOfStudent(
+  instructorPersonId: string,
+  studentProfileId: string,
+  at: Date,
+): Promise<boolean> {
+  const found = await prisma.instructorAssignment.findFirst({
+    where: {
+      personId: instructorPersonId,
+      ...activeAt(at),
+      group: {
+        memberships: {
+          some: { studentProfileId, ...activeAt(at) },
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return found !== null;
+}
