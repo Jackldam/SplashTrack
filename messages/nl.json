@@ -219,10 +219,6 @@
       "add": "Relatie vastleggen",
       "search": "Zoek de andere persoon op naam",
       "searchPlaceholder": "Naam, lidnummer of leerlingnummer",
-      "searchSubmit": "Zoeken",
-      "searchDenied": "Je mag geen personen zoeken. De benodigde rechten: {permission}.",
-      "noResults": "Geen personen gevonden voor “{query}” binnen jouw bereik.",
-      "pick": "Kies persoon",
       "noGuardians": "Niemand is vastgelegd als verantwoordelijke voor deze persoon.",
       "noDependants": "Deze persoon is voor niemand vastgelegd als verantwoordelijke."
     },

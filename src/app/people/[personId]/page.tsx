@@ -11,7 +11,6 @@ import {
   describeRelationshipAuthority,
   getPersonForPrincipal,
   LIFECYCLE_EVENT_TYPES,
-  listPeopleForPrincipal,
   openPeriod,
   RELATIONSHIP_TYPES,
   type GuardianAuthority,
@@ -19,6 +18,8 @@ import {
 } from "@/modules/people";
 import { getAttendanceForStudent } from "@/modules/attendance";
 import { getSkillProgressForStudent } from "@/modules/skills";
+
+import { LiveSearchPicker } from "@/components/live-search-picker/live-search-picker";
 
 import { endEnrolmentAction, enrolStudentAction } from "@/app/courses/actions";
 import { formatMoment } from "@/app/skills/format";
@@ -61,7 +62,6 @@ export default async function PersonDetailPage({
   searchParams: Promise<{
     error?: string;
     saved?: string;
-    relativeSearch?: string;
   }>;
 }) {
   const [t, { personId }, query, session] = await Promise.all([
@@ -195,30 +195,6 @@ export default async function PersonDetailPage({
         ),
       )
     : null;
-
-  // ── The relative picker's candidates (mirrors the phase 2.2 guest picker;
-  // see `git show 60529c6`) ──────────────────────────────────────────────────
-  // A name search, never a typed id. Candidates come from THIS caller's own
-  // `people.read` reach (`listPeopleForPrincipal`, unchanged from the people
-  // list page) — deliberately not narrowed to "people already connected to
-  // this subject", because the relative is by definition someone NOT yet on
-  // this person's record. That reach already denies rather than empties for a
-  // caller with no `people.read` coverage at all, same as everywhere else this
-  // reach is used.
-  const relativeSearch =
-    typeof query.relativeSearch === "string" ? query.relativeSearch.trim() : "";
-  const relativeCandidates = relativeSearch
-    ? await guarded(() =>
-        listPeopleForPrincipal(
-          { principal: { personId: session.person.id }, at },
-          { query: relativeSearch },
-        ),
-      )
-    : null;
-  // The subject cannot be their own relative.
-  const pickableRelatives = relativeCandidates?.ok
-    ? relativeCandidates.value.filter((candidate) => candidate.id !== person.id)
-    : [];
 
   return (
     <main className="container py-5">
@@ -975,139 +951,91 @@ export default async function PersonDetailPage({
           labels={await relationshipLabels()}
         />
 
-        <details className="mt-4" open={relativeSearch !== ""}>
+        <details className="mt-4">
           <summary className="h5">{t("people.relationships.addTitle")}</summary>
 
-          {/* STEP 1 — find the relative BY NAME, the guest-picker pattern
-              (`git show 60529c6`): a plain GET form, so the page stays a
-              Server Component and re-renders with the reach-narrowed
-              candidates instead of a per-keystroke endpoint existing. */}
-          <form method="get" className="row g-2 mt-2">
-            <div className="col-md-6">
-              <label className="form-label" htmlFor="relativeSearch">
-                {t("people.relationships.search")}
-              </label>
-              <input
-                className="form-control"
-                id="relativeSearch"
-                name="relativeSearch"
-                defaultValue={relativeSearch}
+          {/* The subject cannot be their own relative — excluded client-side.
+              The picker calls the same reach-narrowed search the old
+              two-step form did (`/api/people/relative-candidates`,
+              `listPeopleForPrincipal` unchanged); the id travels in the
+              hidden field it fills, typed by nobody. */}
+          <form action={recordRelationshipAction} className="row g-3 mt-2">
+            <input type="hidden" name="subjectPersonId" value={person.id} />
+            <div className="col-md-4">
+              <LiveSearchPicker
+                name="relativePersonId"
+                label={t("people.relationships.search")}
                 placeholder={t("people.relationships.searchPlaceholder")}
+                searchUrl="/api/people/relative-candidates"
+                excludeIds={[person.id]}
                 required
               />
             </div>
-            <div className="col-md-3 align-self-end">
-              <button
-                className="btn btn-outline-secondary btn-sm"
-                type="submit"
+            <div className="col-md-3">
+              <label className="form-label" htmlFor="relationshipType">
+                {t("people.relationships.type")}
+              </label>
+              <select
+                className="form-select"
+                id="relationshipType"
+                name="type"
+                required
               >
-                {t("people.relationships.searchSubmit")}
+                {RELATIONSHIP_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t(
+                      `people.relationshipType.${type}` as "people.relationshipType.GUARDIAN_OF",
+                    )}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label" htmlFor="validFrom">
+                {t("people.relationships.validFrom")}
+              </label>
+              <input
+                className="form-control"
+                id="validFrom"
+                name="validFrom"
+                type="date"
+              />
+            </div>
+            <div className="col-md-3 align-self-end">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  id="authority"
+                  name="authority"
+                  type="checkbox"
+                />
+                <label className="form-check-label" htmlFor="authority">
+                  {t("people.relationships.authority")}
+                </label>
+              </div>
+            </div>
+            <div className="col-12">
+              <label className="form-label" htmlFor="evidence">
+                {t("people.relationships.evidence")}
+              </label>
+              <textarea
+                className="form-control"
+                id="evidence"
+                name="evidence"
+                rows={2}
+                maxLength={2000}
+              />
+              {/* D-063's purpose line, non-dismissable, at the capture point. */}
+              <div className="form-text">
+                {t("people.relationships.evidencePurpose")}
+              </div>
+            </div>
+            <div className="col-12">
+              <button className="btn btn-primary" type="submit">
+                {t("people.relationships.add")}
               </button>
             </div>
           </form>
-
-          {/* STEP 2 — pick one of the matches and record the relationship.
-              The select carries names; the id travels as the option VALUE,
-              typed by nobody. */}
-          {relativeCandidates === null ? null : !relativeCandidates.ok ? (
-            <p className="text-muted mt-2">
-              {t("people.relationships.searchDenied", {
-                permission: relativeCandidates.permission,
-              })}
-            </p>
-          ) : pickableRelatives.length === 0 ? (
-            <p className="text-muted mt-2">
-              {t("people.relationships.noResults", { query: relativeSearch })}
-            </p>
-          ) : (
-            <form action={recordRelationshipAction} className="row g-3 mt-2">
-              <input type="hidden" name="subjectPersonId" value={person.id} />
-              <div className="col-md-4">
-                <label className="form-label" htmlFor="relativePersonId">
-                  {t("people.relationships.pick")}
-                </label>
-                <select
-                  className="form-select"
-                  id="relativePersonId"
-                  name="relativePersonId"
-                  required
-                >
-                  {pickableRelatives.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.familyName}, {candidate.givenName}
-                      {candidate.dateOfBirth
-                        ? ` (${formatCalendarDate(candidate.dateOfBirth)})`
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-3">
-                <label className="form-label" htmlFor="relationshipType">
-                  {t("people.relationships.type")}
-                </label>
-                <select
-                  className="form-select"
-                  id="relationshipType"
-                  name="type"
-                  required
-                >
-                  {RELATIONSHIP_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {t(
-                        `people.relationshipType.${type}` as "people.relationshipType.GUARDIAN_OF",
-                      )}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-2">
-                <label className="form-label" htmlFor="validFrom">
-                  {t("people.relationships.validFrom")}
-                </label>
-                <input
-                  className="form-control"
-                  id="validFrom"
-                  name="validFrom"
-                  type="date"
-                />
-              </div>
-              <div className="col-md-3 align-self-end">
-                <div className="form-check">
-                  <input
-                    className="form-check-input"
-                    id="authority"
-                    name="authority"
-                    type="checkbox"
-                  />
-                  <label className="form-check-label" htmlFor="authority">
-                    {t("people.relationships.authority")}
-                  </label>
-                </div>
-              </div>
-              <div className="col-12">
-                <label className="form-label" htmlFor="evidence">
-                  {t("people.relationships.evidence")}
-                </label>
-                <textarea
-                  className="form-control"
-                  id="evidence"
-                  name="evidence"
-                  rows={2}
-                  maxLength={2000}
-                />
-                {/* D-063's purpose line, non-dismissable, at the capture point. */}
-                <div className="form-text">
-                  {t("people.relationships.evidencePurpose")}
-                </div>
-              </div>
-              <div className="col-12">
-                <button className="btn btn-primary" type="submit">
-                  {t("people.relationships.add")}
-                </button>
-              </div>
-            </form>
-          )}
         </details>
       </section>
     </main>

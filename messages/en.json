@@ -219,10 +219,6 @@
       "add": "Record relationship",
       "search": "Search the other person by name",
       "searchPlaceholder": "Name, member number or student number",
-      "searchSubmit": "Search",
-      "searchDenied": "You may not search people. Required permissions: {permission}.",
-      "noResults": "No people found for “{query}” within your reach.",
-      "pick": "Choose person",
       "noGuardians": "Nobody is recorded as answering for this person.",
       "noDependants": "This person is not recorded as answering for anybody."
     },
