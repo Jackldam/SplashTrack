@@ -339,6 +339,10 @@ model Person {
   /// else's history — the pupil's — so severed, not deleted, on erasure, on the
   /// `groupMovesDecided` pattern beside it.
   skillProgressRecorded SkillProgress[]        @relation("SkillProgressAssessedBy")
+  /// Attendance events this person RECORDED (phase 2.2). Somebody else's
+  /// history — the pupil's — so severed, not deleted, on erasure, on the
+  /// `skillProgressRecorded` pattern immediately above.
+  attendanceRecorded    AttendanceEvent[]      @relation("AttendanceEventRecordedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -814,6 +818,14 @@ model StudentProfile {
   /// registries by construction.
   skillProgress SkillProgress[]
 
+  /// Phase 2.2. Cascades with the pupil, like `SkillProgress` above — and
+  /// because the runtime role holds no DELETE on `AttendanceEvent` (the
+  /// append-only carve-out, `attendanceGrantStatements`), this referential
+  /// action running as the table's OWNER is what keeps an
+  /// application-initiated erasure able to remove attendance rows at all.
+  /// Proved in `tests/integration/attendance-append-only.test.ts`.
+  attendanceEvents AttendanceEvent[]
+
   @@index([unitId])
 }
 
@@ -1095,6 +1107,9 @@ model Group {
   sessions    ScheduledSession[]
   exceptions  ScheduleException[]
   skillProgressEntries SkillProgress[]
+  /// Phase 2.2 — the read-side narrowing snapshot on every attendance event
+  /// (D-145 rule 2), the `skillProgressEntries` shape one module later.
+  attendanceEvents     AttendanceEvent[]
 
   @@index([unitId])
   @@index([active])
@@ -1563,6 +1578,12 @@ model ScheduledSession {
   /// `recurrence` above: this session is never deleted by application code
   /// (cancelling is a status), so the edge is defence in depth.
   skillProgress SkillProgress[]
+  /// The register written against this lesson (phase 2.2, D-057: `attendance`
+  /// is a consumer of this table, never a second owner). `Restrict`, unlike
+  /// `skillProgress` above: an attendance event without its session is a
+  /// record that cannot answer "was my child there on the 12th?", and this
+  /// session is never deleted by application code anyway.
+  attendanceEvents AttendanceEvent[]
 
   /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
   /// so hand-scheduled lessons (`recurrenceId IS NULL`) never collide with each
@@ -2246,6 +2267,105 @@ model SkillProgress {
   @@index([sessionId])
   @@index([assessedByPersonId])
   @@index([groupId])
+}
+
+// ---------------------------------------------------------------------------
+// Who showed up — the attendance register
+// (phase 2.2, the `attendance` module — D-005, D-057, D-061, D-111, D-126)
+//
+// `01-domain-model.md` §3.4. `attendance` writes `AttendanceEvent` rows
+// AGAINST `ScheduledSession` (owned by `sessions`, D-057) and asks `groups`
+// nothing directly — the roster it validates against is `sessions`' published
+// answer. The derived `AttendanceStatus` §3.4 sketches is NOT a table:
+// "materialised only if measurement demands it", and nothing has measured yet.
+// ---------------------------------------------------------------------------
+
+/// The four states `01-domain-model.md` §3.4 names, and exactly those.
+enum AttendanceState {
+  PRESENT
+  ABSENT
+  EXCUSED
+  LATE
+}
+
+/// One observation of one pupil at one lesson — *aanwezigheid* as EVIDENCE
+/// (D-061: for absence policy, for parental disputes, occasionally for
+/// safeguarding).
+///
+/// **APPEND-ONLY, AND FOR THE FIRST TIME ENFORCED BY THE DATABASE ITSELF.**
+/// D-061: a correction is a NEW event carrying `supersedesEventId`; the
+/// superseded row is never modified. Unlike `SkillProgress` — where
+/// append-only is a property of the module's code — this table gets the
+/// `AuditEvent` treatment: the runtime role holds `SELECT, INSERT` and nothing
+/// else (`attendanceGrantStatements`, `infra/attendance-database-role.sql`),
+/// so "who said a child was present, and when they changed their mind" cannot
+/// be rewritten even by a code path nobody has reviewed. The retention role
+/// holds the only DELETE, for D-111's hard delete at 24 months.
+///
+/// **`clientEventId` is §3.4's own words: "the single most important
+/// forward-looking field in the schema."** A client-generated UUID; the unique
+/// index makes a retry, a double-tap or a replayed offline queue collapse to
+/// the same event (P-02) instead of becoming a second one.
+///
+/// **`groupId` IS A WRITE-TIME SNAPSHOT AND IS NOT NULLABLE**, unlike
+/// `SkillProgress.groupId`: every attendance event has a required session and
+/// every session has a group, so "no group context" — the case that made the
+/// skills column nullable — cannot arise here. It exists for the same D-145
+/// rule 2 narrowing (`attendance-reach-filter.ts`): a `GROUP`-scoped
+/// instructor's `attendance.read` returns this group's rows, not a pupil's
+/// history elsewhere. A snapshot rather than a join through `sessionId`
+/// because a session's group never changes but a FILTER routed through
+/// another module's reach filter inherits that module's denials — the exact
+/// defect the phase 2.1 report §1.5 declined.
+///
+/// **`note` is short free text beside a child's name.** The same D-148
+/// open question flagged on `SkillProgress.note` applies here unchanged;
+/// see that field's comment. Never a medical fact.
+/// @dataClass ATTENDANCE_EVENTS
+model AttendanceEvent {
+  id               String @id @default(cuid(2))
+  sessionId        String
+  studentProfileId String
+
+  state AttendanceState
+
+  /// WHO RECORDED IT. Nullable so an erasure can SEVER it — this is the
+  /// PUPIL's record, not the recorder's, on the exact
+  /// `SkillProgress.assessedByPersonId` pattern.
+  recordedByPersonId String?
+  recordedAt         DateTime
+
+  /// The idempotency key (P-02). See the model comment.
+  clientEventId String @unique
+
+  /// D-061: the event this one corrects, or NULL for an original observation.
+  /// `NoAction` (not `Restrict`) so D-111's retention delete can take a
+  /// superseded event and its correction in ONE statement — they always share
+  /// a session, so a per-session prune never strands the pair.
+  supersedesEventId String?
+
+  /// The read-side narrowing snapshot (D-145 rule 2). NOT NULL — see the
+  /// model comment for why this differs from `SkillProgress.groupId`.
+  groupId String
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  session        ScheduledSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  studentProfile StudentProfile   @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  recordedBy     Person?          @relation("AttendanceEventRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
+  supersedes     AttendanceEvent? @relation("AttendanceEventSupersedes", fields: [supersedesEventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy   AttendanceEvent[] @relation("AttendanceEventSupersedes")
+  group          Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  /// D-061's own words: "a `(sessionId, studentProfileId, recordedAt)` index
+  /// answers the derivation directly."
+  @@index([sessionId, studentProfileId, recordedAt])
+  @@index([studentProfileId, recordedAt])
+  @@index([groupId])
+  @@index([recordedByPersonId])
+  @@index([supersedesEventId])
 }
 
 // ---------------------------------------------------------------------------

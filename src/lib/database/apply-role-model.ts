@@ -20,6 +20,7 @@
 import { Client } from "pg";
 
 import {
+  attendanceGrantStatements,
   auditGrantStatements,
   databaseProvisionStatements,
   migrationUrlFrom,
@@ -93,6 +94,7 @@ export async function applyRoleModel(
     for (const statement of [
       ...databaseProvisionStatements(names),
       ...auditGrantStatements(names),
+      ...attendanceGrantStatements(names),
     ]) {
       await client.query(statement);
     }
@@ -224,6 +226,33 @@ async function verify(
       `${names.retention} does not hold DELETE on AuditEvent, so D-168's ` +
         "checkpointed retention has no role to run as — and retention is the " +
         "only thing that keeps audit rows from outliving their purpose.",
+    );
+  }
+
+  // The attendance exception (phase 2.2) — same two properties, same reasons:
+  // the runtime role cannot rewrite the register, and the retention role can
+  // still run D-111's hard delete.
+  const attendanceWrites = await client.query<{ privilege_type: string }>(
+    `SELECT privilege_type FROM information_schema.table_privileges
+      WHERE table_name = 'AttendanceEvent' AND grantee = $1
+        AND privilege_type IN ('UPDATE', 'DELETE', 'TRUNCATE')`,
+    [names.app],
+  );
+  for (const row of attendanceWrites.rows) {
+    failures.push(
+      `${names.app} still holds ${row.privilege_type} on AttendanceEvent.`,
+    );
+  }
+  const attendancePrune = await client.query(
+    `SELECT 1 FROM information_schema.table_privileges
+      WHERE table_name = 'AttendanceEvent' AND grantee = $1
+        AND privilege_type = 'DELETE'`,
+    [names.retention],
+  );
+  if (attendancePrune.rowCount === 0) {
+    failures.push(
+      `${names.retention} does not hold DELETE on AttendanceEvent, so ` +
+        "D-111's 24-month hard delete has no role to run as.",
     );
   }
 

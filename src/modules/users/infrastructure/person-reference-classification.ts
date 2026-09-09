@@ -214,6 +214,19 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "onDelete: SetNull as defence in depth; the erasure severs it " +
       "explicitly regardless.",
   },
+  "AttendanceEvent.recordedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO RECORDED an attendance observation — accountability evidence " +
+      "about somebody else's record, on the exact " +
+      "SkillProgress.assessedByPersonId pattern beside it. The row belongs " +
+      "to the PUPIL's register (D-061: evidence for absence policy and " +
+      "disputes) and survives the recorder's erasure; only the name goes. " +
+      "The FK is onDelete: SetNull, and here that referential action is the " +
+      "ONLY severing mechanism: the runtime role holds no UPDATE on this " +
+      "table (the append-only carve-out, attendanceGrantStatements), so an " +
+      "explicit application-level sever would be refused by the database.",
+  },
   "RetentionPolicy.confirmedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

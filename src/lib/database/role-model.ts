@@ -250,6 +250,49 @@ export function auditGrantStatements(names: RoleModelNames): string[] {
 }
 
 /**
+ * THE ATTENDANCE EXCEPTION — D-005/D-061 given the D-149 treatment, phase 2.2.
+ *
+ * `00-overview.md` P-07 claims *"audit, attendance and progress are
+ * append-only"*. For the audit trail that claim is enforced by
+ * {@link auditGrantStatements}; for attendance it was, until this phase, only
+ * a property of module code — and
+ * `tests/integration/attendance-append-only.test.ts` existed to keep that gap
+ * loud. `AttendanceEvent` is evidence (D-061: absence policy, parental
+ * disputes, occasionally safeguarding), so it gets the same database-level
+ * carve-out: the runtime role appends and reads, and cannot rewrite history
+ * even through a code path nobody has reviewed.
+ *
+ * WHY RETENTION GETS `DELETE` AND NOT THE APP. D-111: expired attendance
+ * events are hard-DELETED at 24 months, never anonymised — and the deleter is
+ * the retention role, exactly as it is for `AuditEvent`. Application-level
+ * erasure of a PUPIL still works without the app holding `DELETE` here:
+ * `AttendanceEvent.studentProfileId` cascades from `StudentProfile`, and a
+ * referential action runs with the privileges of the table's OWNER, not the
+ * deleting session. Proved in `attendance-append-only.test.ts`.
+ *
+ * WHY RETENTION GETS NO `INSERT`, WHICH `AuditEvent` DOES GRANT. A prune run
+ * records itself in the AUDIT trail (`audit.retention_pruned`), never by
+ * writing an attendance row — there is no legitimate attendance write outside
+ * the application.
+ *
+ * `SkillProgress` — P-07's third member — is NOT carved out here, on purpose:
+ * doing all three at once was not this phase's brief, and the difference is
+ * recorded in the phase 2.2 report as an open item rather than smuggled in.
+ */
+export function attendanceGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the register ────────────────────────
+    `REVOKE ALL ON TABLE "AttendanceEvent" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "AttendanceEvent" TO ${quote(app)}`,
+
+    // ── The retention role: the only DELETE (D-111) ──────────────────────────
+    `REVOKE ALL ON TABLE "AttendanceEvent" FROM ${quote(retention)}`,
+    `GRANT SELECT, DELETE ON TABLE "AttendanceEvent" TO ${quote(retention)}`,
+  ];
+}
+
+/**
  * Puts ownership of everything in `public` back on the owner role.
  *
  * A self-heal, not the main path — `migrationUrlFrom` means objects are created

@@ -53,3 +53,4 @@ export type {
   CriterionSetSource,
   SkillProgressState,
 } from "@/generated/prisma/client";
+export type { AttendanceState } from "@/generated/prisma/client";
