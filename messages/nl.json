@@ -331,7 +331,7 @@
       "laneOverrideBlocksPool": "Een of meer lessen die nog moeten komen hebben eigen banen. Die banen liggen in het huidige bad, dus het bad van de reeks kan nu niet wijzigen. Zet die lessen eerst terug op 'weer de lesreeks volgen'.",
       "SESSION_NOT_FOUND": "Deze les bestaat niet.",
       "SESSION_CANCELLED": "Deze les is afgelast; er is niemand aanwezig geweest. Leg aanwezigheid vast op de les die wél doorging.",
-      "NOT_ON_ROSTER": "Deze leerling staat niet op de deelnemerslijst van deze les. Voeg het kind eerst als gast toe (inhaalles) en leg daarna de aanwezigheid vast.",
+      "NOT_ON_ROSTER": "Deze leerling staat niet op de deelnemerslijst van deze les. Voeg het kind eerst toe via 'Gast toevoegen' hieronder — dat werkt voor een inhaalles, een leerling uit een andere groep én een proefzwemmer — en leg daarna de aanwezigheid vast.",
       "NOTHING_TO_REGISTER": "Er is geen enkele aanwezigheid opgegeven; er valt niets vast te leggen.",
       "DUPLICATE_PUPIL": "Dezelfde leerling staat twee keer in deze registratie. Eén les, één leerling, één waarneming — een correctie is een aparte handeling.",
       "SUPERSEDED_EVENT_MISMATCH": "De te corrigeren waarneming hoort niet bij deze les en deze leerling. Een correctie wijst altijd naar de waarneming die zij vervangt."
@@ -545,8 +545,8 @@
       "groupMember": "In de groep"
     },
     "guest": {
-      "title": "Gast toevoegen (inhaalles)",
-      "note": "Een inhaalles is een gewone les met een gast erbij. De gast komt niet in de groep en neemt geen plek in; de lesgever van deze les ziet het kind doordat het op deze deelnemerslijst staat.",
+      "title": "Gast toevoegen (inhaalles, andere groep of proefzwemmer)",
+      "note": "Eén mechanisme voor elk kind dat niet bij de lesgroep hoort: een inhaalles, een leerling die in meerdere groepen zwemt, of een proefzwemmer die nog geen lid is (die heeft alleen een leerling-registratie nodig, geen lidmaatschap). De gast komt niet in de groep en neemt geen plek in; de lesgever van deze les ziet het kind doordat het op deze deelnemerslijst staat, en aanwezigheid vastleggen werkt daarna gewoon.",
       "studentProfileId": "StudentProfile-id",
       "reason": "Reden (bijv. 'inhaalles, les van 5 maart gemist')",
       "submit": "Gast toevoegen",

@@ -20,6 +20,7 @@ import {
   getSessionRegister,
   registerSessionAttendance,
 } from "@/modules/attendance";
+import { addGuestToSession } from "@/modules/sessions";
 
 import {
   aid,
@@ -203,6 +204,32 @@ describe("registerSessionAttendance", () => {
           studentProfileId: guest.studentProfileId,
           state: "PRESENT",
           clientEventId: aid("ce_guest_1"),
+        },
+      ],
+    });
+    expect(report.created).toBe(1);
+  });
+
+  it("a TRIAL SWIMMER — a pupil with no membership anywhere — is added through the one guest mechanism and then registrable (decision round, item 4)", async () => {
+    const { sessionId } = await aLesson("trial");
+    // A StudentProfile and nothing else: no membership, no group, no
+    // enrolment (D-060: neither is a prerequisite for the other).
+    const trial = await makeStudent("trial_child");
+
+    // Through the real service — and note the actor: the admin role in this
+    // suite holds `attendance.record` and NOT `groups.assign_members`, so
+    // this exercises the widened roster guard's fallback door.
+    await addGuestToSession(admin(), sessionId, {
+      studentProfileId: trial.studentProfileId,
+      reason: "proefzwemmen",
+    });
+
+    const report = await registerSessionAttendance(admin(), sessionId, {
+      entries: [
+        {
+          studentProfileId: trial.studentProfileId,
+          state: "PRESENT",
+          clientEventId: aid("ce_trial_1"),
         },
       ],
     });

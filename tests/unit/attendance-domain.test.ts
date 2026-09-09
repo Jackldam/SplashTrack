@@ -147,6 +147,6 @@ describe("AttendanceError", () => {
   it("carries its reason as a field and a Dutch sentence as its message", () => {
     const error = new AttendanceError("NOT_ON_ROSTER");
     expect(error.reason).toBe("NOT_ON_ROSTER");
-    expect(error.message).toContain("gast");
+    expect(error.message).toContain("Gast toevoegen");
   });
 });

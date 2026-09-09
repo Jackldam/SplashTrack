@@ -26,6 +26,7 @@ import {
   getSessionRegister,
   registerSessionAttendance,
 } from "@/modules/attendance";
+import { addGuestToSession } from "@/modules/sessions";
 
 import {
   aid,
@@ -250,6 +251,56 @@ describe("no grant at all", () => {
     ).rejects.toBeInstanceOf(PermissionDeniedError);
     await expect(
       getAttendanceForStudent(actorFor(nobodyId), pupilA.studentProfileId),
+    ).rejects.toBeInstanceOf(PermissionDeniedError);
+  });
+});
+
+describe("the widened roster guard (decision round, item 4) stays inside the lesson", () => {
+  it("a GROUP-scoped instructor holding ONLY attendance permissions adds a guest to their own lesson, is denied group B's — and can then register the child", async () => {
+    const { pupilB, lessonA, lessonB, instructorId } = await twoGroups("guest");
+
+    // INSTRUCTOR_ATTENDANCE_PERMISSIONS holds no `groups.assign_members`, so
+    // this passes ONLY through the `attendance.record` fallback door — the
+    // poolside case Jack's decision opened, on the caller's own lesson.
+    await expect(
+      addGuestToSession(actorFor(instructorId), lessonA, {
+        studentProfileId: pupilB.studentProfileId,
+        reason: "inhaalles",
+      }),
+    ).resolves.toMatchObject({ rosterEntryId: expect.any(String) });
+
+    // The widening is about WHO, never HOW FAR: the same instructor, the
+    // other group's lesson, denied.
+    await expect(
+      addGuestToSession(actorFor(instructorId), lessonB, {
+        studentProfileId: pupilB.studentProfileId,
+        reason: "inhaalles",
+      }),
+    ).rejects.toBeInstanceOf(PermissionDeniedError);
+
+    // And the point of the row: attendance for the guest now works through
+    // the ordinary `{ session }` guard.
+    await expect(
+      registerSessionAttendance(actorFor(instructorId), lessonA, {
+        entries: [
+          {
+            studentProfileId: pupilB.studentProfileId,
+            state: "PRESENT",
+            clientEventId: aid("esc_ce_guest"),
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ created: 1 });
+  });
+
+  it("no grant at all is denied the roster change outright", async () => {
+    const { pupilB, lessonA } = await twoGroups("guest_nobody");
+    const nobodyId = await makePerson("guest_nobody");
+
+    await expect(
+      addGuestToSession(actorFor(nobodyId), lessonA, {
+        studentProfileId: pupilB.studentProfileId,
+      }),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
   });
 });

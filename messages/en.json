@@ -331,7 +331,7 @@
       "laneOverrideBlocksPool": "One or more lessons still to come have lanes of their own. Those lanes are in the current pool, so the series' pool cannot move yet. Return those lessons to following the series first.",
       "SESSION_NOT_FOUND": "That lesson does not exist.",
       "SESSION_CANCELLED": "That lesson was cancelled; nobody attended it. Record attendance on the lesson that actually took place.",
-      "NOT_ON_ROSTER": "This pupil is not on this lesson's roster. Add the child as a guest first (make-up lesson), then record their attendance.",
+      "NOT_ON_ROSTER": "This pupil is not on this lesson's roster. Add the child first via 'Add guest' below — that covers a make-up lesson, a pupil from another group and a trial swimmer — then record their attendance.",
       "NOTHING_TO_REGISTER": "No attendance was supplied; there is nothing to record.",
       "DUPLICATE_PUPIL": "The same pupil appears twice in this registration. One lesson, one pupil, one observation — a correction is a separate act.",
       "SUPERSEDED_EVENT_MISMATCH": "The observation being corrected does not belong to this lesson and this pupil. A correction always points at the observation it replaces."
@@ -545,8 +545,8 @@
       "groupMember": "In the group"
     },
     "guest": {
-      "title": "Add a guest (make-up lesson)",
-      "note": "A make-up lesson is an ordinary lesson with a guest. The guest does not join the group and takes no place in it; this lesson's instructor can see the child because they are on this roster.",
+      "title": "Add guest (make-up lesson, other group or trial swimmer)",
+      "note": "One mechanism for every child who is not part of this lesson's group: a make-up lesson, a pupil who swims in several groups, or a trial swimmer who is not a member yet (they only need a pupil registration, no membership). The guest does not join the group and takes no place; this lesson's instructor sees the child because they are on this roster, and recording attendance then works normally.",
       "studentProfileId": "StudentProfile id",
       "reason": "Reason (e.g. 'make-up, missed 5 March')",
       "submit": "Add guest",

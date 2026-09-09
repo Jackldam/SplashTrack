@@ -101,9 +101,10 @@ const ATTENDANCE_MESSAGES: Record<AttendanceRefusal, string> = {
     "Deze les is afgelast; er is niemand aanwezig geweest. Aanwezigheid " +
     "wordt vastgelegd op de les die wél doorging.",
   NOT_ON_ROSTER:
-    "Deze leerling staat niet op de deelnemerslijst van deze les. Een kind " +
-    "dat buiten de eigen groep meezwemt wordt eerst als gast aan de les " +
-    "toegevoegd (inhaalles); daarna kan de aanwezigheid worden vastgelegd.",
+    "Deze leerling staat niet op de deelnemerslijst van deze les. Voeg het " +
+    "kind eerst toe via 'Gast toevoegen' op het lesscherm — dat werkt voor " +
+    "een inhaalles, een leerling uit een andere groep én een proefzwemmer — " +
+    "en leg daarna de aanwezigheid vast.",
   NOTHING_TO_REGISTER:
     "Er is geen enkele aanwezigheid opgegeven; er valt niets vast te leggen.",
   DUPLICATE_PUPIL:
