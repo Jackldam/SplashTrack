@@ -120,7 +120,9 @@
       "NOT_OPEN": "There is no open membership period to end. Returning starts a new period; a closed period is never reopened.",
       "ENDS_BEFORE_IT_STARTS": "A membership period cannot end before it started.",
       "invalidNumber": "That number is not usable. It must be 1-32 characters of letters, digits, dot, underscore, slash or hyphen, starting with a letter or a digit.",
-      "duplicateNumber": "That number is already in use by someone else."
+      "duplicateNumber": "That number is already in use by someone else.",
+      "AUTHORITY_REQUIRES_GUARDIAN": "Only a guardian relationship may give consent. An emergency contact is someone to telephone, not someone who may consent on a child's behalf.",
+      "AUTHORITY_REQUIRES_EVIDENCE": "Fill in the evidence when you tick that this person may give consent — record HOW the authority was established."
     },
     "search": {
       "label": "Search",

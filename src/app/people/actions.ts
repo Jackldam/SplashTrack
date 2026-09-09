@@ -44,6 +44,7 @@ import {
   MembershipPeriodError,
   recordLifecycleEvent,
   recordRelationship,
+  RelationshipAuthorityError,
   startMembershipPeriod,
   updateMembership,
   updatePerson,
@@ -78,6 +79,9 @@ function refusal(error: unknown, back: string): never {
     redirect(`${back}?error=denied`);
   }
   if (error instanceof MembershipPeriodError) {
+    redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
+  }
+  if (error instanceof RelationshipAuthorityError) {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof InvalidNumberError) {

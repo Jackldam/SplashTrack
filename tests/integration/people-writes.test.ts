@@ -14,6 +14,7 @@ import {
   MembershipPeriodError,
   recordLifecycleEvent,
   recordRelationship,
+  RelationshipAuthorityError,
   revealRelationshipEvidence,
   startMembershipPeriod,
   updateMembership,
@@ -476,14 +477,24 @@ describe("people writes (real database, real services)", () => {
       // D-063: the application cannot verify guardianship; it records what it
       // was told and HOW. A claim with no recorded basis is the false comfort
       // that decides a custody dispute wrongly.
-      await expect(
-        recordRelationship(actor, {
-          subjectPersonId: child,
-          relativePersonId: parent,
-          type: "GUARDIAN_OF",
-          authority: true,
-        }),
-      ).rejects.toThrow(/D-063/);
+      //
+      // A TYPED refusal and not a bare `Error`: `refusal()` in
+      // `src/app/people/actions.ts` recognises a closed list of error classes
+      // (`MembershipPeriodError`, `InvalidNumberError`, ...) and redirects with
+      // `?error=<reason>`; anything outside that list falls through to
+      // `throw error` and crashes the request instead of showing the person who
+      // forgot the evidence a sentence they can act on.
+      const refusal = await recordRelationship(actor, {
+        subjectPersonId: child,
+        relativePersonId: parent,
+        type: "GUARDIAN_OF",
+        authority: true,
+      }).catch((error: unknown) => error);
+      expect(refusal).toBeInstanceOf(RelationshipAuthorityError);
+      expect((refusal as RelationshipAuthorityError).reason).toBe(
+        "AUTHORITY_REQUIRES_EVIDENCE",
+      );
+      expect((refusal as Error).message).toMatch(/D-063/);
 
       // Past the service, straight at the table.
       await expect(
@@ -498,9 +509,22 @@ describe("people writes (real database, real services)", () => {
       ).rejects.toThrow(/PersonRelationship_evidence_required_check/);
     });
 
-    it("refuses authority on an emergency contact, at the database too", async () => {
+    it("refuses authority on an emergency contact — a typed service refusal, and the database's own check besides", async () => {
       const child = await makePerson("crypto_child5");
       const contact = await makePerson("crypto_contact5");
+
+      const refusal = await recordRelationship(actor, {
+        subjectPersonId: child,
+        relativePersonId: contact,
+        type: "EMERGENCY_CONTACT",
+        authority: true,
+        evidence: "irrelevant",
+      }).catch((error: unknown) => error);
+      expect(refusal).toBeInstanceOf(RelationshipAuthorityError);
+      expect((refusal as RelationshipAuthorityError).reason).toBe(
+        "AUTHORITY_REQUIRES_GUARDIAN",
+      );
+
       await expect(
         prisma.personRelationship.create({
           data: {

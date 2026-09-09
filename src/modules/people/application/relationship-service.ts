@@ -55,6 +55,41 @@ import type { ActorContext } from "./people-service";
 export const RELATIONSHIP_TYPES = ["GUARDIAN_OF", "EMERGENCY_CONTACT"] as const;
 export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number];
 
+/**
+ * The two ways an authority claim on `recordRelationship` refuses — a domain
+ * refusal, not a bug, and a person typing the form causes it routinely
+ * (`people.errors.${reason}` on the message catalogue is the sentence they see).
+ *
+ * Named after the `MembershipPeriodError` / `InvalidNumberError` shape
+ * (`../domain/membership.ts`, `../domain/numbering.ts`): a plain `Error` here
+ * would fall outside the closed list `refusal()` in `src/app/people/actions.ts`
+ * recognises and crash the request instead of redirecting with `?error=...`.
+ */
+export type RelationshipAuthorityRefusal =
+  "AUTHORITY_REQUIRES_GUARDIAN" | "AUTHORITY_REQUIRES_EVIDENCE";
+
+const RELATIONSHIP_AUTHORITY_MESSAGES: Record<
+  RelationshipAuthorityRefusal,
+  string
+> = {
+  AUTHORITY_REQUIRES_GUARDIAN:
+    "Only a guardian relationship may carry consent authority. An emergency " +
+    "contact is someone to telephone, not someone who may consent on a " +
+    "child's behalf (PersonRelationship_authority_kind_check).",
+  AUTHORITY_REQUIRES_EVIDENCE:
+    "An authority claim must record HOW it was established (D-063). The " +
+    "application cannot verify guardianship — it can only record what it " +
+    "was told, by whom, and on what basis — and a claim with no recorded " +
+    "basis is the false comfort that decides a custody dispute wrongly.",
+};
+
+export class RelationshipAuthorityError extends Error {
+  constructor(public readonly reason: RelationshipAuthorityRefusal) {
+    super(RELATIONSHIP_AUTHORITY_MESSAGES[reason]);
+    this.name = "RelationshipAuthorityError";
+  }
+}
+
 export interface RecordRelationshipInput {
   /** The RELATIVE — guardian or emergency contact. */
   relativePersonId: string;
@@ -118,19 +153,10 @@ export async function recordRelationship(
   const validFrom = optionalDate("validFrom", input.validFrom) ?? at;
 
   if (authority && type !== "GUARDIAN_OF") {
-    throw new Error(
-      "Only a guardian relationship may carry consent authority. An emergency " +
-        "contact is someone to telephone, not someone who may consent on a " +
-        "child's behalf (PersonRelationship_authority_kind_check).",
-    );
+    throw new RelationshipAuthorityError("AUTHORITY_REQUIRES_GUARDIAN");
   }
   if (authority && evidence === null) {
-    throw new Error(
-      "An authority claim must record HOW it was established (D-063). The " +
-        "application cannot verify guardianship — it can only record what it " +
-        "was told, by whom, and on what basis — and a claim with no recorded " +
-        "basis is the false comfort that decides a custody dispute wrongly.",
-    );
+    throw new RelationshipAuthorityError("AUTHORITY_REQUIRES_EVIDENCE");
   }
 
   return prisma.$transaction(async (tx) => {

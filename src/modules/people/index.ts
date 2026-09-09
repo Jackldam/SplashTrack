@@ -55,8 +55,10 @@ export {
   endRelationship,
   recordRelationship,
   revealRelationshipEvidence,
+  RelationshipAuthorityError,
   RELATIONSHIP_TYPES,
   type RecordRelationshipInput,
+  type RelationshipAuthorityRefusal,
   type RelationshipType,
 } from "./application/relationship-service";
 
