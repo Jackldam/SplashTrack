@@ -3,7 +3,13 @@
     "brand": "SplashTrack",
     "loading": "Loading…",
     "mainNavigation": "Main navigation",
-    "toHome": "to the home page"
+    "toHome": "to the home page",
+    "livePicker": {
+      "searching": "Searching…",
+      "noResults": "No results for “{query}”.",
+      "denied": "You may not search. Required permission: {permission}.",
+      "error": "Search failed. Try again."
+    }
   },
   "landing": {
     "title": "SplashTrack",
@@ -213,10 +219,6 @@
       "add": "Record relationship",
       "search": "Search the other person by name",
       "searchPlaceholder": "Name, member number or student number",
-      "searchSubmit": "Search",
-      "searchDenied": "You may not search people. Required permissions: {permission}.",
-      "noResults": "No people found for “{query}” within your reach.",
-      "pick": "Choose person",
       "noGuardians": "Nobody is recorded as answering for this person.",
       "noDependants": "This person is not recorded as answering for anybody."
     },
@@ -553,16 +555,12 @@
     },
     "guest": {
       "title": "Add guest (make-up lesson, other group or trial swimmer)",
-      "note": "One mechanism for every child who is not part of this lesson's group: a make-up lesson, a pupil who swims in several groups, or a trial swimmer who is not a member yet (they only need a pupil registration, no membership). The guest does not join the group and takes no place; this lesson's instructor sees the child because they are on this roster, and recording attendance then works normally.",
+      "note": "One mechanism for every child who is not part of this lesson's group: a make-up lesson, a pupil who swims in several groups, or a trial swimmer who is not a member yet (they only need a pupil registration, no membership). The guest does not join the group and takes no place; this lesson's instructor sees the child because they are on this roster, and recording attendance then works normally. A trial swimmer who is not registered as a pupil yet is added via People first.",
       "reason": "Reason (e.g. 'make-up, missed 5 March')",
       "submit": "Add guest",
       "remove": "Remove",
       "search": "Search pupil by name",
-      "searchPlaceholder": "Name or student number",
-      "searchSubmit": "Search",
-      "searchDenied": "You may not search pupils. Required permissions: {permission}.",
-      "noResults": "No pupils found for “{query}” within your reach. A trial swimmer who is not registered as a pupil yet is added via People first.",
-      "pick": "Choose pupil"
+      "searchPlaceholder": "Name or student number"
     },
     "attendance": {
       "title": "Attendance",
