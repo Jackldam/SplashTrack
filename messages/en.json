@@ -547,10 +547,15 @@
     "guest": {
       "title": "Add guest (make-up lesson, other group or trial swimmer)",
       "note": "One mechanism for every child who is not part of this lesson's group: a make-up lesson, a pupil who swims in several groups, or a trial swimmer who is not a member yet (they only need a pupil registration, no membership). The guest does not join the group and takes no place; this lesson's instructor sees the child because they are on this roster, and recording attendance then works normally.",
-      "studentProfileId": "StudentProfile id",
       "reason": "Reason (e.g. 'make-up, missed 5 March')",
       "submit": "Add guest",
-      "remove": "Remove"
+      "remove": "Remove",
+      "search": "Search pupil by name",
+      "searchPlaceholder": "Name or student number",
+      "searchSubmit": "Search",
+      "searchDenied": "You may not search pupils. Required permissions: {permission}.",
+      "noResults": "No pupils found for “{query}” within your reach. A trial swimmer who is not registered as a pupil yet is added via People first.",
+      "pick": "Choose pupil"
     },
     "attendance": {
       "title": "Attendance",

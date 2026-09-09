@@ -236,6 +236,33 @@ one-act "register attendance and create the roster row implicitly"
 convenience — the roster row stays an explicit act, because it is the
 access-affecting one (`grantsSessionReach` in its audit event).
 
+**Follow-up in the same round: the guest form picks a pupil BY NAME, and the
+picker's scope is a choice worth recording.** The form originally asked for a
+raw `studentProfileId` — unusable at the poolside. It is now a two-step,
+still-server-rendered flow: a GET search (name or student number) and a
+`<select>` of matches whose option *values* carry the id nobody types. The
+data comes from a new `people` service, `listStudentCandidatesForPrincipal`,
+on the `listPeopleForPrincipal` shape (a resolved `Reach`, denial when it
+covers nobody, identity basics only — a name and the student number, never
+the profile). **The scope choice, flagged because the design set states no
+explicit rule for "who may populate a picker":** the candidate list is
+exactly the caller's `students.read` reach, live rules included
+(`student-candidate-filter.ts`, every branch mirroring or *narrowing*
+`coversResource({ student })` — the `SESSIONS` branch deliberately matches
+only the explicit roster half, an under-approximation the file documents).
+The cautious consequences are accepted and test-pinned
+(`tests/integration/student-candidates-scope.test.ts`): a `GROUP`-scoped
+instructor searches only their own active members — an exact-name search for
+anyone else returns nothing — a lapsed membership offers nothing, and a
+`SESSION`-only substitute is offered at most that lesson's explicit roster,
+meaning the substitute cannot themselves search for a NEW guest. That last
+narrowness is deliberate: widening a session grant into an
+organisation-searchable pupil list is exactly the escape §6.2 names, and the
+instructor role that realistically adds guests holds `students.read` at
+`GROUP` or better. Picking grants nothing — whatever is done with the picked
+id is guarded by its own service (`addGuestToSession` re-guards
+`{ session }`).
+
 ### 1.5 A cancelled lesson refuses new registration; corrections still land
 
 §3.4 does not state what happens when somebody registers attendance against

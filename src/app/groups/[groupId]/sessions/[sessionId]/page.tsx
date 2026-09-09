@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import { getConfiguredLocalization } from "@/lib/settings";
 import { ATTENDANCE_STATES, getSessionRegister } from "@/modules/attendance";
+import { listStudentCandidatesForPrincipal } from "@/modules/people";
 import { getSessionForPrincipal, resolveTimeZone } from "@/modules/sessions";
 
 import { guarded, requireSignedIn } from "../../../access";
@@ -52,7 +53,11 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ groupId: string; sessionId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    saved?: string;
+    guestSearch?: string;
+  }>;
 }) {
   const [t, { groupId, sessionId }, query, session] = await Promise.all([
     getTranslations(),
@@ -116,6 +121,27 @@ export default async function SessionDetailPage({
           .filter((id): id is string => id !== null),
       )
     : new Set<string>();
+
+  // ── The guest picker's candidates (decision round, item 4 follow-up) ───────
+  // A name search, never a typed id. `guarded`, and only when a search was
+  // actually submitted: the candidate list is exactly the caller's
+  // `students.read` reach (`student-candidate-filter.ts`), so a
+  // `SESSION`-only substitute sees their own roster at most and a caller with
+  // no student reach is told so rather than shown an empty list.
+  const guestSearch =
+    typeof query.guestSearch === "string" ? query.guestSearch.trim() : "";
+  const guestCandidates = guestSearch
+    ? await guarded(() =>
+        listStudentCandidatesForPrincipal(actor, { query: guestSearch }),
+      )
+    : null;
+  // A pupil already on the roster is not offered — adding them again would
+  // only earn the unique-index refusal they did nothing to deserve.
+  const pickableGuests = guestCandidates?.ok
+    ? guestCandidates.value.filter(
+        (candidate) => !rosterName.has(candidate.studentProfileId),
+      )
+    : [];
 
   return (
     <main className="container py-5">
@@ -563,40 +589,95 @@ export default async function SessionDetailPage({
       )}
 
       {lesson.status === "SCHEDULED" ? (
-        <details className="mt-4">
+        /* Open when a search round-tripped, so submitting the GET form does
+           not fold the results away. */
+        <details className="mt-4" open={guestSearch !== ""}>
           <summary className="h6">{t("session.guest.title")}</summary>
           <p className="form-text">{t("session.guest.note")}</p>
-          <form action={addGuestAction} className="row g-2 mt-2">
-            <input type="hidden" name="groupId" value={groupId} />
-            <input type="hidden" name="sessionId" value={lesson.id} />
-            <div className="col-md-4">
-              <label className="form-label" htmlFor="guestStudentProfileId">
-                {t("session.guest.studentProfileId")}
+
+          {/* STEP 1 — find the pupil BY NAME. A plain GET form, so this stays
+              a Server Component: the page re-renders with the reach-narrowed
+              candidates instead of a per-keystroke endpoint existing. */}
+          <form method="get" className="row g-2 mt-2">
+            <div className="col-md-6">
+              <label className="form-label" htmlFor="guestSearch">
+                {t("session.guest.search")}
               </label>
               <input
                 className="form-control"
-                id="guestStudentProfileId"
-                name="studentProfileId"
+                id="guestSearch"
+                name="guestSearch"
+                defaultValue={guestSearch}
+                placeholder={t("session.guest.searchPlaceholder")}
                 required
               />
             </div>
-            <div className="col-md-6">
-              <label className="form-label" htmlFor="guestReason">
-                {t("session.guest.reason")}
-              </label>
-              <input
-                className="form-control"
-                id="guestReason"
-                name="reason"
-                maxLength={500}
-              />
-            </div>
-            <div className="col-12">
-              <button className="btn btn-primary btn-sm" type="submit">
-                {t("session.guest.submit")}
+            <div className="col-md-3 align-self-end">
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                type="submit"
+              >
+                {t("session.guest.searchSubmit")}
               </button>
             </div>
           </form>
+
+          {/* STEP 2 — pick one of the matches and add them. The select
+              carries names; the id travels as the option VALUE, typed by
+              nobody. */}
+          {guestCandidates === null ? null : !guestCandidates.ok ? (
+            <p className="text-muted mt-2">
+              {t("session.guest.searchDenied", {
+                permission: guestCandidates.permission,
+              })}
+            </p>
+          ) : pickableGuests.length === 0 ? (
+            <p className="text-muted mt-2">
+              {t("session.guest.noResults", { query: guestSearch })}
+            </p>
+          ) : (
+            <form action={addGuestAction} className="row g-2 mt-3">
+              <input type="hidden" name="groupId" value={groupId} />
+              <input type="hidden" name="sessionId" value={lesson.id} />
+              <div className="col-md-4">
+                <label className="form-label" htmlFor="guestStudentProfileId">
+                  {t("session.guest.pick")}
+                </label>
+                <select
+                  className="form-select"
+                  id="guestStudentProfileId"
+                  name="studentProfileId"
+                  required
+                >
+                  {pickableGuests.map((candidate) => (
+                    <option
+                      key={candidate.studentProfileId}
+                      value={candidate.studentProfileId}
+                    >
+                      {candidate.familyName}, {candidate.givenName} (
+                      {candidate.studentNumber})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label" htmlFor="guestReason">
+                  {t("session.guest.reason")}
+                </label>
+                <input
+                  className="form-control"
+                  id="guestReason"
+                  name="reason"
+                  maxLength={500}
+                />
+              </div>
+              <div className="col-12">
+                <button className="btn btn-primary btn-sm" type="submit">
+                  {t("session.guest.submit")}
+                </button>
+              </div>
+            </form>
+          )}
         </details>
       ) : null}
     </main>

@@ -547,10 +547,15 @@
     "guest": {
       "title": "Gast toevoegen (inhaalles, andere groep of proefzwemmer)",
       "note": "Eén mechanisme voor elk kind dat niet bij de lesgroep hoort: een inhaalles, een leerling die in meerdere groepen zwemt, of een proefzwemmer die nog geen lid is (die heeft alleen een leerling-registratie nodig, geen lidmaatschap). De gast komt niet in de groep en neemt geen plek in; de lesgever van deze les ziet het kind doordat het op deze deelnemerslijst staat, en aanwezigheid vastleggen werkt daarna gewoon.",
-      "studentProfileId": "StudentProfile-id",
       "reason": "Reden (bijv. 'inhaalles, les van 5 maart gemist')",
       "submit": "Gast toevoegen",
-      "remove": "Verwijderen"
+      "remove": "Verwijderen",
+      "search": "Zoek leerling op naam",
+      "searchPlaceholder": "Naam of leerlingnummer",
+      "searchSubmit": "Zoeken",
+      "searchDenied": "Je mag geen leerlingen zoeken. De benodigde rechten: {permission}.",
+      "noResults": "Geen leerlingen gevonden voor “{query}” binnen jouw bereik. Een proefzwemmer die nog niet als leerling geregistreerd staat, wordt eerst via Personen toegevoegd.",
+      "pick": "Kies leerling"
     },
     "attendance": {
       "title": "Aanwezigheid",
