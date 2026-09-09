@@ -30,10 +30,12 @@
  *     runs with the OWNER's privileges — which is exactly the mechanism the
  *     erasure registry relies on.
  *
- * `SkillProgress` — P-07's third member — has NO carve-out yet; its
- * append-only property is still module code only. That difference is an open
- * item in the phase 2.2 report, not an accident, and it is asserted below so
- * that closing it forces this file to say so.
+ * `SkillProgress` — P-07's third member — got the same carve-out in this
+ * phase's DECISION ROUND (`skillProgressGrantStatements`, closing the
+ * report's open item 6 on Jack's order), with one difference the grant file
+ * explains: the retention role also holds UPDATE there, because severing
+ * `assessedByPersonId` may need an explicit `SET NULL` the runtime role can
+ * no longer issue. Asserted below beside the attendance proofs.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -161,7 +163,7 @@ describe("AttendanceEvent is append-only at the database level (P-07, D-061)", (
   });
 });
 
-describe("the deliberate asymmetries, so closing either forces this file to say so", () => {
+describe("the one deliberate asymmetry, and the retrofit that removed the other", () => {
   it("SessionRosterEntry stays ordinarily mutable — the roster is planning, not evidence", async () => {
     const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
       SELECT privilege_type
@@ -175,7 +177,7 @@ describe("the deliberate asymmetries, so closing either forces this file to say 
     expect(granted.has("DELETE")).toBe(true);
   });
 
-  it("SkillProgress has NO carve-out yet — P-07's third member is module-code-only, an open item in the phase 2.2 report", async () => {
+  it("SkillProgress carries the same carve-out since the decision round: the runtime role appends and reads, nothing else", async () => {
     const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
       SELECT privilege_type
         FROM information_schema.role_table_grants
@@ -183,8 +185,79 @@ describe("the deliberate asymmetries, so closing either forces this file to say 
          AND grantee = ${APP_ROLE}
        ORDER BY privilege_type
     `;
-    const granted = new Set(privileges.map((row) => row.privilege_type));
-    expect(granted.has("UPDATE")).toBe(true);
-    expect(granted.has("DELETE")).toBe(true);
+    expect(privileges.map((row) => row.privilege_type)).toEqual([
+      "INSERT",
+      "SELECT",
+    ]);
+  });
+
+  it("an UPDATE against a real SkillProgress row is REFUSED by the database — the phase 2.1 module's promise, now held by PostgreSQL", async () => {
+    // A minimal direct row: the columns the INSERT needs are all FKs this
+    // suite's own fixtures provide except the criterion chain, which is
+    // inserted directly (and cleaned up below before the profile cascade
+    // makes the criterion deletable again).
+    const pupil = await makeStudent("ao_skills_upd");
+    const awardTypeId = aid("ao_award");
+    await prisma.awardType.create({
+      data: {
+        id: awardTypeId,
+        code: aid("ao_award_code"),
+        name: "Diploma fixture",
+        kind: "DIPLOMA",
+        issuingBody: "NRZ",
+      },
+    });
+    const setId = aid("ao_set");
+    await prisma.criterionSet.create({
+      data: {
+        id: setId,
+        awardTypeId,
+        version: 1,
+        source: "NRZ",
+        status: "ACTIVE",
+        effectiveFrom: NOW,
+      },
+    });
+    const criterionId = aid("ao_criterion");
+    await prisma.criterion.create({
+      data: {
+        id: criterionId,
+        criterionSetId: setId,
+        code: aid("ao_crit_code"),
+        name: "Borstcrawl fixture",
+        sequence: 1,
+      },
+    });
+
+    try {
+      const row = await prisma.skillProgress.create({
+        data: {
+          studentProfileId: pupil.studentProfileId,
+          criterionId,
+          state: "PRACTISING",
+          assessedAt: NOW,
+        },
+        select: { id: true, state: true },
+      });
+
+      await expect(
+        prisma.skillProgress.update({
+          where: { id: row.id },
+          data: { state: "ACHIEVED" },
+        }),
+      ).rejects.toThrow(/permission denied|denied by|not permitted/i);
+      await expect(
+        prisma.skillProgress.delete({ where: { id: row.id } }),
+      ).rejects.toThrow(/permission denied|denied by|not permitted/i);
+    } finally {
+      // The progress row leaves through the profile cascade (the only door
+      // the runtime role has); only then is the criterion chain deletable.
+      await prisma.studentProfile.delete({
+        where: { id: pupil.studentProfileId },
+      });
+      await prisma.criterion.delete({ where: { id: criterionId } });
+      await prisma.criterionSet.delete({ where: { id: setId } });
+      await prisma.awardType.delete({ where: { id: awardTypeId } });
+    }
   });
 });

@@ -210,9 +210,12 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "evidence about somebody else's record, on the exact " +
       "GroupMove.decidedByPersonId pattern beside it. The row belongs to the " +
       "PUPIL's teaching log and is theirs to keep; the instructor's name is " +
-      "not the fact worth preserving once they leave. The foreign key is " +
-      "onDelete: SetNull as defence in depth; the erasure severs it " +
-      "explicitly regardless.",
+      "not the fact worth preserving once they leave. The FK is onDelete: " +
+      "SetNull, and since the phase 2.2 decision round that referential " +
+      "action — or the retention role, which holds the UPDATE " +
+      "(skillProgressGrantStatements) — is the only severing mechanism: the " +
+      "runtime role can no longer UPDATE this table, the same nuance as " +
+      "AttendanceEvent below.",
   },
   "AttendanceEvent.recordedByPersonId": {
     category: "SEVER_AND_RETAIN",

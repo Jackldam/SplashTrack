@@ -275,9 +275,9 @@ export function auditGrantStatements(names: RoleModelNames): string[] {
  * writing an attendance row — there is no legitimate attendance write outside
  * the application.
  *
- * `SkillProgress` — P-07's third member — is NOT carved out here, on purpose:
- * doing all three at once was not this phase's brief, and the difference is
- * recorded in the phase 2.2 report as an open item rather than smuggled in.
+ * `SkillProgress` — P-07's third member — gets its own carve-out in
+ * {@link skillProgressGrantStatements}, ordered by Jack in the phase 2.2
+ * decision round after this phase's report flagged the asymmetry.
  */
 export function attendanceGrantStatements(names: RoleModelNames): string[] {
   const { app, retention } = names;
@@ -289,6 +289,35 @@ export function attendanceGrantStatements(names: RoleModelNames): string[] {
     // ── The retention role: the only DELETE (D-111) ──────────────────────────
     `REVOKE ALL ON TABLE "AttendanceEvent" FROM ${quote(retention)}`,
     `GRANT SELECT, DELETE ON TABLE "AttendanceEvent" TO ${quote(retention)}`,
+  ];
+}
+
+/**
+ * THE SKILL-PROGRESS EXCEPTION — P-07's third member, retrofitted (phase
+ * 2.2's decision round; the phase 2.1 module shipped append-only in code
+ * only, and the 2.2 report's open item 6 asked Jack whether to close or
+ * accept the difference — he closed it).
+ *
+ * Same shape as {@link attendanceGrantStatements}, one difference the two
+ * tables' retention rows explain: `SkillProgress` is `REVIEW` at 7 years and
+ * its `assessedByPersonId` sever on person erasure may need an explicit
+ * `UPDATE … SET NULL` (the FK's own `SET NULL` referential action covers a
+ * `Person` DELETE; a future R-25 `erasePersonData` running as the retention
+ * role covers the rest) — so the retention role holds `UPDATE` here, which
+ * the attendance carve-out deliberately withholds. The runtime role's side is
+ * identical: `SELECT, INSERT`, nothing else, and a pupil's erasure still
+ * cascades their rows as the table's owner.
+ */
+export function skillProgressGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the teaching log ────────────────────
+    `REVOKE ALL ON TABLE "SkillProgress" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "SkillProgress" TO ${quote(app)}`,
+
+    // ── The retention role: the only UPDATE (sever) and DELETE (retention) ───
+    `REVOKE ALL ON TABLE "SkillProgress" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "SkillProgress" TO ${quote(retention)}`,
   ];
 }
 

@@ -59,12 +59,20 @@ export function installRealRelations(): void {
  * through the relation rather than each table's own id.
  */
 export async function resetSkillsFixtures(): Promise<void> {
-  // Same reasoning as AwardType below: a student is always fixture-made
-  // (`makeStudent`), so `studentProfileId` is reliably prefixed even though
-  // `SkillProgress.id` itself (DB-generated) and `criterionId` (often
-  // service-generated) are not.
-  await prisma.skillProgress.deleteMany({
-    where: { studentProfileId: { startsWith: SKILLS_PREFIX } },
+  // THE PUPILS GO FIRST, AND NOT BY CHOICE. As of the phase 2.2 decision
+  // round the runtime role — which is what `prisma` connects as here — holds
+  // NO DELETE on `SkillProgress` (`skillProgressGrantStatements`), so this
+  // file can no longer call `skillProgress.deleteMany`. Deleting the fixture
+  // `StudentProfile`s instead lets the `onDelete: Cascade` referential action
+  // take the progress rows as the table's OWNER — the same mechanism a real
+  // erasure relies on, and the same shape `attendance-fixtures.ts` uses. It
+  // must happen before `Criterion` (a `Restrict` target of the rows) and
+  // before `Group` (ditto, via the `groupId` snapshot) can go.
+  await prisma.studentLifecycleEvent.deleteMany({
+    where: { studentProfile: { personId: { startsWith: SKILLS_PREFIX } } },
+  });
+  await prisma.studentProfile.deleteMany({
+    where: { personId: { startsWith: SKILLS_PREFIX } },
   });
   await prisma.criterion.deleteMany({
     where: {
@@ -128,12 +136,8 @@ export async function resetSkillsFixtures(): Promise<void> {
   await prisma.course.deleteMany({
     where: { id: { startsWith: SKILLS_PREFIX } },
   });
-  await prisma.studentLifecycleEvent.deleteMany({
-    where: { studentProfile: { personId: { startsWith: SKILLS_PREFIX } } },
-  });
-  await prisma.studentProfile.deleteMany({
-    where: { personId: { startsWith: SKILLS_PREFIX } },
-  });
+  // Profiles and their lifecycle events already went, at the top — see the
+  // comment there for why the order is not free.
   await prisma.roleAssignment.deleteMany({
     where: { personId: { startsWith: SKILLS_PREFIX } },
   });

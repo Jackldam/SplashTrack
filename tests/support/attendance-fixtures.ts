@@ -66,6 +66,20 @@ export async function resetAttendanceFixtures(): Promise<void> {
     where: { personId: { startsWith: ATTENDANCE_PREFIX } },
   });
 
+  // The one skills-catalogue chain `attendance-append-only.test.ts` inserts
+  // directly (for the SkillProgress carve-out proof) — deletable only after
+  // the profile cascade above has taken the progress rows. Ordinarily its
+  // own `finally` cleans this; this is the backstop against a crashed run.
+  await prisma.criterion.deleteMany({
+    where: { id: { startsWith: ATTENDANCE_PREFIX } },
+  });
+  await prisma.criterionSet.deleteMany({
+    where: { id: { startsWith: ATTENDANCE_PREFIX } },
+  });
+  await prisma.awardType.deleteMany({
+    where: { id: { startsWith: ATTENDANCE_PREFIX } },
+  });
+
   // Then the timetable and the group tree.
   await prisma.sessionRosterEntry.deleteMany({
     where: { session: { groupId: { startsWith: ATTENDANCE_PREFIX } } },
