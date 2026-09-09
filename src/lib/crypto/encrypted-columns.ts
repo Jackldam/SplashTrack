@@ -87,8 +87,8 @@ export interface EncryptedColumnEntry {
  *
  * Still to come, named in the design and arriving with the modules that own
  * them: `students.medical_remarks` and the `SafetyNote` free text (D-148,
- * D-177), `AssessmentRemark` (D-148), the settings-registry secrets (SMTP,
- * OAuth) once `OrganizationSettingSecret` exists, and `Inquiry` free text.
+ * D-177), the settings-registry secrets (SMTP, OAuth) once
+ * `OrganizationSettingSecret` exists, and `Inquiry` free text.
  */
 export const ENCRYPTED_COLUMNS = {
   "person_relationships.authority_evidence": {
@@ -102,6 +102,31 @@ export const ENCRYPTED_COLUMNS = {
       "is a custody dispute. Not special category, so it derives under its own " +
       "HKDF branch rather than `medical-v1`; sensitive enough that read access " +
       "to the database alone must not disclose it.",
+  },
+  // --- phase 2.3, the `assessment` module — D-087/D-148 ---------------------
+  // The first real production columns under `medical-v1`: D-148's own words,
+  // "special category by inference (D-148, D-087)" — a developmental
+  // observation about a minor's body and behaviour, at least as sensitive as
+  // a medical note even though an instructor, not a nurse, wrote it.
+  "assessment.assessment_remark": {
+    columnId: "assessment.assessment_remark",
+    model: "Assessment",
+    field: "remark",
+    purpose: "medical-v1",
+    note:
+      "A remark about the SITTING as a whole. D-087 says remarks attach " +
+      "PRIMARILY at the criterion result (see the entry below); this is the " +
+      "rarer, assessment-level counterpart the same entity list names.",
+  },
+  "assessment.criterion_result_remark": {
+    columnId: "assessment.criterion_result_remark",
+    model: "AssessmentCriterionResult",
+    field: "remark",
+    purpose: "medical-v1",
+    note:
+      'Where D-087 says the remark actually gets written: "the remark is ' +
+      'about the scissor kick, not about the sitting" — kept beside the ' +
+      "grade it explains.",
   },
   "fixture.round_trip": {
     columnId: "fixture.round_trip",

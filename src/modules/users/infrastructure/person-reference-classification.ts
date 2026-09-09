@@ -230,6 +230,29 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "table (the append-only carve-out, attendanceGrantStatements), so an " +
       "explicit application-level sever would be refused by the database.",
   },
+  "Assessment.assessorPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO ASSESSED an aftest — accountability evidence about somebody " +
+      "else's record, on the exact AttendanceEvent.recordedByPersonId / " +
+      "SkillProgress.assessedByPersonId pattern. The row belongs to the " +
+      "PUPIL's evidential record — the basis on which they were or were not " +
+      "admitted to an exam (D-085) — and survives the assessor's erasure; " +
+      "only the name goes. The FK is onDelete: SetNull, and here — as with " +
+      "SkillProgress — that referential action or the retention role's " +
+      "UPDATE (assessmentGrantStatements) is the only severing mechanism: " +
+      "the runtime role holds no UPDATE on this table (the append-only " +
+      "carve-out).",
+  },
+  "CriterionWaiver.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO GRANTED a waiver — accountability evidence about somebody else's " +
+      "record, on the exact Assessment.assessorPersonId pattern immediately " +
+      'above. "We let this one go" is part of the pupil\'s evidential ' +
+      "record and survives the granter's erasure; only the name goes. Same " +
+      "SetNull-or-retention-UPDATE severing mechanism as Assessment.",
+  },
   "RetentionPolicy.confirmedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

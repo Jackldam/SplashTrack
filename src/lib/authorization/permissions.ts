@@ -62,6 +62,24 @@ export const PERMISSION_CATALOGUE = {
     "skills.revoke",
   ],
   attendance: ["attendance.read", "attendance.record", "attendance.amend"],
+  // §2.5's own catalogue table names no key for `Assessment`/
+  // `AssessmentCriterionResult` at all — D-085/D-086/D-087 all describe the
+  // aftest in detail without ever naming a permission for recording or
+  // reading one, the reverse of F-109's gap (a permission cited with no
+  // catalogue entry). Added here, on the `exams.candidacy.override` /
+  // `skills.assess`+`skills.revoke` precedent, and flagged in the phase 2.3
+  // report as a catalogue gap this build closed by necessity rather than one
+  // `02-security-privacy.md` §2.5 already anticipated.
+  assessment: [
+    "assessment.read",
+    "assessment.record",
+    // D-085's own override, applied to the one half of its formula this
+    // module can enforce (independence — see the schema's `Assessment`
+    // model comment). Named for THIS module rather than reusing
+    // `exams.candidacy.override`, which is a different power over a
+    // different table (the ExamCandidate confirmation gate, not yet built).
+    "assessment.independence.override",
+  ],
   exams: [
     "exams.read",
     "exams.manage",
