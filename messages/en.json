@@ -3,7 +3,13 @@
     "brand": "SplashTrack",
     "loading": "Loading…",
     "mainNavigation": "Main navigation",
-    "toHome": "to the home page"
+    "toHome": "to the home page",
+    "livePicker": {
+      "searching": "Searching…",
+      "noResults": "No results for “{query}”.",
+      "denied": "You may not search. Required permission: {permission}.",
+      "error": "Search failed. Try again."
+    }
   },
   "landing": {
     "title": "SplashTrack",

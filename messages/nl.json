@@ -3,7 +3,13 @@
     "brand": "SplashTrack",
     "loading": "Bezig met laden…",
     "mainNavigation": "Hoofdnavigatie",
-    "toHome": "naar de startpagina"
+    "toHome": "naar de startpagina",
+    "livePicker": {
+      "searching": "Zoeken…",
+      "noResults": "Geen resultaten voor “{query}”.",
+      "denied": "Zoeken is niet toegestaan. Vereiste permissie: {permission}.",
+      "error": "Zoeken is mislukt. Probeer het opnieuw."
+    }
   },
   "landing": {
     "title": "SplashTrack",
