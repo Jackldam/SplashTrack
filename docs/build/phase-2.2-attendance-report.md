@@ -1,7 +1,12 @@
 # Phase 2.2 — the `attendance` module
 
 **Branch** `build/attendance-module` · **From** `e4043aa` (813 tests) · **To**
-850 tests · **Not pushed, not merged, not deployed.**
+857 tests · **Not pushed, not merged, not deployed.**
+
+**Amended after Jack's decision round (2026-09-09).** All eight open items
+were reviewed; six stand as built (each carries a *besloten* note below), two
+became work: the one-mechanism guest/roster component (§1.4, now built) and
+the `SkillProgress` database carve-out retrofit (§1.6, now built).
 
 `AttendanceEvent` — the append-only register of who showed up
 (`01-domain-model.md` §3.4), written against `ScheduledSession` (which
@@ -39,6 +44,10 @@ see §1.2.
 | `test(attendance)` | fixtures, domain, service, scope-escape, constraints — and `attendance-append-only.test.ts` flipped from proving the gap to proving the control |
 | `chore(format)` | four files that predate this branch failed `format:check`; formatted, no content change |
 | `docs(build)` | this report |
+| `feat(sessions)` *(decision round)* | the widened roster-change guard: `groups.assign_members` **or** `attendance.record` on `{ session }` opens `addGuestToSession`/`removeGuestFromSession` — the one guest mechanism of §1.4 |
+| `feat(skills)` *(decision round)* | `skillProgressGrantStatements` + `infra/skill-progress-database-role.sql`: the same DB carve-out retrofitted onto `SkillProgress` — §1.6 |
+| `test(attendance)` *(decision round)* | roster-guard scope-escape, the trial-swimmer path, the SkillProgress refusal proof; skills fixtures reworked for the revoked `DELETE` |
+| `docs(build)` *(decision round)* | this report's amendments |
 
 ### 0.1 The schema, and what it deliberately does not have
 
@@ -135,7 +144,9 @@ scheduled sessions**", so the ordinary instructor passes the same guard, and
 the scope-escape suite pins both directions (a `GROUP` instructor denied
 group B's lesson; a `SESSION` substitute denied the next week's). This is a
 considered divergence from the letter of the example toward the sense of the
-matrix — **flagged for Jack** in case the example was meant as binding.
+matrix — flagged for Jack in case the example was meant as binding.
+**Besloten (2026-09-09): akkoord as built** — the D-179 reasoning stands; the
+`{ session }` guard is the ruling reading.
 
 ### 1.2 D-003's domain event — "attendance was registered, update progress" — is not published, because there is nothing to publish to
 
@@ -150,6 +161,8 @@ in `skills`, and nothing in the design says concretely what it *would* update
 derived from presence). **Left undone and named** — whoever builds the first
 real event consumer should build D-003's mechanism then, with a real
 subscriber to design against.
+**Besloten (2026-09-09): akkoord** — stays unbuilt; attendance and skills are
+deliberately separate things until a real consumer exists.
 
 ### 1.3 Only a `GROUP` reach narrows the student history — the same stance the skills follow-up settled, inherited deliberately
 
@@ -164,8 +177,10 @@ pupil's own record (D-146 names "own attendance" in the `SELF` set). D-145
 rule 2 — the one narrowing the design *does* state — is the one built. If
 Jack wants `UNIT` or `SESSION` narrowed too, the filter is one `case` away;
 it was not guessed at here.
+**Besloten (2026-09-09): akkoord as built** — only `GROUP` narrows,
+consistent with skills.
 
-### 1.4 The "child not in the session's group" scenario — modelled as guest-first, refused otherwise
+### 1.4 The "child not in the session's group" scenario — CLOSED in the decision round: one guest mechanism, reachable by whoever records
 
 `01-domain-model.md` line 429 calls this the expensive-to-retrofit shape:
 *"attendance for a child who is not in the session's group touches the
@@ -173,15 +188,53 @@ roster, reach resolution and the attendance aggregate at once."* The model
 this phase settled on is that **the roster is the boundary**: attendance is
 recordable for exactly the pupils on the session's effective roster (derived
 members at the lesson's date, plus explicit `SessionRosterEntry` rows), and a
-child outside it is refused with `NOT_ON_ROSTER` — whose message says the
-repair out loud: add the child as a guest first (D-179's
-`addGuestToSession`), then register. That keeps D-179's access story intact
-(the recording instructor can *see* the child because the roster row exists)
-and writes no attendance that reach resolution cannot later justify. **What
-was not built**: a one-act "register this stranger and add them as a guest
-implicitly" convenience. It would be friendlier at the poolside and it would
-also make the roster a side effect of a register instead of a decision —
-flagged for Jack as a UX call, not taken silently.
+child outside it is refused with `NOT_ON_ROSTER`. That keeps D-179's access
+story intact (the recording instructor can *see* the child because the
+roster row exists) and writes no attendance that reach resolution cannot
+later justify.
+
+**Besloten (2026-09-09), and built:** Jack wants no refusal-shaped dead end
+and no split between "member of another group" and "true guest" — **one
+mechanism** for every child who does not derive from the group. That
+mechanism already existed structurally (a `GUEST` `SessionRosterEntry`,
+D-109's own *"a guest added to a roster"*); what closed the gap is threefold:
+
+1. **The roster-change guard is widened** (`requireRosterChange`,
+   `roster-service.ts`): `groups.assign_members` **or** `attendance.record`
+   on `{ session }` opens `addGuestToSession` and, symmetrically,
+   `removeGuestFromSession`. §2.5's instructor sketch ("attendance, skill
+   sign-off, read student basics") holds no `groups.assign_members`, so
+   without the second door the poolside instructor was back to needing an
+   administrator — D-179's own nightmare. The widening changes WHO, never
+   HOW FAR: the resource reference stays `{ session }`, one lesson's roster,
+   and the scope-escape suite pins that an attendance-only instructor of
+   group A adds a guest to their own lesson and is denied group B's.
+2. **The trial swimmer needs no new concept, and this is the model's answer,
+   not this phase's invention**: `SessionRosterEntry.studentProfileId`
+   requires a `StudentProfile`, and a `StudentProfile` requires no
+   membership (D-060 — neither is a prerequisite for the other). So a
+   proefzwemmer is registered as a pupil once, through the existing people
+   screen, and added per lesson like anyone else. Proved end-to-end in
+   `attendance-services.test.ts` (a profile with no membership anywhere:
+   guest row, then ordinary registration). No lighter concept was needed, so
+   none was invented — this open question dissolved rather than being
+   decided.
+3. **Group attribution of the resulting events**: stamped with the
+   **session's** group, exactly as every registration already was — the
+   `groupId` snapshot comes from `findSessionRegisterFacts`, never from the
+   child's "own" group. This matches D-145's cross-unit rule (*"the group's
+   unit governs that group's attendance"*) and how the snapshot already
+   works. The one consequence worth stating: the guest's home-group
+   instructor does **not** see that row through a `GROUP`-scoped read (it
+   belongs to the host group); the host instructor and every broader reach
+   do. That is the consistent reading, and it was Jack's stated preference.
+
+The `NOT_ON_ROSTER` message and the lesson screen's guest section now say
+all of this in Dutch and English — the refusal names the repair and the
+repair is on the same screen. **What is still deliberately not built**: the
+one-act "register attendance and create the roster row implicitly"
+convenience — the roster row stays an explicit act, because it is the
+access-affecting one (`grantsSessionReach` in its audit event).
 
 ### 1.5 A cancelled lesson refuses new registration; corrections still land
 
@@ -193,16 +246,36 @@ does *not* re-check status or roster: a correction is about what happened,
 and the lesson being cancelled *after* attendance was registered — or the
 child leaving the group since — must not make recorded history
 uncorrectable. Both halves are readings, not quotations; flagged.
+**Besloten (2026-09-09): akkoord** — explicitly confirmed, both halves.
 
-### 1.6 `SkillProgress` — P-07's third member — still has no database carve-out
+### 1.6 `SkillProgress` — P-07's third member — CLOSED in the decision round: the same carve-out, retrofitted
 
-This phase built the mechanism (`attendanceGrantStatements` is a
-two-statement pattern away from covering `SkillProgress`) and deliberately
-did not apply it there: it was not this brief, and skills' fixtures and
-services were built against ordinary DML. `attendance-append-only.test.ts`
-asserts the asymmetry by name so that closing it forces the test to say so.
-A follow-up slice for Jack to order — or to decline, since skills' log is
-lower-stakes evidence than attendance's.
+This report originally flagged the asymmetry (attendance protected by the
+database, skills by module code only) and left the call to Jack. **Besloten
+(2026-09-09): close it** — and it is closed, in this branch rather than a
+separate skills one, because the mechanism lives here:
+
+- `skillProgressGrantStatements` (`src/lib/database/role-model.ts`), applied
+  and verified beside the audit and attendance exceptions: the runtime role
+  holds `SELECT, INSERT` on `SkillProgress` and nothing else. Documented in
+  `infra/skill-progress-database-role.sql`, sync-tested by
+  `tests/unit/skill-progress-grant-sql-sync.test.ts`.
+- **One deliberate difference from the attendance grants**: the retention
+  role holds `UPDATE` here as well as `DELETE`. Severing
+  `assessedByPersonId` on a recorder's erasure may need an explicit
+  `SET NULL` that the runtime role can no longer issue (the FK's own
+  referential action covers a `Person` DELETE; the future R-25
+  `erasePersonData` covers the rest, running as retention). Attendance
+  withholds `UPDATE` because its sever is FK-only and its expiry a pure
+  prune; skills' `SKILL_PROGRESS` class is `REVIEW` at 7 years.
+- No migration was needed: like the attendance carve-out, grants are not
+  schema — `db:apply-grants` re-applies them after every migration, and the
+  test database gets them through the same `applyRoleModel` path.
+- The behavioural proof moved with it: `attendance-append-only.test.ts` now
+  shows a real `SkillProgress` UPDATE and DELETE refused by PostgreSQL as
+  the real runtime role, and `skills-fixtures.ts` was reworked to clean up
+  through the `StudentProfile` cascade — the only door the runtime role
+  still has, which is itself the property under test.
 
 ### 1.7 `clientEventId` is generated at page render, not by an offline client
 
@@ -223,6 +296,8 @@ about a child, written often — is not in D-148's protected free-text class.
 ("ziek gemeld", "opgehaald door oma") and the schema comment points at the
 same open question. Not decided here either; the two should be decided
 together, by Jack.
+**Besloten (2026-09-09): akkoord as built** — a purely internal instructor
+field, governed by a usage rule, no technical enforcement added.
 
 ---
 
@@ -255,20 +330,41 @@ registries, which is where cross-module wiring belongs.
 | Data model | `AttendanceState`, `AttendanceEvent` — schema + migration `20260909080000_attendance_module`, one hand-written CHECK |
 | Service | `attendance-service.ts`: `registerSessionAttendance`, `amendAttendance`, `getSessionRegister`, `getAttendanceForStudent` — all behind `requirePermission`, on §2.5's own `attendance.read`/`attendance.record`/`attendance.amend` (already in the catalogue since phase 0.4; nothing invented) |
 | UI | The register on the lesson screen (`/groups/[groupId]/sessions/[sessionId]`): first registration as one form for the whole roster, then per-line corrections and a late-guest line, plus the full struck-through history; the read-only attendance log on the person screen (`/people/[personId]`). Dutch and English strings both present, both valid JSON, parity-tested by the existing `message-catalog` suite |
-| Scope-escape tests | `tests/integration/attendance-scope-escape.test.ts` — a `GROUP` instructor of group A denied group B's lesson for write and read, by name; D-145 rule 2's per-row narrowing (a pupil in two groups yields one row to the group's instructor, two to the organization); a `SESSION`-scoped substitute confined to their one lesson; the no-grant caller denied outright |
+| Scope-escape tests | `tests/integration/attendance-scope-escape.test.ts` — a `GROUP` instructor of group A denied group B's lesson for write and read, by name; D-145 rule 2's per-row narrowing (a pupil in two groups yields one row to the group's instructor, two to the organization); a `SESSION`-scoped substitute confined to their one lesson; the no-grant caller denied outright; and (decision round) the widened roster guard — an attendance-only instructor adds a guest to their own lesson, is denied group B's, and the no-grant caller is denied the roster change |
 | Domain/service tests | `tests/unit/attendance-domain.test.ts`, `tests/integration/attendance-services.test.ts`, `tests/integration/attendance-constraints.test.ts`, `tests/integration/attendance-append-only.test.ts` (now proving the control), `tests/unit/attendance-grant-sql-sync.test.ts` |
 | `Person`-reference registry | `AttendanceEvent.recordedByPersonId` — `SEVER_AND_RETAIN`, on the `SkillProgress.assessedByPersonId` pattern, with the append-only nuance recorded on the entry (§0.2). `studentProfileId` references `StudentProfile`, not `Person` — no entry needed, same as `Enrolment` |
 | Erasure registry | `AttendanceEvent: { kind: "erase" }` — not `exempt`: append-only constrains *who* may delete, not whether erasure applies |
 | Retention (`DATA_CLASS_BY_MODEL`) | `AttendanceEvent: "ATTENDANCE_EVENTS"` — the class that has been waiting since phase 1.6, closed in the schema commit |
-| CI | `npx vitest run`: 69 files / 850 tests passed, zero regressions in the pre-existing 813. `npm run typecheck`: clean. `npm run lint`: clean (the one pre-existing, unrelated warning phases 2.0 and 2.1 also noted). `npm run format:check`: clean — including four files that already failed at `e4043aa`, formatted in their own `chore` commit rather than silently inside a feature one |
-| Jack's approval | Not yet requested — this report is the handoff |
+| CI | After the decision round: `npx vitest run`: 70 files / 857 tests passed, zero regressions in the pre-existing 813. `npm run typecheck`: clean. `npm run lint`: clean (the one pre-existing, unrelated warning phases 2.0 and 2.1 also noted). `npm run format:check`: clean — including four files that already failed at `e4043aa`, formatted in their own `chore` commit rather than silently inside a feature one |
+| Jack's approval | **Decision round completed 2026-09-09** — all eight items answered; the two that became work (items 4 and 6) are built on this branch |
 
-**Open items for review, not silently resolved:**
-1. §1.1 — the write guard is `{ session }`, not the `{ group }` of §2.2's illustrative example; chosen for D-179, flagged in case the example was binding.
-2. §1.2 — D-003's `attendance → skills` domain event is unbuilt: no event mechanism exists in the codebase and no consumer is specified. Named, not smuggled in.
-3. §1.3 — only `GROUP` reaches narrow the per-student history; every other variant sees the full history, the recorded phase-2.1 stance inherited as-is.
-4. §1.4 — a child outside the session's group is refused with a message pointing at the guest-first path; the one-act "register and add as guest" convenience is a UX decision for Jack.
-5. §1.5 — cancelled lessons refuse new registration but accept corrections; both are readings of silence in §3.4.
-6. §1.6 — `SkillProgress` still lacks the database carve-out `AttendanceEvent` now has; the asymmetry is test-asserted and is Jack's to order closed or accept.
-7. §1.8 — `AttendanceEvent.note` joins `SkillProgress.note` in the D-148 open question about protected free text; decide the two together.
-8. §0.2 — for the future R-25 `erasePersonData`: severing `recordedByPersonId` must go through the FK's `SET NULL` (or the retention role), because the runtime role cannot `UPDATE` this table. Recorded on the classification entry so the implementer finds it.
+**The original eight open items, and how the decision round settled each
+(the full reasoning stays in the section each points at):**
+
+1. §1.1 — `{ session }` write guard. **Besloten: akkoord as built** (D-179).
+2. §1.2 — D-003's `attendance → skills` event unbuilt. **Besloten: akkoord**
+   — deliberately separate until a real consumer exists.
+3. §1.3 — only `GROUP` narrows the student history. **Besloten: akkoord as
+   built**, consistent with skills.
+4. §1.4 — the child outside the session's group. **Besloten: build it as one
+   mechanism — and built**: the widened roster guard
+   (`groups.assign_members` *or* `attendance.record`, on `{ session }`),
+   trial swimmers covered by the model's own `StudentProfile`-without-
+   membership shape (D-060 — no new concept needed, so the flagged model
+   question dissolved), events attributed to the session's group.
+5. §1.5 — cancelled lessons refuse new registration, accept corrections.
+   **Besloten: akkoord**, explicitly confirmed.
+6. §1.6 — the `SkillProgress` carve-out. **Besloten: retrofit it — and
+   built**: `skillProgressGrantStatements`, retention holding
+   `UPDATE`+`DELETE` (the sever), runtime role append-only, behaviourally
+   proved.
+7. §1.8 — `AttendanceEvent.note` and D-148. **Besloten: akkoord as built** —
+   internal instructor field, usage rule, no technical enforcement.
+8. §0.2 — the R-25 severing nuance. **Besloten: akkoord** — stays a recorded
+   open build item, picked up only when a real erasure need arrives; the
+   classification entries carry the instruction for that implementer.
+
+**No new open questions came out of the decision round.** The one candidate
+— whether a trial swimmer needs a lighter concept than `StudentProfile` —
+turned out to be answered by the model itself (item 4 above) rather than a
+genuine choice.
