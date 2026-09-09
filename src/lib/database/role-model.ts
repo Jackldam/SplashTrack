@@ -250,6 +250,78 @@ export function auditGrantStatements(names: RoleModelNames): string[] {
 }
 
 /**
+ * THE ATTENDANCE EXCEPTION — D-005/D-061 given the D-149 treatment, phase 2.2.
+ *
+ * `00-overview.md` P-07 claims *"audit, attendance and progress are
+ * append-only"*. For the audit trail that claim is enforced by
+ * {@link auditGrantStatements}; for attendance it was, until this phase, only
+ * a property of module code — and
+ * `tests/integration/attendance-append-only.test.ts` existed to keep that gap
+ * loud. `AttendanceEvent` is evidence (D-061: absence policy, parental
+ * disputes, occasionally safeguarding), so it gets the same database-level
+ * carve-out: the runtime role appends and reads, and cannot rewrite history
+ * even through a code path nobody has reviewed.
+ *
+ * WHY RETENTION GETS `DELETE` AND NOT THE APP. D-111: expired attendance
+ * events are hard-DELETED at 24 months, never anonymised — and the deleter is
+ * the retention role, exactly as it is for `AuditEvent`. Application-level
+ * erasure of a PUPIL still works without the app holding `DELETE` here:
+ * `AttendanceEvent.studentProfileId` cascades from `StudentProfile`, and a
+ * referential action runs with the privileges of the table's OWNER, not the
+ * deleting session. Proved in `attendance-append-only.test.ts`.
+ *
+ * WHY RETENTION GETS NO `INSERT`, WHICH `AuditEvent` DOES GRANT. A prune run
+ * records itself in the AUDIT trail (`audit.retention_pruned`), never by
+ * writing an attendance row — there is no legitimate attendance write outside
+ * the application.
+ *
+ * `SkillProgress` — P-07's third member — gets its own carve-out in
+ * {@link skillProgressGrantStatements}, ordered by Jack in the phase 2.2
+ * decision round after this phase's report flagged the asymmetry.
+ */
+export function attendanceGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the register ────────────────────────
+    `REVOKE ALL ON TABLE "AttendanceEvent" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "AttendanceEvent" TO ${quote(app)}`,
+
+    // ── The retention role: the only DELETE (D-111) ──────────────────────────
+    `REVOKE ALL ON TABLE "AttendanceEvent" FROM ${quote(retention)}`,
+    `GRANT SELECT, DELETE ON TABLE "AttendanceEvent" TO ${quote(retention)}`,
+  ];
+}
+
+/**
+ * THE SKILL-PROGRESS EXCEPTION — P-07's third member, retrofitted (phase
+ * 2.2's decision round; the phase 2.1 module shipped append-only in code
+ * only, and the 2.2 report's open item 6 asked Jack whether to close or
+ * accept the difference — he closed it).
+ *
+ * Same shape as {@link attendanceGrantStatements}, one difference the two
+ * tables' retention rows explain: `SkillProgress` is `REVIEW` at 7 years and
+ * its `assessedByPersonId` sever on person erasure may need an explicit
+ * `UPDATE … SET NULL` (the FK's own `SET NULL` referential action covers a
+ * `Person` DELETE; a future R-25 `erasePersonData` running as the retention
+ * role covers the rest) — so the retention role holds `UPDATE` here, which
+ * the attendance carve-out deliberately withholds. The runtime role's side is
+ * identical: `SELECT, INSERT`, nothing else, and a pupil's erasure still
+ * cascades their rows as the table's owner.
+ */
+export function skillProgressGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the teaching log ────────────────────
+    `REVOKE ALL ON TABLE "SkillProgress" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "SkillProgress" TO ${quote(app)}`,
+
+    // ── The retention role: the only UPDATE (sever) and DELETE (retention) ───
+    `REVOKE ALL ON TABLE "SkillProgress" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "SkillProgress" TO ${quote(retention)}`,
+  ];
+}
+
+/**
  * Puts ownership of everything in `public` back on the owner role.
  *
  * A self-heal, not the main path — `migrationUrlFrom` means objects are created

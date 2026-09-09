@@ -36,11 +36,19 @@ export {
 
 export {
   createStudentProfile,
+  listStudentCandidatesForPrincipal,
   recordLifecycleEvent,
   updateStudentProfile,
   LIFECYCLE_EVENT_TYPES,
   type UpdateStudentProfileInput,
 } from "./application/student-service";
+
+/**
+ * The guest picker's row shape (phase 2.2) — identity basics only, on D-145
+ * rule 2's field-level reading; the reach story is
+ * `student-candidate-filter.ts`'s.
+ */
+export type { StudentCandidate } from "./infrastructure/student-candidate-repository";
 
 export {
   describeRelationshipAuthority,

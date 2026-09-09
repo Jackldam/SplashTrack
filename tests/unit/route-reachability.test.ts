@@ -157,9 +157,7 @@ function candidatePaths(expression: string): string[] {
   let match: RegExpExecArray | null;
   while ((match = literal.exec(expression)) !== null) {
     const raw = (match[1] ?? match[2] ?? match[3])!;
-    const normalized = raw
-      .replace(/\$\{[^}]*\}/g, "*")
-      .split(/[?#]/)[0]!;
+    const normalized = raw.replace(/\$\{[^}]*\}/g, "*").split(/[?#]/)[0]!;
     found.push(normalized);
   }
   for (const [name, value] of PATH_CONSTANTS) {
@@ -174,7 +172,9 @@ function linksIn(source: string): string[] {
   for (const span of balancedSpansAfter(source, /href\s*=\s*\{/, "{", "}")) {
     targets.push(...candidatePaths(span));
   }
-  for (const match of source.matchAll(/href\s*=\s*("(\/[^"]*)"|'(\/[^']*)')/g)) {
+  for (const match of source.matchAll(
+    /href\s*=\s*("(\/[^"]*)"|'(\/[^']*)')/g,
+  )) {
     targets.push(...candidatePaths(match[1]!));
   }
   for (const span of balancedSpansAfter(source, /redirect\s*\(/, "(", ")")) {

@@ -25,7 +25,11 @@
  *
  * SERVER-ONLY.
  */
-import { requirePermission } from "@/lib/authorization";
+import {
+  PermissionDeniedError,
+  requirePermission,
+  resolveReach,
+} from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 import { recordAuditEvent } from "@/modules/audit";
 
@@ -38,6 +42,11 @@ import {
 } from "../domain/numbering";
 import type { StudentLifecycleEventType } from "../domain/student-lifecycle";
 import { ensurePeopleRegistrations } from "../infrastructure/registrations";
+import {
+  findStudentCandidates,
+  ReachCoversNoStudentError,
+  type StudentCandidate,
+} from "../infrastructure/student-candidate-repository";
 import {
   optionalDate,
   optionalText,
@@ -287,4 +296,39 @@ export async function recordLifecycleEvent(
 
     return { eventId: event.id };
   });
+}
+
+/**
+ * The pupils this caller may CHOOSE from, by name — the guest picker's data
+ * (phase 2.2 decision round, item 4's follow-up: the lesson screen's guest
+ * form must not ask an instructor to type a database id).
+ *
+ * The `listPeopleForPrincipal` shape one entity over: no `requirePermission`,
+ * because a list names no single resource for D-030's reference to point at —
+ * the authority is the `Reach` this resolves for `students.read`, which the
+ * repository narrows by per row (`student-candidate-filter.ts`; every branch
+ * mirrors or narrows `coversResource({ student })`, live rules included). A
+ * reach that covers no pupil at all is a DENIAL, never an empty list.
+ *
+ * Returns identity basics only — a name and the student number an instructor
+ * cross-checks — never the profile itself; picking a pupil grants nothing,
+ * because whatever is done with the picked id is guarded by its own service.
+ */
+export async function listStudentCandidatesForPrincipal(
+  actor: ActorContext,
+  options: { query?: unknown } = {},
+): Promise<StudentCandidate[]> {
+  ensurePeopleRegistrations();
+  const at = actor.at ?? new Date();
+
+  const query = optionalText("query", options.query, TEXT_MAX.query);
+  const reach = await resolveReach(actor.principal, "students.read", { at });
+  try {
+    return await findStudentCandidates(reach, at, query);
+  } catch (error) {
+    if (error instanceof ReachCoversNoStudentError) {
+      throw new PermissionDeniedError("students.read", "student candidates");
+    }
+    throw error;
+  }
 }

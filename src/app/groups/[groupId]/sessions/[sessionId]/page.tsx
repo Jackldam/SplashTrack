@@ -1,14 +1,20 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { getConfiguredLocalization } from "@/lib/settings";
+import { ATTENDANCE_STATES, getSessionRegister } from "@/modules/attendance";
+import { listStudentCandidatesForPrincipal } from "@/modules/people";
 import { getSessionForPrincipal, resolveTimeZone } from "@/modules/sessions";
 
 import { guarded, requireSignedIn } from "../../../access";
 import {
   addGuestAction,
+  amendAttendanceAction,
   clearSessionLaneOverrideAction,
   overrideSessionLanesAction,
+  registerAttendanceAction,
   removeGuestAction,
 } from "../../../actions";
 import { formatSessionMoment } from "../../../format";
@@ -47,7 +53,11 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ groupId: string; sessionId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    saved?: string;
+    guestSearch?: string;
+  }>;
 }) {
   const [t, { groupId, sessionId }, query, session] = await Promise.all([
     getTranslations(),
@@ -92,6 +102,46 @@ export default async function SessionDetailPage({
   const timeZone = resolveTimeZone(
     (await getConfiguredLocalization()).timeZone,
   );
+
+  // ── Attendance (phase 2.2) ─────────────────────────────────────────────────
+  // `guarded`: an instructor who may see the lesson but holds no
+  // `attendance.read` is an ordinary case, not a 500. The register renders
+  // from `attendance`'s own service — this page never reads its table.
+  const register = await guarded(() => getSessionRegister(actor, sessionId));
+  const rosterName = new Map(
+    lesson.roster.map((member) => [
+      member.studentProfileId,
+      `${member.givenName} ${member.familyName}`,
+    ]),
+  );
+  const supersededIds = register.ok
+    ? new Set(
+        register.value.events
+          .map((event) => event.supersedesEventId)
+          .filter((id): id is string => id !== null),
+      )
+    : new Set<string>();
+
+  // ── The guest picker's candidates (decision round, item 4 follow-up) ───────
+  // A name search, never a typed id. `guarded`, and only when a search was
+  // actually submitted: the candidate list is exactly the caller's
+  // `students.read` reach (`student-candidate-filter.ts`), so a
+  // `SESSION`-only substitute sees their own roster at most and a caller with
+  // no student reach is told so rather than shown an empty list.
+  const guestSearch =
+    typeof query.guestSearch === "string" ? query.guestSearch.trim() : "";
+  const guestCandidates = guestSearch
+    ? await guarded(() =>
+        listStudentCandidatesForPrincipal(actor, { query: guestSearch }),
+      )
+    : null;
+  // A pupil already on the roster is not offered — adding them again would
+  // only earn the unique-index refusal they did nothing to deserve.
+  const pickableGuests = guestCandidates?.ok
+    ? guestCandidates.value.filter(
+        (candidate) => !rosterName.has(candidate.studentProfileId),
+      )
+    : [];
 
   return (
     <main className="container py-5">
@@ -283,41 +333,351 @@ export default async function SessionDetailPage({
         </table>
       )}
 
-      {lesson.status === "SCHEDULED" ? (
-        <details className="mt-4">
-          <summary className="h6">{t("session.guest.title")}</summary>
-          <p className="form-text">{t("session.guest.note")}</p>
-          <form action={addGuestAction} className="row g-2 mt-2">
+      {/* ── Attendance (phase 2.2) ──────────────────────────────────────────
+          THE FLAGSHIP SCREEN, at last on its five modules (D-138). One form,
+          the whole register, one transaction (`01-domain-model.md` §4) — an
+          instructor who saves knows it either all landed or none did. A wrong
+          state afterwards is a CORRECTION: a new event superseding the old
+          one (D-061), never an edit, and the history stays readable below.
+          The hidden client ids were generated when this page rendered, so a
+          double-submit collapses to one write (P-02). */}
+      <h2 className="h5 mt-4">{t("session.attendance.title")}</h2>
+      {!register.ok ? (
+        <p className="text-muted">
+          {t("session.attendance.denied", { permission: register.permission })}
+        </p>
+      ) : register.value.events.length === 0 ? (
+        lesson.status === "CANCELLED" ? (
+          <p className="text-muted">{t("session.attendance.cancelledNone")}</p>
+        ) : lesson.roster.length === 0 ? (
+          <p className="text-muted">{t("session.attendance.emptyRoster")}</p>
+        ) : (
+          <form action={registerAttendanceAction}>
             <input type="hidden" name="groupId" value={groupId} />
             <input type="hidden" name="sessionId" value={lesson.id} />
-            <div className="col-md-4">
-              <label className="form-label" htmlFor="guestStudentProfileId">
-                {t("session.guest.studentProfileId")}
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("groups.columns.pupil")}</th>
+                  <th scope="col">{t("session.attendance.state")}</th>
+                  <th scope="col">{t("session.attendance.note")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lesson.roster.map((member) => (
+                  <tr key={member.studentProfileId}>
+                    <td>
+                      {member.givenName} {member.familyName}
+                      <input
+                        type="hidden"
+                        name="studentProfileIds"
+                        value={member.studentProfileId}
+                      />
+                      <input
+                        type="hidden"
+                        name={`client_${member.studentProfileId}`}
+                        value={randomUUID()}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        aria-label={t("session.attendance.state")}
+                        className="form-select form-select-sm"
+                        name={`state_${member.studentProfileId}`}
+                        defaultValue="PRESENT"
+                      >
+                        {ATTENDANCE_STATES.map((state) => (
+                          <option key={state} value={state}>
+                            {t(
+                              `session.attendance.states.${state}` as "session.attendance.states.PRESENT",
+                            )}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        aria-label={t("session.attendance.note")}
+                        className="form-control form-control-sm"
+                        name={`note_${member.studentProfileId}`}
+                        maxLength={1000}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="btn btn-primary btn-sm" type="submit">
+              {t("session.attendance.submit")}
+            </button>
+          </form>
+        )
+      ) : (
+        <>
+          <table className="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th scope="col">{t("groups.columns.pupil")}</th>
+                <th scope="col">{t("session.attendance.state")}</th>
+                <th scope="col">{t("session.attendance.recordedAt")}</th>
+                <th scope="col">{t("session.attendance.correct")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {register.value.lines.map((line) => (
+                <tr key={line.studentProfileId}>
+                  <td>
+                    {rosterName.get(line.studentProfileId) ??
+                      line.studentProfileId}
+                  </td>
+                  <td>
+                    {line.effective === null
+                      ? t("session.attendance.notRegistered")
+                      : t(
+                          `session.attendance.states.${line.effective.state}` as "session.attendance.states.PRESENT",
+                        )}
+                  </td>
+                  <td className="text-muted">
+                    {line.effective === null
+                      ? "—"
+                      : formatSessionMoment(
+                          line.effective.recordedAt,
+                          timeZone,
+                        )}
+                  </td>
+                  <td>
+                    {line.effective === null ? (
+                      /* A pupil added to the roster AFTER registration (a
+                         late guest) gets a one-line registration of their
+                         own — the same service, a register of one. */
+                      <form
+                        action={registerAttendanceAction}
+                        className="d-flex gap-2"
+                      >
+                        <input type="hidden" name="groupId" value={groupId} />
+                        <input
+                          type="hidden"
+                          name="sessionId"
+                          value={lesson.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="studentProfileIds"
+                          value={line.studentProfileId}
+                        />
+                        <input
+                          type="hidden"
+                          name={`client_${line.studentProfileId}`}
+                          value={randomUUID()}
+                        />
+                        <select
+                          aria-label={t("session.attendance.state")}
+                          className="form-select form-select-sm w-auto"
+                          name={`state_${line.studentProfileId}`}
+                          defaultValue="PRESENT"
+                        >
+                          {ATTENDANCE_STATES.map((state) => (
+                            <option key={state} value={state}>
+                              {t(
+                                `session.attendance.states.${state}` as "session.attendance.states.PRESENT",
+                              )}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn btn-outline-secondary btn-sm"
+                          type="submit"
+                        >
+                          {t("session.attendance.submit")}
+                        </button>
+                      </form>
+                    ) : (
+                      <form
+                        action={amendAttendanceAction}
+                        className="d-flex gap-2"
+                      >
+                        <input type="hidden" name="groupId" value={groupId} />
+                        <input
+                          type="hidden"
+                          name="sessionId"
+                          value={lesson.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="studentProfileId"
+                          value={line.studentProfileId}
+                        />
+                        <input
+                          type="hidden"
+                          name="supersedesEventId"
+                          value={line.effective.eventId}
+                        />
+                        <input
+                          type="hidden"
+                          name="clientEventId"
+                          value={randomUUID()}
+                        />
+                        <select
+                          aria-label={t("session.attendance.state")}
+                          className="form-select form-select-sm w-auto"
+                          name="state"
+                          defaultValue={line.effective.state}
+                        >
+                          {ATTENDANCE_STATES.map((state) => (
+                            <option key={state} value={state}>
+                              {t(
+                                `session.attendance.states.${state}` as "session.attendance.states.PRESENT",
+                              )}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          aria-label={t("session.attendance.note")}
+                          className="form-control form-control-sm"
+                          name="note"
+                          maxLength={1000}
+                          placeholder={t("session.attendance.note")}
+                        />
+                        <button
+                          className="btn btn-outline-secondary btn-sm"
+                          type="submit"
+                        >
+                          {t("session.attendance.amend")}
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* THE HISTORY D-061 KEEPS — every event, corrections included,
+              in write order. A superseded row renders struck through rather
+              than disappearing: who said a child was present, and when they
+              changed their mind, is the record's whole point. */}
+          <details className="mb-4">
+            <summary>{t("session.attendance.historyTitle")}</summary>
+            <ul className="list-unstyled mt-2">
+              {register.value.events.map((event) => (
+                <li
+                  key={event.id}
+                  className={
+                    supersededIds.has(event.id)
+                      ? "text-decoration-line-through text-muted"
+                      : undefined
+                  }
+                >
+                  {formatSessionMoment(event.recordedAt, timeZone)} —{" "}
+                  {rosterName.get(event.studentProfileId) ??
+                    event.studentProfileId}
+                  :{" "}
+                  {t(
+                    `session.attendance.states.${event.state}` as "session.attendance.states.PRESENT",
+                  )}
+                  {event.supersedesEventId !== null
+                    ? ` (${t("session.attendance.correction")})`
+                    : ""}
+                  {event.note ? (
+                    <span className="text-muted"> — {event.note}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </>
+      )}
+
+      {lesson.status === "SCHEDULED" ? (
+        /* Open when a search round-tripped, so submitting the GET form does
+           not fold the results away. */
+        <details className="mt-4" open={guestSearch !== ""}>
+          <summary className="h6">{t("session.guest.title")}</summary>
+          <p className="form-text">{t("session.guest.note")}</p>
+
+          {/* STEP 1 — find the pupil BY NAME. A plain GET form, so this stays
+              a Server Component: the page re-renders with the reach-narrowed
+              candidates instead of a per-keystroke endpoint existing. */}
+          <form method="get" className="row g-2 mt-2">
+            <div className="col-md-6">
+              <label className="form-label" htmlFor="guestSearch">
+                {t("session.guest.search")}
               </label>
               <input
                 className="form-control"
-                id="guestStudentProfileId"
-                name="studentProfileId"
+                id="guestSearch"
+                name="guestSearch"
+                defaultValue={guestSearch}
+                placeholder={t("session.guest.searchPlaceholder")}
                 required
               />
             </div>
-            <div className="col-md-6">
-              <label className="form-label" htmlFor="guestReason">
-                {t("session.guest.reason")}
-              </label>
-              <input
-                className="form-control"
-                id="guestReason"
-                name="reason"
-                maxLength={500}
-              />
-            </div>
-            <div className="col-12">
-              <button className="btn btn-primary btn-sm" type="submit">
-                {t("session.guest.submit")}
+            <div className="col-md-3 align-self-end">
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                type="submit"
+              >
+                {t("session.guest.searchSubmit")}
               </button>
             </div>
           </form>
+
+          {/* STEP 2 — pick one of the matches and add them. The select
+              carries names; the id travels as the option VALUE, typed by
+              nobody. */}
+          {guestCandidates === null ? null : !guestCandidates.ok ? (
+            <p className="text-muted mt-2">
+              {t("session.guest.searchDenied", {
+                permission: guestCandidates.permission,
+              })}
+            </p>
+          ) : pickableGuests.length === 0 ? (
+            <p className="text-muted mt-2">
+              {t("session.guest.noResults", { query: guestSearch })}
+            </p>
+          ) : (
+            <form action={addGuestAction} className="row g-2 mt-3">
+              <input type="hidden" name="groupId" value={groupId} />
+              <input type="hidden" name="sessionId" value={lesson.id} />
+              <div className="col-md-4">
+                <label className="form-label" htmlFor="guestStudentProfileId">
+                  {t("session.guest.pick")}
+                </label>
+                <select
+                  className="form-select"
+                  id="guestStudentProfileId"
+                  name="studentProfileId"
+                  required
+                >
+                  {pickableGuests.map((candidate) => (
+                    <option
+                      key={candidate.studentProfileId}
+                      value={candidate.studentProfileId}
+                    >
+                      {candidate.familyName}, {candidate.givenName} (
+                      {candidate.studentNumber})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label" htmlFor="guestReason">
+                  {t("session.guest.reason")}
+                </label>
+                <input
+                  className="form-control"
+                  id="guestReason"
+                  name="reason"
+                  maxLength={500}
+                />
+              </div>
+              <div className="col-12">
+                <button className="btn btn-primary btn-sm" type="submit">
+                  {t("session.guest.submit")}
+                </button>
+              </div>
+            </form>
+          )}
         </details>
       ) : null}
     </main>

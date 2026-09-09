@@ -107,6 +107,14 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     // `assessedByPersonId` (`SEVER_AND_RETAIN`, on the `GroupMove` pattern
     // immediately above), so it is an ordinary participant in erasure.
     SkillProgress: { kind: "erase" },
+    // Phase 2.2, the same shape one module later. `AttendanceEvent` references
+    // `Person` through `recordedByPersonId` (`SEVER_AND_RETAIN`); the PUPIL's
+    // side cascades from `StudentProfile` — and because the runtime role holds
+    // no DELETE on this table (the append-only carve-out), that referential
+    // action running as the table's OWNER is the only mechanism by which an
+    // application-initiated erasure removes attendance rows. Not `exempt`:
+    // append-only constrains WHO may delete, not whether erasure applies.
+    AttendanceEvent: { kind: "erase" },
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },

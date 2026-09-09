@@ -112,9 +112,7 @@ export function lastEnrolmentEnd(
 
 /** Why a request to start or end an enrolment was refused. */
 export type EnrolmentRefusal =
-  | "ALREADY_ENROLLED"
-  | "NOT_ENROLLED"
-  | "ENDS_BEFORE_IT_STARTS";
+  "ALREADY_ENROLLED" | "NOT_ENROLLED" | "ENDS_BEFORE_IT_STARTS";
 
 export class EnrolmentError extends Error {
   constructor(public readonly reason: EnrolmentRefusal) {
@@ -150,9 +148,7 @@ const ENROLMENT_MESSAGES: Record<EnrolmentRefusal, string> = {
  * check without the index is a race, and the index without the check is a stack
  * trace where an explanation belongs.
  */
-export function assertCanEnrol(
-  enrolments: readonly EnrolmentInterval[],
-): void {
+export function assertCanEnrol(enrolments: readonly EnrolmentInterval[]): void {
   if (openEnrolment(enrolments) !== null) {
     throw new EnrolmentError("ALREADY_ENROLLED");
   }

@@ -255,6 +255,16 @@
       "state": "State",
       "date": "Date",
       "note": "Note"
+    },
+    "attendance": {
+      "title": "Attendance",
+      "none": "No attendance has been recorded for this pupil yet.",
+      "denied": "You may not see this pupil's attendance. Required permissions: {permission}.",
+      "lesson": "Lesson",
+      "group": "Group",
+      "state": "Status",
+      "recordedAt": "Recorded at",
+      "note": "Note"
     }
   },
   "mfaEnrolment": {
@@ -318,7 +328,13 @@
       "laneWithoutPool": "Choose a pool first. A lane is inside a pool; without one there is nothing to choose.",
       "laneUnknown": "The lanes chosen are not valid.",
       "poolNotFound": "That pool no longer exists, or has been taken out of use. Choose another one.",
-      "laneOverrideBlocksPool": "One or more lessons still to come have lanes of their own. Those lanes are in the current pool, so the series' pool cannot move yet. Return those lessons to following the series first."
+      "laneOverrideBlocksPool": "One or more lessons still to come have lanes of their own. Those lanes are in the current pool, so the series' pool cannot move yet. Return those lessons to following the series first.",
+      "SESSION_NOT_FOUND": "That lesson does not exist.",
+      "SESSION_CANCELLED": "That lesson was cancelled; nobody attended it. Record attendance on the lesson that actually took place.",
+      "NOT_ON_ROSTER": "This pupil is not on this lesson's roster. Add the child first via 'Add guest' below — that covers a make-up lesson, a pupil from another group and a trial swimmer — then record their attendance.",
+      "NOTHING_TO_REGISTER": "No attendance was supplied; there is nothing to record.",
+      "DUPLICATE_PUPIL": "The same pupil appears twice in this registration. One lesson, one pupil, one observation — a correction is a separate act.",
+      "SUPERSEDED_EVENT_MISMATCH": "The observation being corrected does not belong to this lesson and this pupil. A correction always points at the observation it replaces."
     },
     "saved": {
       "group": "Group saved.",
@@ -341,7 +357,9 @@
       "recurrenceLanes": "The series' lanes are saved. Lessons that have already happened keep the lanes they were swum in.",
       "lanesOverridden": "This lesson's lanes are changed. This lesson only; the series and every other lesson stay as they were.",
       "lanesCleared": "This lesson follows the series' lanes again.",
-      "progress": "Progress recorded."
+      "progress": "Progress recorded.",
+      "attendance": "Attendance recorded.",
+      "attendanceAmended": "Attendance corrected. The earlier observation stays visible in the history."
     },
     "skillProgress": {
       "title": "Record progress",
@@ -527,12 +545,38 @@
       "groupMember": "In the group"
     },
     "guest": {
-      "title": "Add a guest (make-up lesson)",
-      "note": "A make-up lesson is an ordinary lesson with a guest. The guest does not join the group and takes no place in it; this lesson's instructor can see the child because they are on this roster.",
-      "studentProfileId": "StudentProfile id",
+      "title": "Add guest (make-up lesson, other group or trial swimmer)",
+      "note": "One mechanism for every child who is not part of this lesson's group: a make-up lesson, a pupil who swims in several groups, or a trial swimmer who is not a member yet (they only need a pupil registration, no membership). The guest does not join the group and takes no place; this lesson's instructor sees the child because they are on this roster, and recording attendance then works normally.",
       "reason": "Reason (e.g. 'make-up, missed 5 March')",
       "submit": "Add guest",
-      "remove": "Remove"
+      "remove": "Remove",
+      "search": "Search pupil by name",
+      "searchPlaceholder": "Name or student number",
+      "searchSubmit": "Search",
+      "searchDenied": "You may not search pupils. Required permissions: {permission}.",
+      "noResults": "No pupils found for “{query}” within your reach. A trial swimmer who is not registered as a pupil yet is added via People first.",
+      "pick": "Choose pupil"
+    },
+    "attendance": {
+      "title": "Attendance",
+      "denied": "You may not see this lesson's attendance. Required permissions: {permission}.",
+      "cancelledNone": "This lesson was cancelled; no attendance was recorded.",
+      "emptyRoster": "Nobody is on the roster yet, so there is no attendance to record.",
+      "state": "Status",
+      "note": "Note",
+      "submit": "Record",
+      "amend": "Correct",
+      "correct": "Correction",
+      "correction": "correction",
+      "recordedAt": "Recorded at",
+      "notRegistered": "Not recorded yet",
+      "historyTitle": "History — every observation, corrections struck through",
+      "states": {
+        "PRESENT": "Present",
+        "ABSENT": "Absent",
+        "EXCUSED": "Excused",
+        "LATE": "Late"
+      }
     }
   },
   "pools": {

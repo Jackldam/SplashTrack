@@ -67,6 +67,11 @@ import {
   updatePool,
   updateRecurrence,
 } from "@/modules/sessions";
+import {
+  amendAttendance,
+  AttendanceError,
+  registerSessionAttendance,
+} from "@/modules/attendance";
 
 const actionLogger = logger.child({ component: "groups.actions" });
 
@@ -111,6 +116,9 @@ function refusal(error: unknown, back: string): never {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof FacilityError) {
+    redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
+  }
+  if (error instanceof AttendanceError) {
     redirect(`${back}?error=${encodeURIComponent(error.reason)}`);
   }
   if (error instanceof ApiError) {
@@ -514,6 +522,55 @@ export async function removeGuestAction(formData: FormData): Promise<void> {
   });
   revalidatePath(`/groups/${groupId}/sessions/${sessionId}`);
   redirect(`/groups/${groupId}/sessions/${sessionId}?saved=guestRemoved`);
+}
+
+// ── attendance ──────────────────────────────────────────────────────────────
+
+/**
+ * Registers the lesson's attendance — one form, one service call, one
+ * transaction (`01-domain-model.md` §4: partial attendance is not a valid
+ * state). The pupils are enumerated by repeated `studentProfileIds` fields;
+ * each pupil's state, idempotency key and optional note travel in fields
+ * suffixed with their id. The `clientEventId`s were generated when the form
+ * RENDERED, which is what makes a double-submit collapse to one write (P-02).
+ */
+export async function registerAttendanceAction(
+  formData: FormData,
+): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const back = `/groups/${groupId}/sessions/${sessionId}`;
+  await run(back, async () => {
+    const entries = formData
+      .getAll("studentProfileIds")
+      .map((raw) => String(raw))
+      .map((studentProfileId) => ({
+        studentProfileId,
+        state: formData.get(`state_${studentProfileId}`),
+        clientEventId: formData.get(`client_${studentProfileId}`),
+        note: formData.get(`note_${studentProfileId}`),
+      }));
+    await registerSessionAttendance(await actor(), sessionId, { entries });
+  });
+  revalidatePath(back);
+  redirect(`${back}?saved=attendance`);
+}
+
+export async function amendAttendanceAction(formData: FormData): Promise<void> {
+  const groupId = String(formData.get("groupId") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const back = `/groups/${groupId}/sessions/${sessionId}`;
+  await run(back, async () => {
+    await amendAttendance(await actor(), sessionId, {
+      studentProfileId: formData.get("studentProfileId"),
+      state: formData.get("state"),
+      clientEventId: formData.get("clientEventId"),
+      supersedesEventId: formData.get("supersedesEventId"),
+      note: formData.get("note"),
+    });
+  });
+  revalidatePath(back);
+  redirect(`${back}?saved=attendanceAmended`);
 }
 
 // ── facilities ──────────────────────────────────────────────────────────────

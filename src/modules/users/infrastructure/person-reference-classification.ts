@@ -210,9 +210,25 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "evidence about somebody else's record, on the exact " +
       "GroupMove.decidedByPersonId pattern beside it. The row belongs to the " +
       "PUPIL's teaching log and is theirs to keep; the instructor's name is " +
-      "not the fact worth preserving once they leave. The foreign key is " +
-      "onDelete: SetNull as defence in depth; the erasure severs it " +
-      "explicitly regardless.",
+      "not the fact worth preserving once they leave. The FK is onDelete: " +
+      "SetNull, and since the phase 2.2 decision round that referential " +
+      "action — or the retention role, which holds the UPDATE " +
+      "(skillProgressGrantStatements) — is the only severing mechanism: the " +
+      "runtime role can no longer UPDATE this table, the same nuance as " +
+      "AttendanceEvent below.",
+  },
+  "AttendanceEvent.recordedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO RECORDED an attendance observation — accountability evidence " +
+      "about somebody else's record, on the exact " +
+      "SkillProgress.assessedByPersonId pattern beside it. The row belongs " +
+      "to the PUPIL's register (D-061: evidence for absence policy and " +
+      "disputes) and survives the recorder's erasure; only the name goes. " +
+      "The FK is onDelete: SetNull, and here that referential action is the " +
+      "ONLY severing mechanism: the runtime role holds no UPDATE on this " +
+      "table (the append-only carve-out, attendanceGrantStatements), so an " +
+      "explicit application-level sever would be refused by the database.",
   },
   "RetentionPolicy.confirmedByPersonId": {
     category: "SEVER_AND_RETAIN",

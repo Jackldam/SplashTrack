@@ -121,4 +121,10 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // a pupil's lessons, groups and progress" — this class's own description),
   // same `LAST_ENROLMENT_END` trigger.
   SkillProgress: "STUDENT_PROFILE",
+  // --- phase 2.2, the `attendance` module -----------------------------------
+  // The class this registry has carried since phase 1.6 finally gets the
+  // table it was written for (`01-domain-model.md` §5: attendance events,
+  // CONTRACT, session date, 24 months, DELETE — D-111, never anonymised).
+  // `SessionRosterEntry` above deliberately shares it; see that comment.
+  AttendanceEvent: "ATTENDANCE_EVENTS",
 };

@@ -24,7 +24,9 @@
  *     — the sessions it produced point at it, and that pointer is half the
  *     idempotency key.
  *   - Attendance, in any form. That is a different module against these rows
- *     (D-057), and it is out of scope for this pass.
+ *     (D-057) — and as of phase 2.2 it exists: `@/modules/attendance` writes
+ *     `AttendanceEvent` rows against sessions it reaches through
+ *     `findSessionRegisterFacts` below, never through these tables directly.
  */
 
 export {
@@ -122,4 +124,16 @@ export {
   type RosterMember,
   type ScheduledSessionListItem,
   type SessionDetail,
+} from "./infrastructure/session-repository";
+
+/**
+ * The published answer `attendance` (phase 2.2) builds its register on —
+ * a lesson's identity, status and EFFECTIVE roster, as ids only. Unguarded on
+ * the `activeGroupMemberIds` precedent: the caller has already guarded
+ * `{ session }`, and D-057's point is exactly that `attendance` asks this
+ * module rather than reading `ScheduledSession`/`SessionRosterEntry` itself.
+ */
+export {
+  findSessionRegisterFacts,
+  type SessionRegisterFacts,
 } from "./infrastructure/session-repository";

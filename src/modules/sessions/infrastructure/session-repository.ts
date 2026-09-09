@@ -321,6 +321,72 @@ export async function findSessionDetail(
   };
 }
 
+/**
+ * The facts `attendance` needs before it writes against a lesson — ids and a
+ * status, nothing about anybody.
+ */
+export interface SessionRegisterFacts {
+  readonly id: string;
+  readonly groupId: string;
+  readonly occursOn: Date;
+  readonly status: "SCHEDULED" | "CANCELLED";
+  /**
+   * The EFFECTIVE roster, as ids: active group members on the lesson's own
+   * date plus every explicit `SessionRosterEntry` — the same two halves
+   * `findSessionDetail` and `isOnSessionRoster` resolve, and D-179's whole
+   * point: a make-up GUEST is on this list, so their attendance derives from
+   * participation in the session, never from a membership they do not have.
+   */
+  readonly rosterStudentProfileIds: readonly string[];
+}
+
+/**
+ * One lesson's identity, status and effective roster, as ids only.
+ *
+ * PUBLISHED to `attendance` (see `index.ts`): `attendance` writes
+ * `AttendanceEvent` rows against sessions it does not own (D-057), and this is
+ * the owning module's answer to "which lesson is this, and who was expected" —
+ * on the `activeGroupMemberIds` precedent: unguarded, because the caller has
+ * already guarded `{ session }` and nothing here is about a person beyond a
+ * profile id the caller may already reach.
+ */
+export async function findSessionRegisterFacts(
+  sessionId: string,
+): Promise<SessionRegisterFacts | null> {
+  const session = await prisma.scheduledSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      groupId: true,
+      occursOn: true,
+      status: true,
+      rosterEntries: { select: { studentProfileId: true } },
+    },
+  });
+  if (!session) return null;
+
+  const members = await prisma.groupMembership.findMany({
+    where: {
+      groupId: session.groupId,
+      fromDate: { lte: session.occursOn },
+      OR: [{ toDate: null }, { toDate: { gt: session.occursOn } }],
+    },
+    select: { studentProfileId: true },
+  });
+
+  const ids = new Set<string>();
+  for (const member of members) ids.add(member.studentProfileId);
+  for (const entry of session.rosterEntries) ids.add(entry.studentProfileId);
+
+  return {
+    id: session.id,
+    groupId: session.groupId,
+    occursOn: session.occursOn,
+    status: session.status,
+    rosterStudentProfileIds: [...ids],
+  };
+}
+
 export interface PoolView {
   readonly id: string;
   readonly name: string;
