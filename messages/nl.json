@@ -255,6 +255,16 @@
       "state": "Status",
       "date": "Datum",
       "note": "Notitie"
+    },
+    "attendance": {
+      "title": "Aanwezigheid",
+      "none": "Er is nog geen aanwezigheid vastgelegd voor deze leerling.",
+      "denied": "Je mag de aanwezigheid van deze leerling niet zien. De benodigde rechten: {permission}.",
+      "lesson": "Les",
+      "group": "Groep",
+      "state": "Status",
+      "recordedAt": "Vastgelegd op",
+      "note": "Notitie"
     }
   },
   "mfaEnrolment": {
@@ -318,7 +328,13 @@
       "laneWithoutPool": "Kies eerst een bad. Een baan ligt in een bad; zonder bad is er niets te kiezen.",
       "laneUnknown": "De gekozen banen kloppen niet.",
       "poolNotFound": "Dat bad bestaat niet meer, of is uit gebruik genomen. Kies een ander bad.",
-      "laneOverrideBlocksPool": "Een of meer lessen die nog moeten komen hebben eigen banen. Die banen liggen in het huidige bad, dus het bad van de reeks kan nu niet wijzigen. Zet die lessen eerst terug op 'weer de lesreeks volgen'."
+      "laneOverrideBlocksPool": "Een of meer lessen die nog moeten komen hebben eigen banen. Die banen liggen in het huidige bad, dus het bad van de reeks kan nu niet wijzigen. Zet die lessen eerst terug op 'weer de lesreeks volgen'.",
+      "SESSION_NOT_FOUND": "Deze les bestaat niet.",
+      "SESSION_CANCELLED": "Deze les is afgelast; er is niemand aanwezig geweest. Leg aanwezigheid vast op de les die wél doorging.",
+      "NOT_ON_ROSTER": "Deze leerling staat niet op de deelnemerslijst van deze les. Voeg het kind eerst als gast toe (inhaalles) en leg daarna de aanwezigheid vast.",
+      "NOTHING_TO_REGISTER": "Er is geen enkele aanwezigheid opgegeven; er valt niets vast te leggen.",
+      "DUPLICATE_PUPIL": "Dezelfde leerling staat twee keer in deze registratie. Eén les, één leerling, één waarneming — een correctie is een aparte handeling.",
+      "SUPERSEDED_EVENT_MISMATCH": "De te corrigeren waarneming hoort niet bij deze les en deze leerling. Een correctie wijst altijd naar de waarneming die zij vervangt."
     },
     "saved": {
       "group": "Groep opgeslagen.",
@@ -341,7 +357,9 @@
       "recurrenceLanes": "Banen van de lesreeks opgeslagen. Lessen die al geweest zijn houden de banen waarin ze gezwommen zijn.",
       "lanesOverridden": "Banen voor deze les aangepast. Alleen deze les; de lesreeks en de andere lessen blijven zoals ze waren.",
       "lanesCleared": "Deze les volgt weer de banen van de lesreeks.",
-      "progress": "Voortgang vastgelegd."
+      "progress": "Voortgang vastgelegd.",
+      "attendance": "Aanwezigheid vastgelegd.",
+      "attendanceAmended": "Aanwezigheid gecorrigeerd. De eerdere waarneming blijft zichtbaar in de geschiedenis."
     },
     "skillProgress": {
       "title": "Voortgang vastleggen",
@@ -533,6 +551,27 @@
       "reason": "Reden (bijv. 'inhaalles, les van 5 maart gemist')",
       "submit": "Gast toevoegen",
       "remove": "Verwijderen"
+    },
+    "attendance": {
+      "title": "Aanwezigheid",
+      "denied": "Je mag de aanwezigheid van deze les niet zien. De benodigde rechten: {permission}.",
+      "cancelledNone": "Deze les is afgelast; er is geen aanwezigheid vastgelegd.",
+      "emptyRoster": "Er staat nog niemand op de deelnemerslijst, dus valt er geen aanwezigheid vast te leggen.",
+      "state": "Status",
+      "note": "Notitie",
+      "submit": "Vastleggen",
+      "amend": "Corrigeren",
+      "correct": "Correctie",
+      "correction": "correctie",
+      "recordedAt": "Vastgelegd op",
+      "notRegistered": "Nog niet vastgelegd",
+      "historyTitle": "Geschiedenis — elke waarneming, correcties doorgestreept",
+      "states": {
+        "PRESENT": "Aanwezig",
+        "ABSENT": "Afwezig",
+        "EXCUSED": "Afgemeld",
+        "LATE": "Te laat"
+      }
     }
   },
   "pools": {

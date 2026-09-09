@@ -16,6 +16,7 @@ import {
   type GuardianAuthority,
   type PersonRelationshipView,
 } from "@/modules/people";
+import { getAttendanceForStudent } from "@/modules/attendance";
 import { getSkillProgressForStudent } from "@/modules/skills";
 
 import { endEnrolmentAction, enrolStudentAction } from "@/app/courses/actions";
@@ -174,6 +175,16 @@ export default async function PersonDetailPage({
   const skillProgress = person.studentProfile
     ? await guarded(() =>
         getSkillProgressForStudent(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
+
+  // ── Attendance (phase 2.2) — read-only here; see the section below. ──
+  const attendance = person.studentProfile
+    ? await guarded(() =>
+        getAttendanceForStudent(
           { principal: { personId: session.person.id }, at },
           person.studentProfile!.id,
         ),
@@ -846,6 +857,64 @@ export default async function PersonDetailPage({
                       )}
                     </td>
                     <td>{formatMoment(entry.assessedAt)}</td>
+                    <td className="text-muted">{entry.note ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* ── The attendance record (phase 2.2) ──────────────────────────────
+          READ-ONLY here: registering happens on the LESSON screen, guarded on
+          `{ session }` — see `@/modules/attendance` `attendance-service.ts`.
+          This section guards `{ student }` and is then narrowed per row by
+          the caller's reach (only `GROUP` narrows — the exact
+          `getSkillProgressForStudent` stance one section up). Superseded
+          events render struck through, never hidden: D-061 keeps the
+          correction history because it IS the record. */}
+      {person.studentProfile ? (
+        <section className="mt-5">
+          <h2 className="h4">{t("people.attendance.title")}</h2>
+
+          {attendance && !attendance.ok ? (
+            <p className="text-muted">
+              {t("people.attendance.denied", {
+                permission: attendance.permission,
+              })}
+            </p>
+          ) : attendance && attendance.value.length === 0 ? (
+            <p className="text-muted">{t("people.attendance.none")}</p>
+          ) : attendance ? (
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("people.attendance.lesson")}</th>
+                  <th scope="col">{t("people.attendance.group")}</th>
+                  <th scope="col">{t("people.attendance.state")}</th>
+                  <th scope="col">{t("people.attendance.recordedAt")}</th>
+                  <th scope="col">{t("people.attendance.note")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendance.value.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    className={
+                      entry.superseded
+                        ? "text-decoration-line-through text-muted"
+                        : undefined
+                    }
+                  >
+                    <td>{formatCalendarDate(entry.occursOn)}</td>
+                    <td>{entry.groupName}</td>
+                    <td>
+                      {t(
+                        `session.attendance.states.${entry.state}` as "session.attendance.states.PRESENT",
+                      )}
+                    </td>
+                    <td>{formatMoment(entry.recordedAt)}</td>
                     <td className="text-muted">{entry.note ?? "—"}</td>
                   </tr>
                 ))}
