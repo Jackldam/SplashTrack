@@ -369,6 +369,7 @@
       "state": "State",
       "note": "Note",
       "submit": "Record",
+      "standardsTitle": "Standards (reference)",
       "reason": {
         "NO_LEVEL": "No course level is linked to this group yet, so there is nothing to record progress against.",
         "NO_AWARD_TYPE": "This group's level is not yet linked to a diploma or certificate.",
@@ -766,11 +767,13 @@
       "add": "Add requirement",
       "save": "Save",
       "sequenceHelp": "Leave empty to add the requirement at the end.",
+      "standardHelp": "What is expected of the pupil and how the execution must be judged. Reference material for the instructor at the poolside — may stay empty and be filled in later.",
       "useSetFloor": "Set's own floor",
       "columns": {
         "sequence": "Position",
         "code": "Code",
         "name": "Name",
+        "standard": "Standard",
         "minimumGrade": "Minimum grade"
       }
     },

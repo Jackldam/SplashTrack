@@ -2160,6 +2160,15 @@ model Criterion {
   /// *"Borstcrawl 25 meter"*. The club's own words.
   name String
 
+  /// *"Normering"* (`docs/glossary.md`) — what is expected of the pupil and
+  /// how the execution must be judged. `name` is the one line read aloud at
+  /// the bad-rand; this is the paragraph behind it, for an instructor who was
+  /// not there when the criterion was written — including a substitute.
+  /// Free text, unbounded like `Course.description` (not `name`'s short
+  /// limit). NULLABLE: a criterion may be created before its standard is
+  /// written down, and filled in later without touching anything else.
+  standard String?
+
   /// Where this criterion sits in the set's own order. Unique per set, same
   /// shape as `CourseLevel.sequence`: it orders a list and decides nothing.
   sequence Int

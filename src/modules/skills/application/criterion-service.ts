@@ -37,6 +37,7 @@ export { CriterionError };
 export interface CreateCriterionInput {
   code: unknown;
   name: unknown;
+  standard?: unknown;
   sequence?: unknown;
   minimumGradeId?: unknown;
 }
@@ -57,6 +58,11 @@ export async function createCriterion(
 
   const code = requiredText("code", input.code, TEXT_MAX.criterionCode);
   const name = requiredText("name", input.name, TEXT_MAX.criterionName);
+  const standard = optionalText(
+    "standard",
+    input.standard,
+    TEXT_MAX.criterionStandard,
+  );
   const supplied =
     input.sequence === undefined ||
     input.sequence === null ||
@@ -85,7 +91,7 @@ export async function createCriterion(
     assertSequenceIsFree(siblings, sequence, null);
 
     const criterion = await tx.criterion.create({
-      data: { criterionSetId, code, name, sequence, minimumGradeId },
+      data: { criterionSetId, code, name, standard, sequence, minimumGradeId },
       select: { id: true },
     });
 
@@ -102,7 +108,7 @@ export async function createCriterion(
           criterionId: criterion.id,
           code,
           sequence,
-          fields: "code,name,sequence,minimumGradeId",
+          fields: "code,name,standard,sequence,minimumGradeId",
         },
       },
       tx,
@@ -115,6 +121,7 @@ export async function createCriterion(
 export interface UpdateCriterionInput {
   code: unknown;
   name: unknown;
+  standard?: unknown;
   sequence: unknown;
   minimumGradeId?: unknown;
 }
@@ -142,6 +149,10 @@ export async function updateCriterion(
   const code = requiredText("code", input.code, TEXT_MAX.criterionCode);
   const name = requiredText("name", input.name, TEXT_MAX.criterionName);
   const sequence = requiredInt("sequence", input.sequence, 1, SEQUENCE_MAX);
+  const standard =
+    input.standard === undefined
+      ? undefined
+      : optionalText("standard", input.standard, TEXT_MAX.criterionStandard);
   const minimumGradeId =
     input.minimumGradeId === undefined
       ? undefined
@@ -153,6 +164,7 @@ export async function updateCriterion(
       select: {
         code: true,
         name: true,
+        standard: true,
         sequence: true,
         minimumGradeId: true,
         criterionSet: { select: { status: true } },
@@ -170,6 +182,9 @@ export async function updateCriterion(
     const changed = [
       ...(before.code === code ? [] : ["code"]),
       ...(before.name === name ? [] : ["name"]),
+      ...(standard === undefined || before.standard === standard
+        ? []
+        : ["standard"]),
       ...(before.sequence === sequence ? [] : ["sequence"]),
       ...(minimumGradeId === undefined ||
       before.minimumGradeId === minimumGradeId
@@ -180,7 +195,7 @@ export async function updateCriterion(
 
     await tx.criterion.update({
       where: { id: criterionId },
-      data: { code, name, sequence, minimumGradeId },
+      data: { code, name, standard, sequence, minimumGradeId },
     });
 
     await recordAuditEvent(

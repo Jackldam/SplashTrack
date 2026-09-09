@@ -12,6 +12,13 @@ export const TEXT_MAX = {
   criterionCode: 40,
   /** *"Borstcrawl 25 meter"*. */
   criterionName: 200,
+  /**
+   * The "normering" (`docs/glossary.md`) — what is expected of the pupil and
+   * how the execution must be judged. Generous like `courseDescription`, not
+   * `criterionName`'s short bound: reference prose for an instructor, not a
+   * line read aloud at the poolside.
+   */
+  criterionStandard: 2000,
   /** An id arriving from a form field. */
   id: 40,
   /**

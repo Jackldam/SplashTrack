@@ -369,6 +369,7 @@
       "state": "Status",
       "note": "Notitie",
       "submit": "Vastleggen",
+      "standardsTitle": "Normering (naslag)",
       "reason": {
         "NO_LEVEL": "Aan deze groep is nog geen cursusniveau gekoppeld, dus is er niets om voortgang tegen vast te leggen.",
         "NO_AWARD_TYPE": "Het niveau van deze groep is nog niet gekoppeld aan een diploma of certificaat.",
@@ -766,11 +767,13 @@
       "add": "Eis toevoegen",
       "save": "Opslaan",
       "sequenceHelp": "Laat leeg om de eis achteraan toe te voegen.",
+      "standardHelp": "Wat er van de leerling verwacht wordt en hoe de uitvoering beoordeeld moet worden. Naslagwerk voor de instructeur aan de badrand — mag leeg blijven en later aangevuld worden.",
       "useSetFloor": "Ondergrens van de set",
       "columns": {
         "sequence": "Volgorde",
         "code": "Code",
         "name": "Naam",
+        "standard": "Normering",
         "minimumGrade": "Minimale beoordeling"
       }
     },
