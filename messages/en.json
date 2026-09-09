@@ -120,7 +120,9 @@
       "NOT_OPEN": "There is no open membership period to end. Returning starts a new period; a closed period is never reopened.",
       "ENDS_BEFORE_IT_STARTS": "A membership period cannot end before it started.",
       "invalidNumber": "That number is not usable. It must be 1-32 characters of letters, digits, dot, underscore, slash or hyphen, starting with a letter or a digit.",
-      "duplicateNumber": "That number is already in use by someone else."
+      "duplicateNumber": "That number is already in use by someone else.",
+      "AUTHORITY_REQUIRES_GUARDIAN": "Only a guardian relationship may give consent. An emergency contact is someone to telephone, not someone who may consent on a child's behalf.",
+      "AUTHORITY_REQUIRES_EVIDENCE": "Fill in the evidence when you tick that this person may give consent — record HOW the authority was established."
     },
     "search": {
       "label": "Search",
@@ -209,8 +211,12 @@
       "end": "End",
       "addTitle": "Add a relationship",
       "add": "Record relationship",
-      "relativeId": "Id of the other person",
-      "relativeIdHelp": "Copy the id from the address bar on that person's page.",
+      "search": "Search the other person by name",
+      "searchPlaceholder": "Name, member number or student number",
+      "searchSubmit": "Search",
+      "searchDenied": "You may not search people. Required permissions: {permission}.",
+      "noResults": "No people found for “{query}” within your reach.",
+      "pick": "Choose person",
       "noGuardians": "Nobody is recorded as answering for this person.",
       "noDependants": "This person is not recorded as answering for anybody."
     },

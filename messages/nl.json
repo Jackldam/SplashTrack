@@ -120,7 +120,9 @@
       "NOT_OPEN": "Er is geen lopende lidmaatschapsperiode om te beëindigen. Terugkomen start een nieuwe periode; een afgesloten periode wordt nooit heropend.",
       "ENDS_BEFORE_IT_STARTS": "Een lidmaatschapsperiode kan niet eindigen voordat die begonnen is.",
       "invalidNumber": "Dit nummer is niet bruikbaar. Het moet 1-32 tekens zijn: letters, cijfers, punt, underscore, schuine streep of koppelteken, beginnend met een letter of cijfer.",
-      "duplicateNumber": "Dit nummer is al in gebruik bij iemand anders."
+      "duplicateNumber": "Dit nummer is al in gebruik bij iemand anders.",
+      "AUTHORITY_REQUIRES_GUARDIAN": "Alleen een relatie 'ouder of voogd' mag toestemming geven. Een noodcontact is iemand om te bellen, geen persoon die namens een kind toestemming mag geven.",
+      "AUTHORITY_REQUIRES_EVIDENCE": "Vul de onderbouwing in wanneer je aanvinkt dat deze persoon toestemming mag geven — leg vast hóe het gezag is vastgesteld."
     },
     "search": {
       "label": "Zoeken",
@@ -209,8 +211,12 @@
       "end": "Beëindigen",
       "addTitle": "Relatie toevoegen",
       "add": "Relatie vastleggen",
-      "relativeId": "Id van de andere persoon",
-      "relativeIdHelp": "Kopieer het id uit de adresbalk op de pagina van die persoon.",
+      "search": "Zoek de andere persoon op naam",
+      "searchPlaceholder": "Naam, lidnummer of leerlingnummer",
+      "searchSubmit": "Zoeken",
+      "searchDenied": "Je mag geen personen zoeken. De benodigde rechten: {permission}.",
+      "noResults": "Geen personen gevonden voor “{query}” binnen jouw bereik.",
+      "pick": "Kies persoon",
       "noGuardians": "Niemand is vastgelegd als verantwoordelijke voor deze persoon.",
       "noDependants": "Deze persoon is voor niemand vastgelegd als verantwoordelijke."
     },
