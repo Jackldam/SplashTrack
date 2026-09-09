@@ -1,5 +1,12 @@
 # 12 — Revision: open-source, self-hosted product
 
+> ## ⚠️ HISTORY — NOT AN IMPLEMENTATION SOURCE
+> This chapter records **how the design changed** (single-tenant → open-source self-hosted) and why.
+> It is kept for traceability of reasoning only. **Do not implement from
+> it and do not cite it as a requirement.** The active chapters (00–10, 13,
+> 14) are consolidated and authoritative; if this note appears to
+> contradict them, they are right and this note is stale.
+
 **Date:** 2026-08-31 · **Requested by:** Jack · **Supersedes the operational
 half of `11-revision-single-tenant.md`.**
 

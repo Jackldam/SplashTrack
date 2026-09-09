@@ -59,27 +59,60 @@ defaults.
 **Trade-off.** Two containers rather than one; operators wanting a managed
 database point `DATABASE_URL` elsewhere. Acceptable and expected.
 
-Non-negotiable properties of the image:
+#### Target properties of the image — and what is actually true today
 
-- **No default credentials, ever.** Secrets are generated on first run and
-  written to the data volume; the app refuses to start with a placeholder value.
-- **First-run setup wizard in-app** — create the first administrator, force MFA
-  enrolment, set organisation name and branding. Replaces D-028's script.
-- **Migrations run automatically on start**, forward-only, logged, and safe to
-  interrupt.
-- **All configuration via environment variables**, documented in one place. No
-  configuration file editing required for a standard install.
-- **Runs as non-root**, read-only root filesystem, no build tools in the final
-  layer, multi-stage build, pinned base image, published SBOM.
-- **Health and readiness endpoints** so an operator's own monitoring works.
-- **Backup and restore commands shipped with the image**, because a self-hoster
-  who cannot restore has no backups (§2).
+An earlier draft of this section listed six "non-negotiable properties of the
+image" as though they described the artifact we have. At the time they did not:
+the Dockerfile was a self-described *"development/Sprint-0 image"* — single-stage,
+`FROM node:22-alpine` with no digest pin, `npm ci` including devDependencies, the
+full source tree in the final layer, and the process running as root. Two further
+bullets in that list were not merely unmet but *wrong*: "all configuration via
+environment variables" inverts the whole of chapter 13, and "secrets are
+generated on first run and written to the data volume" is incompatible with
+restore (the archive would then contain its own key — F-96).
+
+Phase 1.0 built most of it. The list below is therefore stated as **targets with
+their current status**, not as a description, and the status is dated — an
+implementer must be able to tell which of these they still have to build, and a
+row that says "to build" against built work is how work gets done twice. Finding
+**F-102**.
+
+| Property | Status | Where it is specified |
+|---|---|---|
+| **No default credentials, ever.** The app refuses to start on a placeholder value. Bootstrap key material is operator-supplied via `SECRET_KEY_FILE`; the application never writes key material to the data volume | **Built** — `src/lib/crypto/secret-key.ts` | `13-…` §3.1.1 (D-112) |
+| **Bootstrap secrets only in the environment.** All runtime configuration is database-backed and edited in-app | **Partly built** — the two credentials and `SECRET_KEY_FILE` are environment-only; the in-app settings surface is not built | `13-…` §3 (D-036/D-037) |
+| **First-run setup wizard in-app** — first administrator, forced MFA, organisation name, branding. Replaces D-028's script | **Built** — three steps; branding and the steps behind the export and mail engines are not, and `13-…` §6.3 says which | `13-…` §6.3 (D-039, D-185, D-187) |
+| **Migrations never run against a database whose state is unknown.** The entrypoint detects state first; migration is a consequence of that state | **Built** — `src/lib/boot/state.ts`, eight states | `13-…` §6 (D-055, D-098, D-186) |
+| **The runtime database role is not a superuser and owns nothing** — a separate non-connecting owner role owns the schema; the runtime role holds `USAGE` plus DML. Stated where it is decided, not restated here (D-134) | **Built** — `infra/provision-roles.sql`, `src/lib/database/role-model.ts`, phase 1.2 | `14-…` §4.2.1 (D-116 as amended by **D-182**), `docs/adr/0002-database-roles-and-least-privilege.md` §7 |
+| **Runs as non-root**, multi-stage build, no build tools or devDependencies in the final layer, digest-pinned base image | **Built** — four stages, `USER splashtrack` (`Dockerfile:179`), `node:22-alpine@sha256:c610fcdf…` (`:57`), `npm ci --omit=dev` (`:117`) | Phase 1.0 |
+| **Read-only root filesystem and a published SBOM** | **To build.** `Dockerfile:31-32` names both as deliberately not done here: the SBOM is a CI concern, the read-only rootfs a compose concern | Phase 1.0 report, "not done here" |
+| **`postgresql-client` deliberately ABSENT** — `pg_dump`/`pg_restore` are out of scope, not a fallback (D-169), so shipping the client would ship tooling for a mechanism this version does not have | **Absent, and that is the target** — `Dockerfile:48` | `14-…` §4.2.1 (D-169) |
+| **Health and readiness endpoints** so an operator's own monitoring works | **Built** — `src/app/api/health/route.ts`, `src/app/api/ready/route.ts` | — |
+| **Backup and restore commands shipped with the image**, because a self-hoster who cannot restore has no backups | **To build** — the export/restore engine is unbuilt, which is also why the wizard has no restore branch | `14-…` §3, §4 |
+
+**Status column re-run against the tree on 2026-09-05.** The
+column above had gone stale in the direction that costs the most: it described
+built work as *"to build"* and named `postgresql-client`'s absence as a gap when
+D-169 makes that absence the target. Evidence is
+`docs/build/phase-1.0-deployment-and-breakglass-report.md` and the files cited in
+each row. **Re-run this column against the repository before trusting it**; a
+status table is a claim about a moment, and this one is dated on purpose.
+
+**D-095** (stated in `14-…` §3.1, not restated here) makes the backup a
+structured logical export the application writes and reads itself rather than a
+raw SQL dump. It is named here only because it changes what the image must
+contain.
+
+The lifecycle of `SECRET_KEY` is stated **once**, authoritatively, in
+`13-configuration-and-setup.md` §3.1.1. This chapter does not restate it, and
+neither does `14-backup-restore-upgrade.md`; both point at it. Finding **F-95**.
 
 ### 1.3 Structure inside an instance
 
 Unchanged from the single-tenant revision. `Organization` is an enforced
 singleton (D-027); `OrganizationUnit` provides the internal hierarchy that the
-scoped authorization model (`02-security-privacy.md` §2) walks.
+scoped authorization model (`02-security-privacy.md` §2) scopes against. `UNIT`
+is flat in v1 and no scope type walks a tree (D-121).
 
 ---
 
@@ -112,17 +145,28 @@ identifiers, no counters, no server-side logging we control.
 **Trade-off.** We learn nothing about adoption, usage or which features matter.
 Accepted; that information is not ours.
 
+**What the request nevertheless discloses.** "Sends nothing" is not exact and
+the design's credibility rests on claims like this being exact. Every HTTPS
+request necessarily discloses your server's IP address and a User-Agent to the
+host serving the file, and therefore that this organisation runs SplashTrack, at
+this address. The application fetches the **complete** advisories file rather
+than querying per version, so the request reveals nothing about which version is
+running, and "no server-side logging we control" concedes rather than answers
+the point. It is disabled with `update.check.enabled = false`. The default stays
+**on**: F-17 names unpatched instances as the single biggest residual risk.
+Finding **F-131**.
+
 ---
 
 ## 3. Open-source considerations
 
 | Concern | Position |
 |---|---|
-| **Licence** | To be chosen — see OD-13. The choice materially affects whether a competitor may run SplashTrack as a paid hosted service |
+| **Licence** | **AGPL-3.0** (D-067, closes OD-13). Chosen over the GPL-3.0 the repository already carried because GPL copyleft triggers on distribution, not network use — and SplashTrack is software that is *run as a service*. AGPL §13 is what stops a competitor hosting a modified SplashTrack for swim schools while publishing nothing |
 | **Security by design, not obscurity** | The source is public, so every control in this design must hold against an attacker who has read it. Nothing here relies on secrecy — which was already true, and is now enforced |
 | **Supply chain** | Pinned dependencies, lockfile, Dependabot, `npm audit` gate, signed images, published SBOM, provenance attestation. A compromised dependency now ships to every self-hoster (F-18) |
 | **Secrets** | No secret may ever be committed. Push protection and secret scanning are mandatory, and a leaked secret in history is permanent in a public repo |
-| **Contributions** | `CONTRIBUTING.md`, DCO or CLA (OD-13), and a rule that security-relevant changes require maintainer review regardless of author |
+| **Contributions** | `CONTRIBUTING.md` with a **DCO sign-off** requirement (F-28), and a rule that security-relevant changes require maintainer review regardless of author. The DCO must be in place before the first genuine external contribution: after that point, relicensing needs every contributor's agreement — the constraint that nearly cost us D-067 |
 | **Issue hygiene** | Public issues may contain a self-hoster's logs or screenshots. The template must warn against pasting personal data, and maintainers redact |
 | **Documentation is a feature** | For a self-hosted product, install and upgrade documentation is as load-bearing as the code. It ships in the repo and is versioned with it |
 
@@ -202,4 +246,9 @@ administrative act.
 ### 5.4 Caching
 
 Public pages are cached (ISR or equivalent). The tenant-in-cache-key hazard
-(previously FM-6) is gone. Portal pages are never cached across users.
+(previously FM-6) is reduced by single-tenancy, not eliminated: any public page
+rendering session-dependent chrome — a "logged in as…" nav — would cache one
+visitor's view for every other visitor. Therefore **public pages are rendered
+with no session read at all**, which is what makes D-017's structural claim true
+at the rendering layer and not only at the data layer. Portal pages are never
+cached across users. Finding **F-132**.

@@ -1,38 +1,318 @@
+# The reference deployment (D-033): one application image, plus PostgreSQL as a
+# second service.
+#
+# Bundling Postgres INSIDE the application image would trap the data in a
+# container and break every upgrade and backup story, so the image stays
+# app-only and the database is a service here. An operator with a managed
+# database deletes the `postgres` service below and repoints `DATABASE_URL` —
+# nothing else in this file changes.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THE APP SERVICE CARRIES NO DEFAULTS, AND THAT IS THE POINT
+#
+# `${DATABASE_URL:?…}` is Compose's required-variable form: an unset value stops
+# `docker compose up` with the message after the colon rather than starting an
+# instance against something unintended. `03-deployment-model.md` §1.2 lists "no
+# default credentials, ever" first among the properties this image must have,
+# and a connection string with a default in the reference compose file would
+# make that claim false for every operator who never changed it.
+#
+# Put the values in a `.env` file beside this one — Compose reads it
+# automatically, and it is gitignored:
+#
+#     DATABASE_URL=postgresql://splashtrack_app:<app-password>@postgres:5432/splashtrack
+#     DATABASE_MAINTENANCE_URL=postgresql://splashtrack_retention:<retention-password>@postgres:5432/splashtrack
+#     BETTER_AUTH_URL=http://your-host:3000
+#     POSTGRES_PASSWORD=<the superuser password, used only to provision>
+#     SPLASHTRACK_APP_PASSWORD=<app-password, same as in DATABASE_URL>
+#     SPLASHTRACK_RETENTION_PASSWORD=<retention-password, same as above>
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# TWO CONNECTION STRINGS, AND WHY (D-182, ADR-0002)
+#
+# A connection to PostgreSQL carries a username, and that username decides what
+# the connection may do. One username for everything means every part of the
+# application can do everything — including the parts an attacker reaches first.
+#
+# SplashTrack keeps an audit trail: an append-only log of who looked at which
+# child's medical note, who changed an exam result, who exported the member
+# list. After a breach it is what answers "what happened, to whom, and when",
+# and its value depends entirely on being unfalsifiable. If the web application
+# and the audit trail share a username, anything that hijacks the web
+# application inherits the ability to erase the record of doing so — the log
+# guarded by the same key as the door it watches.
+#
+# So `DATABASE_URL` names a role that may ADD audit rows and never change or
+# remove them, and `DATABASE_MAINTENANCE_URL` names the one that may delete them
+# — used by retention, which runs on a schedule and writes a signed checkpoint
+# accounting for what it removed, and by `prisma migrate deploy`.
+#
+# `POSTGRES_USER` below is now the PROVISIONING SUPERUSER and appears in neither.
+# That is the fix: it is created by the Postgres image as a superuser, and a
+# superuser is not "read the data" — via `COPY … FROM PROGRAM` it is command
+# execution in the database container.
+#
+# The three roles are created for you when the volume is first initialised (see
+# the `postgres` service). Nothing to run by hand on a fresh install.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The bootstrap secret is NOT among them: it is a FILE (D-112), mounted as a
+# Docker secret below. Generate it once, BEFORE the first `up` —
+#
+#     docker compose run --rm secret-init
+#
+# — and keep a copy with your backups. The backup archive alone cannot recover
+# an instance without it (D-166).
+#
+# THAT COMMAND USED TO NAME THE `app` SERVICE, AND COULD NEVER HAVE WORKED.
+# `secrets.splashtrack_secret_key.file` at the bottom of this file points at
+# `./secrets/secret_key`, and Docker refuses to CREATE a container whose
+# bind-mount source is missing:
+#
+#     invalid mount config for type "bind": bind source path does not exist
+#
+# So the documented way to generate the key required the key to already exist,
+# and the first thing a new self-hoster met was a mount error with no
+# instruction attached. `secret-init` below is a separate service that does not
+# mount the secret, which is what lets it be the thing that creates it.
+#
+# FIRST RUN. There is no public self-registration; an instance is set up in a
+# BROWSER, at BETTER_AUTH_URL/setup (D-039, D-187). The wizard is gated by a
+# one-time token the container writes to its data volume — host access is the
+# proof of ownership every privileged operation here rests on, and the token is
+# in a FILE rather than in the log because logs get pasted into public issues
+# (D-101, F-99):
+#
+#     docker compose up -d
+#     docker compose exec app cat /app/data/setup-token
+#
+# Then open /setup, enter that token, name the organisation, choose the first
+# administrator's password, and scan the QR code with an authenticator. Setup is
+# not complete until that second factor is verified (D-185) — and when it is,
+# /setup closes for good.
+#
+# Until then the instance stays in setup mode, which it restarts into safely, as
+# often as you like. `splashtrack admin:create` still exists as the host path for
+# an instance the wizard cannot finish; it is break-glass, not the front door.
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  web:
+  # ── secret-init — the one-shot that makes the first `up` possible ──────────
+  #
+  # It exists because the `app` service cannot generate the bootstrap secret:
+  # the secret is bind-mounted into it, and a missing bind source is a container
+  # that Docker will not create. See the header.
+  #
+  # `profiles` keeps it out of `docker compose up` entirely. `docker compose run
+  # secret-init` activates the profile on its own, so there is nothing extra to
+  # type and nothing extra running afterwards.
+  #
+  # IT RUNS AS ROOT, AND ONLY THIS ONE DOES. `./secrets` is created by Docker as
+  # root when it does not exist, and the container's runtime user (uid 10001)
+  # cannot write into a root-owned directory — which is the SECOND thing that
+  # stopped a fresh install, after the mount error. Rather than ask an operator
+  # to chown a directory to a uid they have never heard of, this service fixes
+  # the ownership itself and hands both the directory and the key to 10001,
+  # which is exactly the ownership `secrets:` needs to mount them readably.
+  #
+  # Nothing of the application runs here: the entrypoint is replaced by a shell,
+  # and `secret:init` imports `node:crypto` and `node:fs` and nothing else (see
+  # src/cli/commands/secret.ts). It refuses to overwrite an existing key, so
+  # running it twice is safe.
+  secret-init:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
-    env_file:
-      - apps/web/.env.example
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      APP_BASE_URL: http://localhost:3000
-      DATABASE_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
-      DIRECT_URL: postgresql://splashtrack:splashtrack@postgres:5432/splashtrack
-    ports:
-      - '3000:3000'
+    image: splashtrack:local
+    profiles: ['setup']
+    user: '0:0'
+    volumes:
+      - ./secrets:/app/secrets
+    entrypoint: ['/bin/sh', '-euc']
+    command:
+      - |
+        splashtrack secret:init --out /app/secrets/secret_key
+        chown 10001:10001 /app/secrets /app/secrets/secret_key
+        chmod 0700 /app/secrets
+        chmod 0600 /app/secrets/secret_key
+        echo ''
+        echo 'Keep a copy of ./secrets/secret_key with your backups. A backup'
+        echo 'archive cannot be restored without it (D-166), and nothing can'
+        echo 'regenerate it — every encrypted value derives from this key.'
+        echo ''
+        echo 'Next: docker compose up -d'
+
+  app:
+    build:
+      context: .
+    image: splashtrack:local
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      # The four application-owned variables D-037 permits, and nothing else.
+      # None of the three set here has a default — see the header.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env; there is deliberately no default}
+      # The second credential (D-182). The container needs it because D-181
+      # makes upgrades apply migrations unattended, and because the audit
+      # exception has to be re-applied after each one. Its ADR is
+      # docs/adr/0002-database-roles-and-least-privilege.md §8.
+      DATABASE_MAINTENANCE_URL: ${DATABASE_MAINTENANCE_URL:?set DATABASE_MAINTENANCE_URL in .env; see ADR-0002 — it is the retention role, and migrations run through it}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env to this instance's public origin}
+      # The fourth: a path to a mounted file, never the secret itself.
+      SECRET_KEY_FILE: /run/secrets/splashtrack_secret_key
+    secrets:
+      - splashtrack_secret_key
+    volumes:
+      # `$DATA_DIR`, and the ONE writable path in the container: D-101's setup
+      # token, the MFA enrolment artefacts `admin:reset-mfa` writes, and the
+      # migration acknowledgement marker. The image creates it owned by uid
+      # 10001 at mode 0700.
+      #
+      # NO KEY MATERIAL LIVES HERE (D-113, F-96): the backup archive captures
+      # this tree, so a `SECRET_KEY` under it would put an archive's own
+      # decryption key inside the archive.
+      - splashtrack-data:/app/data
+      # ── `./secrets` IS NOT MOUNTED INTO THIS SERVICE, DELIBERATELY ─────────
+      #
+      # It used to be, "so `secret:init` can write here" — and that was never
+      # true: the `secret-init` service below has its own mount, and it has to,
+      # because it is the service that CREATES the directory. So this mount
+      # served nothing, and it cost two things.
+      #
+      # It BROKE, first. Docker creates a missing bind source as root, so
+      # `./secrets` arrives root-owned; the container runs as uid 10001, which
+      # cannot traverse a 0700 root-owned directory. Anything inside `/app/secrets`
+      # was therefore unreadable to the application — measured on the UAT host on
+      # 2026-09-04, where a `--password-file` under it could not be opened at
+      # all. Fixing the mode on one host is not a fix; removing the mount is.
+      #
+      # And it WIDENED the surface D-112 exists to narrow. The bootstrap secret
+      # reaches this container as a Docker secret at a single read-only path,
+      # `/run/secrets/splashtrack_secret_key`. Bind-mounting the whole directory
+      # it came from gives a compromised web process the key AND anything else
+      # the operator keeps beside it, by a second route nothing needed.
+      #
+      # Generate the key with `docker compose run --rm secret-init`.
+    ports:
+      # `APP_PORT` is a COMPOSE variable, not an application one: it chooses
+      # which host port maps to the container's 3000. It is not part of D-037's
+      # surface — the application never reads it — and it exists because a host
+      # that already has something on 3000 should not need this file edited.
+      # Whatever you choose here must match BETTER_AUTH_URL.
+      # BOUND TO LOOPBACK. A published port bypasses the host firewall entirely:
+      # Docker DNATs it through nat/FORWARD, which ufw's INPUT rules never see.
+      # That is exactly how Postgres sat open to the internet for 22 hours on
+      # 2026-09-03 (docs/build/incident-2026-09-03-exposed-postgres.md). Put a
+      # reverse proxy in front; do not expose this directly.
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: splashtrack
+      # THE PROVISIONING SUPERUSER, and nothing else (D-182). The Postgres image
+      # creates this role as a superuser; what changed in ADR-0002 is that
+      # `DATABASE_URL` no longer points at it. It exists to run
+      # `infra/provision-roles.sql` once, below, and is then unused — the
+      # application connects as `splashtrack_app` and `splashtrack_retention`.
       POSTGRES_USER: splashtrack
-      POSTGRES_PASSWORD: splashtrack
-    ports:
-      - '5432:5432'
+      # NO DEFAULT, for the same reason DATABASE_URL has none. The previous
+      # `${POSTGRES_PASSWORD:-splashtrack}` was described here as "safe on a
+      # laptop and only there" — and it was not, because the line below
+      # published the port on every interface. That combination was live on the
+      # UAT host: `splashtrack:splashtrack` on 0.0.0.0:5432, reachable from the
+      # internet, on a role the Postgres image creates as a SUPERUSER — which
+      # via `COPY … FROM PROGRAM` is command execution, not merely data access.
+      # A default credential is only ever one misconfiguration away from being
+      # the whole authentication story, so there is not one.
+      #
+      # NOTE: this variable is read by the Postgres image ONLY when it
+      # initialises a fresh volume. Changing it later changes nothing; the
+      # password lives in the volume. `ALTER ROLE splashtrack PASSWORD …` is
+      # what changes it on an existing one.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env; there is deliberately no default}
+
+      # ── The two role passwords the init hook below needs ──────────────────
+      #
+      # COMPOSE variables, not application ones: they are read by the Postgres
+      # image's init hook and never by SplashTrack, exactly like
+      # POSTGRES_PASSWORD and APP_PORT. They are not part of D-037's surface.
+      #
+      # They must match the passwords inside DATABASE_URL and
+      # DATABASE_MAINTENANCE_URL. That duplication is unavoidable and is stated
+      # rather than hidden: the image needs the password as a value to create
+      # the role with, and the application needs it inside a URL to connect
+      # with, and no default would be safe for either.
+      SPLASHTRACK_APP_PASSWORD: ${SPLASHTRACK_APP_PASSWORD:?set SPLASHTRACK_APP_PASSWORD in .env; it must match the password in DATABASE_URL}
+      SPLASHTRACK_RETENTION_PASSWORD: ${SPLASHTRACK_RETENTION_PASSWORD:?set SPLASHTRACK_RETENTION_PASSWORD in .env; it must match the password in DATABASE_MAINTENANCE_URL}
+
+      # CREATEDB on the retention role. `off` for any real deployment: nothing
+      # in production ever creates a database — the entrypoint runs
+      # `migrate deploy`, never `CREATE DATABASE`. It exists because a CHECKOUT
+      # runs `npm test`, and the harness builds its own `_test` and throwaway
+      # databases (ADR-0002 §6). CREATEDB is not SUPERUSER, and the distinction
+      # is the whole of §6.
+      SPLASHTRACK_PROVISION_CREATEDB: ${SPLASHTRACK_PROVISION_CREATEDB:-off}
     volumes:
+      # ── Role provisioning, run for the operator ───────────────────────────
+      #
+      # OD-15 fixes the supported operator at "comfortable with `docker compose`
+      # on a host they control", and says plainly that this is NOT thereby
+      # comfortable with PostgreSQL role grants. A README asking for four
+      # `CREATE ROLE` statements as a superuser is a step most installs skip,
+      # and an install that skips it runs the web application as a superuser.
+      # So the compose file does it: this is what "documentation that executes"
+      # means.
+      #
+      # The image runs everything in /docker-entrypoint-initdb.d as the
+      # superuser, once, before the server accepts its first outside
+      # connection. The .sql is mounted OUTSIDE that directory on purpose — the
+      # image would otherwise run it a second time without the psql variables
+      # it needs, and fail.
+      #
+      # FRESH VOLUMES ONLY. An existing instance keeps its superuser until an
+      # operator runs the same SQL by hand; the command is in the file's header.
+      - ./infra/postgres-init:/docker-entrypoint-initdb.d:ro
+      - ./infra/provision-roles.sql:/opt/splashtrack/provision-roles.sql:ro
       - splashtrack-postgres-data:/var/lib/postgresql/data
+    ports:
+      # LOOPBACK ONLY, and deliberately not a variable.
+      #
+      # `'5432:5432'` binds 0.0.0.0. Docker's published ports are DNAT'd in the
+      # nat table and traverse FORWARD, so they do NOT pass through the INPUT
+      # chain where ufw's rules live — a host with `ufw` "enabled" still hands
+      # this port to the internet, and `DOCKER-USER` is empty by default. The
+      # application does not need this mapping at all (it reaches the database
+      # over the compose network at `postgres:5432`); it exists so `npm test`
+      # and `prisma` can run from the host, which is loopback by definition.
+      #
+      # An operator who genuinely needs remote access edits this line and takes
+      # the decision knowingly. Leaving it a variable makes re-exposing it a
+      # typo away, which is how it happened the first time.
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U splashtrack -d splashtrack']
       interval: 5s
       timeout: 5s
       retries: 10
 
+secrets:
+  splashtrack_secret_key:
+    # A Docker secret rather than an environment variable (D-112). An env var is
+    # readable through `docker inspect`, /proc/<pid>/environ, crash dumps and —
+    # most commonly — the operator's own compose file, committed.
+    #
+    # OWNERSHIP MATTERS HERE. Compose bind-mounts a `file:` secret with the
+    # host file's own uid and mode, so a key written by root at 0600 is
+    # unreadable to the container's user (uid 10001) and the container refuses
+    # to start with exactly that message. Generating the key THROUGH this
+    # compose file avoids it entirely — the command in the header runs as uid
+    # 10001, so the file it creates is already owned correctly. For a key that
+    # came from somewhere else: `chown 10001:10001 ./secrets/secret_key`.
+    file: ./secrets/secret_key
+
 volumes:
   splashtrack-postgres-data:
+  splashtrack-data:
