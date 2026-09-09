@@ -9,6 +9,8 @@ import {
 } from "@/modules/groups";
 import { listCriteriaForGroup, SKILL_PROGRESS_STATES } from "@/modules/skills";
 
+import { LiveSearchPicker } from "@/components/live-search-picker/live-search-picker";
+
 import { courseLevelOptionLabel } from "@/app/courses/format";
 import { recordSkillProgressAction } from "@/app/skills/actions";
 import { guarded, requireSignedIn } from "../access";
@@ -442,16 +444,27 @@ export default async function GroupDetailPage({
 
       <details className="mb-4">
         <summary>{t("groups.place.title")}</summary>
+        {/* A pupil already a member of this group is excluded client-side —
+            placing them again would only earn the `sameGroup` refusal
+            (`placeStudentInGroup`) they did nothing to deserve. The picker
+            calls the same reach-narrowed search the guest picker and the
+            relative picker use (`/api/people/student-candidates`,
+            `student-candidate-filter.ts` unchanged); the id travels in the
+            hidden field it fills, typed by nobody. The write itself stays
+            authorized exactly as before — `groups.assign_members` on THIS
+            group, checked in `placeStudentInGroup` regardless of what the
+            search returns. */}
         <form action={placeStudentAction} className="row g-2 mt-2">
           <input type="hidden" name="groupId" value={group.id} />
           <div className="col-md-4">
-            <label className="form-label" htmlFor="placeStudentProfileId">
-              {t("groups.place.studentProfileId")}
-            </label>
-            <input
-              className="form-control"
-              id="placeStudentProfileId"
+            <LiveSearchPicker
               name="studentProfileId"
+              label={t("groups.place.search")}
+              placeholder={t("groups.place.searchPlaceholder")}
+              searchUrl="/api/people/student-candidates"
+              excludeIds={group.members.map(
+                (member) => member.studentProfileId,
+              )}
               required
             />
           </div>

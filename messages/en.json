@@ -433,7 +433,8 @@
     },
     "place": {
       "title": "Place a pupil",
-      "studentProfileId": "StudentProfile id",
+      "search": "Search pupil by name",
+      "searchPlaceholder": "Name or student number",
       "fromDate": "From",
       "reason": "Reason",
       "override": "Place above capacity (a deliberate choice, and it is recorded)",

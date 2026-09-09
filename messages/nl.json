@@ -433,7 +433,8 @@
     },
     "place": {
       "title": "Leerling plaatsen",
-      "studentProfileId": "StudentProfile-id",
+      "search": "Zoek leerling op naam",
+      "searchPlaceholder": "Naam of leerlingnummer",
       "fromDate": "Vanaf",
       "reason": "Reden",
       "override": "Boven de capaciteit plaatsen (bewuste keuze, wordt vastgelegd)",
