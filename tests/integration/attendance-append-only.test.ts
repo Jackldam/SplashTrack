@@ -2,68 +2,63 @@
  * Is attendance append-only, or only claimed to be?
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * WHY THIS FILE EXISTS
+ * WHY THIS FILE EXISTS — AND WHAT CHANGED IN PHASE 2.2
  *
  * `00-overview.md` P-07 states as a v1 property: *"Audit, attendance and
- * progress are append-only and queryable"*. For the audit trail that claim is
- * tested at the database level in `database-role-model.test.ts` — the runtime
- * role holds `INSERT`+`SELECT` on `AuditEvent` and nothing else, proved by
- * attempting the forbidden statements and watching PostgreSQL refuse them.
+ * progress are append-only and queryable"*. An earlier version of this file
+ * existed to keep a GAP loud: there was no attendance model at all, and the
+ * nearest table (`SessionRosterEntry`, the roster) was ordinarily mutable. Its
+ * own banner said what green would mean: *"a real `Attendance` module shipped
+ * with its own carve-out (mirroring `auditGrantStatements`)"*.
  *
- * Attendance has no equivalent test, for a reason this file makes explicit:
- * `src/modules/sessions/index.ts` says outright *"Attendance, in any form...
- * is out of scope for this pass"* (D-057), and there is no `Attendance` model
- * in `prisma/schema.prisma` at all. The nearest thing that exists is
- * `SessionRosterEntry` — the lesson ROSTER (who is invited), not an attendance
- * REGISTER (who showed up) — tagged `@dataClass ATTENDANCE_EVENTS` purely for
- * retention purposes (`src/lib/retention/data-class-registry.ts`), with a
- * comment on the model itself naming the still-to-be-built step: *"the `GROUP`
- * value exists for the future step that FREEZES a roster once attendance has
- * been registered against it"*.
+ * That is what phase 2.2 did. `AttendanceEvent` exists, and
+ * `attendanceGrantStatements` (`src/lib/database/role-model.ts`, documented in
+ * `infra/attendance-database-role.sql`) gives the runtime role `SELECT,
+ * INSERT` and nothing else — so this file now proves the CONTROL the same way
+ * `database-role-model.test.ts` proves the audit exception: by attempting the
+ * forbidden statements against the real database as the real runtime role and
+ * watching PostgreSQL refuse them.
  *
- * `role-model.ts` and `auditGrantStatements()` carve the append-only exception
- * out for exactly two tables — `AuditEvent` and `AuditCheckpoint`. Every other
- * table, `SessionRosterEntry` included, receives the ordinary blanket grant in
- * `databaseProvisionStatements()`: `GRANT SELECT, INSERT, UPDATE, DELETE ... TO
- * splashtrack_app`. So the runtime role that the web process connects as CAN
- * update and delete roster rows today, and the application itself does so
- * (`roster-service.ts` calls `tx.sessionRosterEntry.delete(...)` when a guest
- * is removed from a lesson).
+ * TWO DELIBERATE ASYMMETRIES, ASSERTED RATHER THAN ASSUMED:
  *
- * This test proves that directly, against the real database and the real
- * runtime role, the same way `database-role-model.test.ts` proves the audit
- * exception. IT IS EXPECTED TO FAIL while the gap stands: the properly
- * append-only assertions below (no UPDATE, no DELETE) do not hold today. A
- * green run of this file is the signal that either a real `Attendance` module
- * shipped with its own carve-out (mirroring `auditGrantStatements`), or that
- * `SessionRosterEntry` gained the same protection. Until then, red here is
- * correct and is the evidence for the gap, not a broken test.
+ *   - `SessionRosterEntry` STAYS ordinarily mutable. The roster is PLANNING
+ *     (who is expected — a guest is added and removed by design,
+ *     `removeGuestFromSession` deletes the row); the register is EVIDENCE.
+ *     The append-only property belongs to the evidence.
+ *   - Erasure still works. The runtime role cannot delete an attendance row,
+ *     but deleting a pupil's `StudentProfile` cascades — a referential action
+ *     runs with the OWNER's privileges — which is exactly the mechanism the
+ *     erasure registry relies on.
+ *
+ * `SkillProgress` — P-07's third member — has NO carve-out yet; its
+ * append-only property is still module code only. That difference is an open
+ * item in the phase 2.2 report, not an accident, and it is asserted below so
+ * that closing it forces this file to say so.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/database";
 import { roleNameFrom } from "@/lib/database/role-model";
-
-/** The role this environment actually connects as — not the reference name. */
-const APP_ROLE = roleNameFrom(process.env.DATABASE_URL as string);
-import {
-  createPool,
-  createRecurrence,
-  generateSessions,
-} from "@/modules/sessions";
+import { registerSessionAttendance } from "@/modules/attendance";
 
 import {
+  aid,
+  ATTENDANCE_ADMIN_PERMISSIONS,
   grantTo,
-  GROUPS_ADMIN_PERMISSIONS,
   installRealRelations,
   makeGroup,
+  makeLesson,
   makePerson,
   makeRole,
   makeStudent,
-  resetGroupsFixtures,
-} from "../support/groups-fixtures";
+  placeInGroup,
+  resetAttendanceFixtures,
+} from "../support/attendance-fixtures";
 
-const NOW = new Date("2026-03-18T12:00:00.000Z");
+/** The role this environment actually connects as — not the reference name. */
+const APP_ROLE = roleNameFrom(process.env.DATABASE_URL as string);
+
+const NOW = new Date("2026-03-10T18:00:00.000Z");
 
 let adminId: string;
 
@@ -75,151 +70,121 @@ beforeAll(() => {
   installRealRelations();
 });
 
-async function clearFacilities(): Promise<void> {
-  await prisma.lane.deleteMany({});
-  await prisma.pool.deleteMany({});
-}
-
 beforeEach(async () => {
-  await resetGroupsFixtures();
-  await clearFacilities();
-
-  adminId = await makePerson("attendance_admin_person");
+  await resetAttendanceFixtures();
+  adminId = await makePerson("ao_admin");
   await grantTo({
     personId: adminId,
-    roleId: await makeRole("role_attendance_admin", [
-      ...GROUPS_ADMIN_PERMISSIONS,
-    ]),
+    roleId: await makeRole("ao_role_admin", ATTENDANCE_ADMIN_PERMISSIONS),
     scopeType: "ORGANIZATION",
   });
 });
 
 afterAll(async () => {
-  await resetGroupsFixtures();
-  await clearFacilities();
+  await resetAttendanceFixtures();
 });
 
-/** One real lesson, produced through the actual scheduling path. */
-async function aLesson(suffix: string): Promise<{ sessionId: string }> {
-  const groupId = await makeGroup(`att_${suffix}`);
-  const pool = await createPool(admin(), {
-    name: `Bad ${suffix}`,
-    lengthMetres: 25,
+/** One registered attendance row, written through the real service. */
+async function aRegisteredRow(suffix: string) {
+  const groupId = await makeGroup(`ao_${suffix}`);
+  const pupil = await makeStudent(`ao_p_${suffix}`);
+  await placeInGroup(groupId, pupil.studentProfileId);
+  const sessionId = await makeLesson(groupId, `ao_${suffix}`);
+  await registerSessionAttendance(admin(), sessionId, {
+    entries: [
+      {
+        studentProfileId: pupil.studentProfileId,
+        state: "ABSENT",
+        clientEventId: aid(`ce_ao_${suffix}`),
+      },
+    ],
   });
-  await createRecurrence(admin(), groupId, {
-    poolId: pool.id,
-    weekday: 2,
-    startTime: "18:00",
-    durationMinutes: 45,
-    startsOn: "2026-03-01",
-    endsOn: "2026-03-31",
+  const event = await prisma.attendanceEvent.findFirstOrThrow({
+    where: { sessionId },
   });
-  await generateSessions(admin(), groupId, {
-    from: "2026-03-01",
-    to: "2026-03-31",
-  });
-  const session = await prisma.scheduledSession.findFirstOrThrow({
-    where: { groupId },
-    select: { id: true },
-  });
-  return { sessionId: session.id };
+  return { groupId, sessionId, pupil, event };
 }
 
-describe("the nearest thing attendance has today: SessionRosterEntry", () => {
-  it(
-    "the runtime role holds UPDATE and DELETE on it, so it is not append-only " +
-      "at the database level (only AuditEvent/AuditCheckpoint carry that " +
-      "exception — role-model.ts, auditGrantStatements)",
-    async () => {
-      const privileges = await prisma.$queryRaw<
-        { privilege_type: string }[]
-      >`
-        SELECT privilege_type
-          FROM information_schema.role_table_grants
-         WHERE table_name = 'SessionRosterEntry'
-           AND grantee = ${APP_ROLE}
-         ORDER BY privilege_type
-      `;
-      const granted = new Set(privileges.map((row) => row.privilege_type));
+describe("AttendanceEvent is append-only at the database level (P-07, D-061)", () => {
+  it("the runtime role holds SELECT and INSERT, and nothing else", async () => {
+    const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
+      SELECT privilege_type
+        FROM information_schema.role_table_grants
+       WHERE table_name = 'AttendanceEvent'
+         AND grantee = ${APP_ROLE}
+       ORDER BY privilege_type
+    `;
+    expect(privileges.map((row) => row.privilege_type)).toEqual([
+      "INSERT",
+      "SELECT",
+    ]);
+  });
 
-      // THE CURRENT, UNDESIRED STATE — asserted as a fact so this test fails
-      // loudly (not silently passes) the day someone tightens the grant and
-      // forgets to update this file. See the file banner.
-      expect(granted.has("UPDATE")).toBe(true);
-      expect(granted.has("DELETE")).toBe(true);
-    },
-  );
+  it("an UPDATE against a real row is REFUSED by the database — rewriting who was there is not a thing this application can do", async () => {
+    const { event } = await aRegisteredRow("upd");
 
-  it(
-    "an UPDATE against a real roster row is PERMITTED by the database today " +
-      "— the gap this file exists to make visible",
-    async () => {
-      const { sessionId } = await aLesson("update_gap");
-      const { studentProfileId } = await makeStudent("att_guest_update");
-      const entry = await prisma.sessionRosterEntry.create({
-        data: {
-          sessionId,
-          studentProfileId,
-          source: "GUEST",
-          reason: "inhaalles",
-        },
-        select: { id: true, reason: true },
-      });
-      expect(entry.reason).toBe("inhaalles");
+    await expect(
+      prisma.attendanceEvent.update({
+        where: { id: event.id },
+        data: { state: "PRESENT" },
+      }),
+    ).rejects.toThrow(/permission denied|denied by|not permitted/i);
 
-      // THE ASSERTION AN APPEND-ONLY ATTENDANCE RECORD WOULD REQUIRE: rewriting
-      // history should be refused by the database, exactly as it is for
-      // `AuditEvent`. It is not — this resolves, and the row is changed in
-      // place rather than superseded by a new one.
-      await expect(
-        prisma.sessionRosterEntry.update({
-          where: { id: entry.id },
-          data: { reason: "rewritten after the fact" },
-        }),
-      ).resolves.toMatchObject({ reason: "rewritten after the fact" });
-    },
-  );
+    // Byte-for-byte untouched.
+    await expect(
+      prisma.attendanceEvent.findUniqueOrThrow({ where: { id: event.id } }),
+    ).resolves.toEqual(event);
+  });
 
-  it(
-    "a DELETE against a real roster row is PERMITTED by the database today " +
-      "— the gap this file exists to make visible",
-    async () => {
-      const { sessionId } = await aLesson("delete_gap");
-      const { studentProfileId } = await makeStudent("att_guest_delete");
-      const entry = await prisma.sessionRosterEntry.create({
-        data: { sessionId, studentProfileId, source: "GUEST" },
-        select: { id: true },
-      });
+  it("a DELETE against a real row is REFUSED by the database", async () => {
+    const { event } = await aRegisteredRow("del");
 
-      // An append-only record cannot be made to disappear without trace. This
-      // one can: the row is gone and nothing takes its place.
-      await expect(
-        prisma.sessionRosterEntry.delete({ where: { id: entry.id } }),
-      ).resolves.toMatchObject({ id: entry.id });
-      await expect(
-        prisma.sessionRosterEntry.findUnique({ where: { id: entry.id } }),
-      ).resolves.toBeNull();
-    },
-  );
+    await expect(
+      prisma.attendanceEvent.delete({ where: { id: event.id } }),
+    ).rejects.toThrow(/permission denied|denied by|not permitted/i);
+    await expect(
+      prisma.attendanceEvent.count({ where: { id: event.id } }),
+    ).resolves.toBe(1);
+  });
+
+  it("erasing the PUPIL still takes the rows: the cascade runs as the owner, not as the runtime role", async () => {
+    const { pupil, event } = await aRegisteredRow("erase");
+
+    // The runtime role deletes the profile; the referential action deletes
+    // the attendance rows it could never delete directly.
+    await prisma.studentProfile.delete({
+      where: { id: pupil.studentProfileId },
+    });
+    await expect(
+      prisma.attendanceEvent.count({ where: { id: event.id } }),
+    ).resolves.toBe(0);
+  });
 });
 
-describe("attendance itself — the register of who showed up", () => {
-  it("has no model, no table and no module in this codebase yet", async () => {
-    // Non-vacuous: SessionRosterEntry (the roster, a different thing) DOES
-    // exist, so a query that found nothing because of a typo would not pass
-    // this the way an always-true assertion would.
-    const tables = await prisma.$queryRaw<{ table_name: string }[]>`
-      SELECT table_name FROM information_schema.tables
-       WHERE table_schema = current_schema()
-         AND table_name ILIKE '%attendance%'
+describe("the deliberate asymmetries, so closing either forces this file to say so", () => {
+  it("SessionRosterEntry stays ordinarily mutable — the roster is planning, not evidence", async () => {
+    const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
+      SELECT privilege_type
+        FROM information_schema.role_table_grants
+       WHERE table_name = 'SessionRosterEntry'
+         AND grantee = ${APP_ROLE}
+       ORDER BY privilege_type
     `;
-    expect(tables).toEqual([]);
+    const granted = new Set(privileges.map((row) => row.privilege_type));
+    expect(granted.has("UPDATE")).toBe(true);
+    expect(granted.has("DELETE")).toBe(true);
+  });
 
-    const rosterExists = await prisma.$queryRaw<{ table_name: string }[]>`
-      SELECT table_name FROM information_schema.tables
-       WHERE table_schema = current_schema()
-         AND table_name = 'SessionRosterEntry'
+  it("SkillProgress has NO carve-out yet — P-07's third member is module-code-only, an open item in the phase 2.2 report", async () => {
+    const privileges = await prisma.$queryRaw<{ privilege_type: string }[]>`
+      SELECT privilege_type
+        FROM information_schema.role_table_grants
+       WHERE table_name = 'SkillProgress'
+         AND grantee = ${APP_ROLE}
+       ORDER BY privilege_type
     `;
-    expect(rosterExists).toHaveLength(1);
+    const granted = new Set(privileges.map((row) => row.privilege_type));
+    expect(granted.has("UPDATE")).toBe(true);
+    expect(granted.has("DELETE")).toBe(true);
   });
 });
