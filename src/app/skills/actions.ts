@@ -178,6 +178,7 @@ export async function createCriterionAction(formData: FormData): Promise<void> {
     await createCriterion(await actor(), criterionSetId, {
       code: formData.get("code"),
       name: formData.get("name"),
+      standard: formData.get("standard"),
       sequence: formData.get("sequence"),
       minimumGradeId: formData.get("minimumGradeId"),
     });
@@ -197,6 +198,7 @@ export async function updateCriterionAction(formData: FormData): Promise<void> {
       {
         code: formData.get("code"),
         name: formData.get("name"),
+        standard: formData.get("standard"),
         sequence: formData.get("sequence"),
         minimumGradeId: formData.get("minimumGradeId"),
       },
