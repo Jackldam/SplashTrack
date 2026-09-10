@@ -1,6 +1,6 @@
 # Phase 2.3 — the `assessment` module
 
-**Branch** `build/assessment-module` · **From** `c68f3c0` (916 tests including
+**Branch** `build/assessment-module` · **From** `c68f3c0` (918 tests including
 this phase's own — the pre-existing suite was 868 before this branch) · **Not
 pushed, not merged, not deployed.**
 
@@ -362,21 +362,32 @@ is mandatory, and what this phase built, is that every criterion **starts**
 unset and an outcome is never computed over one left that way. Flagged as a
 deferred convenience, not a compliance gap.
 
-### 1.10 Live browser verification was not performed — a pre-existing worktree limitation, not a new one
+### 1.10 Live browser verification performed after repairing this worktree's dependency installation
 
-`npm run typecheck`, `npm run lint`, `npm run format:check` and the full
-`vitest` suite all pass. `npm run build` (Turbopack) fails in this worktree
-specifically — `node_modules` here is a symlink into the main checkout
-(`/root/projects/SplashTrack/node_modules`, present before this phase
-started), and Turbopack refuses to follow a symlink it reads as pointing
-outside the project root. This is an environment property of the worktree,
-reproducible on a clean checkout of this branch with no changes at all, and
-it blocks both `next build` and (by the same mechanism) `next dev` here. The
-session screen and person screen were reviewed by reading, matched against
-the existing attendance/skills sections' exact structure, and typecheck
-covers every prop and translation key — but nobody clicked through the form
-in a browser. Said plainly rather than claimed: **UI correctness beyond
-static analysis is unverified.**
+The worktree-local `node_modules` symlink into the main checkout was removed
+and replaced by a full `npm install` in this worktree. `npm run dev` then
+started successfully under Turbopack, and `npm run build` completed all route
+generation successfully as well (with the existing, non-failing
+`src/lib/app-version.ts` dynamic-filesystem tracing warning).
+
+The aftest flow was then exercised in real headless Chromium against that dev
+server, using a temporary synthetic lesson and a temporary role that held
+`planning.read`, `assessment.read`, `assessment.record`, `groups.read`,
+`people.read` and `students.read` — deliberately **not**
+`students.notes.read` or `students.notes.write`. The rendered form showed two
+criteria unset by default, showed the sitting-level remark immediately with
+the ordinary-text explanation, accepted grades and the sitting-level remark,
+and returned the visible confirmation *"Aftest vastgelegd."* The submitted
+remark then appeared on the pupil's rendered person page under the aftest
+history. The synthetic domain rows and temporary role were removed after the
+check.
+
+The current UI does not expose a per-criterion remark input or render
+per-criterion result detail; that protected field is therefore not claimable
+as browser-tested. Its unchanged gate is covered at the real service/database
+boundary by `assessment-services.test.ts`: no `students.notes.write` refuses
+the whole write; no `students.notes.read` returns `remark: null` while grades
+survive; an allowed read decrypts once and writes one audit event.
 
 ---
 
@@ -409,12 +420,12 @@ imports `assessment`.
 | Service | `assessment-service.ts`: `recordAssessment`, `getAssessmentsForStudent`, `getEffectiveAssessmentsForStudent`, `qualifyingAftestFacts`, `criteriaForSessionAftest` — all behind `requirePermission` on the new `assessment.*` keys (added to both the catalogue and `02-security-privacy.md` §2.5, §1.4) |
 | UI | The aftest form on the lesson screen (`/groups/[groupId]/sessions/[sessionId]`) — one student, every criterion, default unset, no client-side "mark all" shortcut (§1.9); the read-only aftest history on the person screen (`/people/[personId]`). Dutch and English strings both present, both valid JSON, parity-tested by `message-catalog.test.ts` |
 | Scope-escape tests | `tests/integration/assessment-scope-escape.test.ts` — a `SESSION`-scoped assessor confined to their one lesson; a `GROUP`-scoped instructor's write on their OWN pupil passing the guard but refused `NOT_INDEPENDENT` by the layered domain check, with the override proven separately; the no-grant caller denied outright; `getAssessmentsForStudent`'s `GROUP` narrowing (one row to each group's own reader, both to the organization) |
-| Domain/service tests | `tests/unit/assessment-domain.test.ts`, `tests/integration/assessment-services.test.ts` (21 cases: D-080's pass rule, D-086 completeness, the four-eyes independence check and its override, remark encryption/permission-gating/audit-on-read, P-02 replay, supersession, `qualifyingAftestFacts`), `tests/integration/assessment-constraints.test.ts` |
+| Domain/service tests | `tests/unit/assessment-domain.test.ts`, `tests/integration/assessment-services.test.ts` (23 cases: D-080's pass rule, D-086 completeness, the four-eyes independence check and its override, the distinct sitting-level and criterion-level remark regimes, P-02 replay, supersession, `qualifyingAftestFacts`), `tests/integration/assessment-constraints.test.ts` |
 | `Person`-reference registry | `Assessment.assessorPersonId` and `CriterionWaiver.grantedByPersonId` — `SEVER_AND_RETAIN`, on the `AttendanceEvent.recordedByPersonId`/`SkillProgress.assessedByPersonId` pattern. `AssessmentCriterionResult` references no `Person` directly and correctly takes no entry (it cascades from `Assessment`) |
 | Erasure registry | `Assessment: { kind: "erase" }`, `CriterionWaiver: { kind: "erase" }` |
 | Retention (`DATA_CLASS_BY_MODEL`) | All three models bound to `ASSESSMENT_RESULTS` — the longer, safer of the two regimes the design gives this domain; the shorter `ASSESSMENT_REMARKS` policy is not mechanically enforced by this binding, flagged and left open in §1.3 |
 | Encrypted columns | `assessment.criterion_result_remark` only — registered, audited on read, gated by `students.notes.*`. `assessment.assessment_remark` was removed 2026-09-10 (Jack, §1.5): `Assessment.remark` is now unprotected plain text |
-| CI | `npx vitest run`: 78 files / 916 tests passed, zero regressions in the pre-existing 868. `npm run typecheck`: clean. `npm run lint`: clean (the one pre-existing, unrelated warning phases 2.0-2.2 also noted, in `database-role-model.test.ts`). `npm run format:check`: clean on every file this phase touched. `npm run build`: blocked by a pre-existing worktree limitation, §1.10 |
+| CI | `npx vitest run`: 78 files / 918 tests passed — the 916-test pre-decision baseline plus the two new remark-regime cases, with zero regressions (the pre-phase suite was 868). `npm run typecheck`: clean. `npm run lint`: clean. `npm run format:check`: clean. `npm run build`: successful; one existing non-failing tracing warning, §1.10 |
 | Jack's approval | Not yet requested — this report is the handoff |
 
 **Open items for review, not silently resolved:**
@@ -437,9 +448,10 @@ imports `assessment`.
 5. §1.9 — the UI is one-student-per-sitting, matching the D-061-style
    aggregate boundary; the multi-candidate batch screen `04-ux.md` §4.7
    sketches is real follow-up work, not built here.
-6. §1.10 — **no live browser verification.** `npm run build` fails in this
-   worktree on a pre-existing symlink/Turbopack issue unrelated to this
-   phase's code; typecheck/lint/tests are the verification that exists.
+6. §1.10 — **CLOSED 2026-09-10.** The worktree now has its own dependency
+   installation; `next dev`, `next build` and a real Chromium submit/read-back
+   of the aftest form all succeeded. The criterion-level remark is not a UI
+   field in this phase; its gate is verified at the service/database boundary.
 7. A domain question the independence check makes concrete for the first
    time: `isActiveInstructorOfStudent` checks whether the assessor instructs
    **any** group the student is currently active in, not only the group the
