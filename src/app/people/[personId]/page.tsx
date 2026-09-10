@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -7,6 +9,7 @@ import {
   getStudentEnrolments,
   listCoursesForPrincipal,
 } from "@/modules/courses";
+import { getStudentGroupHistory } from "@/modules/groups";
 import {
   describeRelationshipAuthority,
   getPersonForPrincipal,
@@ -18,11 +21,24 @@ import {
 } from "@/modules/people";
 import { getAssessmentsForStudent } from "@/modules/assessment";
 import { getAttendanceForStudent } from "@/modules/attendance";
+import {
+  getExamCandidatesForStudent,
+  getExamResultsForCandidate,
+} from "@/modules/exams";
+import { listAwardTypesForPrincipal } from "@/modules/skills";
 import { getSkillProgressForStudent } from "@/modules/skills";
 
 import { LiveSearchPicker } from "@/components/live-search-picker/live-search-picker";
 
 import { endEnrolmentAction, enrolStudentAction } from "@/app/courses/actions";
+import {
+  confirmExamCandidateAction,
+  issueAwardAction,
+  recordExamResultAction,
+  registerExamCandidateAction,
+  revokeAwardAction,
+  withdrawExamCandidateAction,
+} from "@/app/exams/actions";
 import { formatMoment } from "@/app/skills/format";
 
 import { guarded, requireSignedIn } from "../access";
@@ -206,6 +222,57 @@ export default async function PersonDetailPage({
         ),
       )
     : null;
+
+  // ── Exam candidacy and results (phase 2.4) — see the section below. ──
+  const examCandidates = person.studentProfile
+    ? await guarded(() =>
+        getExamCandidatesForStudent(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
+  const examResultsByCandidate = new Map<
+    string,
+    Awaited<ReturnType<typeof getExamResultsForCandidate>>
+  >();
+  if (examCandidates?.ok) {
+    for (const candidate of examCandidates.value) {
+      if (candidate.status === "CONFIRMED") {
+        const outcome = await guarded(() =>
+          getExamResultsForCandidate(
+            { principal: { personId: session.person.id }, at },
+            candidate.id,
+          ),
+        );
+        if (outcome.ok) examResultsByCandidate.set(candidate.id, outcome.value);
+      }
+    }
+  }
+  // The dropdowns the "register a candidacy" form needs — a caller entitled
+  // to `exams.manage` may legitimately not hold `skills.read`/`groups.read`,
+  // exactly the `enrolmentCourses` stance above: withheld, not a 500.
+  const awardTypesForCandidacy = person.studentProfile
+    ? await guarded(() =>
+        listAwardTypesForPrincipal({
+          principal: { personId: session.person.id },
+          at,
+        }),
+      )
+    : null;
+  const groupHistoryForCandidacy = person.studentProfile
+    ? await guarded(() =>
+        getStudentGroupHistory(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
+  const currentGroupsForCandidacy = groupHistoryForCandidacy?.ok
+    ? groupHistoryForCandidacy.value.memberships.filter(
+        (g) => g.toDate === null,
+      )
+    : [];
 
   return (
     <main className="container py-5">
@@ -1015,6 +1082,329 @@ export default async function PersonDetailPage({
                 })()}
               </tbody>
             </table>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* ── Exam candidacy and results (phase 2.4) ──────────────────────────
+          D-085's full four-eyes gate: a candidacy reaches CONFIRMED only
+          with a qualifying, independent, qualified aftest — read here
+          through `qualifyingAftestFacts`, `assessment`'s published service,
+          never its tables. A refusal names the SPECIFIC unmet clause; the
+          override (`exams.candidacy.override`) requires a typed reason. */}
+      {person.studentProfile ? (
+        <section className="mt-5">
+          <h2 className="h4">{t("people.exams.title")}</h2>
+
+          {examCandidates && !examCandidates.ok ? (
+            <p className="text-muted">
+              {t("people.exams.denied", {
+                permission: examCandidates.permission,
+              })}
+            </p>
+          ) : examCandidates && examCandidates.value.length === 0 ? (
+            <p className="text-muted">{t("people.exams.none")}</p>
+          ) : examCandidates ? (
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("people.exams.awardType")}</th>
+                  <th scope="col">{t("people.exams.status")}</th>
+                  <th scope="col">{t("people.exams.confirmedAt")}</th>
+                  <th scope="col">{t("people.exams.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {examCandidates.value.map((candidate) => {
+                  const outcome = examResultsByCandidate.get(candidate.id);
+                  return (
+                    <tr key={candidate.id}>
+                      <td>{candidate.awardTypeName}</td>
+                      <td>
+                        <span
+                          className={
+                            candidate.status === "CONFIRMED"
+                              ? "badge text-bg-success"
+                              : candidate.status === "WITHDRAWN"
+                                ? "badge text-bg-secondary"
+                                : "badge text-bg-warning"
+                          }
+                        >
+                          {t(
+                            `people.exams.statuses.${candidate.status}` as "people.exams.statuses.PENDING",
+                          )}
+                        </span>
+                        {candidate.overrideUsed ? (
+                          <span
+                            className="badge text-bg-info ms-1"
+                            title={candidate.overrideReason ?? undefined}
+                          >
+                            {t("people.exams.overrideBadge")}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {candidate.confirmedAt
+                          ? formatMoment(candidate.confirmedAt)
+                          : "—"}
+                      </td>
+                      <td>
+                        {candidate.status === "PENDING" ? (
+                          <div className="d-flex flex-column gap-2">
+                            <form action={confirmExamCandidateAction}>
+                              <input
+                                type="hidden"
+                                name="personId"
+                                value={person.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="candidateId"
+                                value={candidate.id}
+                              />
+                              <div className="input-group input-group-sm">
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  name="overrideReason"
+                                  placeholder={t(
+                                    "people.exams.overrideReasonPlaceholder",
+                                  )}
+                                />
+                                <button
+                                  type="submit"
+                                  className="btn btn-sm btn-success"
+                                >
+                                  {t("people.exams.confirm")}
+                                </button>
+                              </div>
+                            </form>
+                            <form action={withdrawExamCandidateAction}>
+                              <input
+                                type="hidden"
+                                name="personId"
+                                value={person.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="candidateId"
+                                value={candidate.id}
+                              />
+                              <div className="input-group input-group-sm">
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  name="reason"
+                                  placeholder={t(
+                                    "people.exams.withdrawReasonPlaceholder",
+                                  )}
+                                  required
+                                />
+                                <button
+                                  type="submit"
+                                  className="btn btn-sm btn-outline-secondary"
+                                >
+                                  {t("people.exams.withdraw")}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        ) : null}
+
+                        {candidate.status === "CONFIRMED" ? (
+                          <div className="d-flex flex-column gap-2">
+                            {outcome?.results.map((result) => (
+                              <div key={result.id} className="small">
+                                <span
+                                  className={
+                                    result.outcome === "PASS"
+                                      ? "badge text-bg-success"
+                                      : "badge text-bg-danger"
+                                  }
+                                >
+                                  {t(
+                                    `people.exams.outcomes.${result.outcome}` as "people.exams.outcomes.PASS",
+                                  )}
+                                </span>{" "}
+                                {formatMoment(result.recordedAt)}
+                                {result.id === outcome.effectiveResultId &&
+                                result.outcome === "PASS" &&
+                                !result.award ? (
+                                  <form
+                                    action={issueAwardAction}
+                                    className="d-inline ms-2"
+                                  >
+                                    <input
+                                      type="hidden"
+                                      name="personId"
+                                      value={person.id}
+                                    />
+                                    <input
+                                      type="hidden"
+                                      name="resultId"
+                                      value={result.id}
+                                    />
+                                    <input
+                                      type="text"
+                                      name="number"
+                                      className="form-control form-control-sm d-inline w-auto"
+                                      placeholder={t(
+                                        "people.exams.awardNumberPlaceholder",
+                                      )}
+                                      required
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="btn btn-sm btn-primary ms-1"
+                                    >
+                                      {t("people.exams.issueAward")}
+                                    </button>
+                                  </form>
+                                ) : null}
+                                {result.award ? (
+                                  <span className="ms-2 fw-semibold">
+                                    {result.award.number}
+                                  </span>
+                                ) : null}
+                                {result.award && !result.award.revokedAt ? (
+                                  <form
+                                    action={revokeAwardAction}
+                                    className="d-inline ms-2"
+                                  >
+                                    <input
+                                      type="hidden"
+                                      name="personId"
+                                      value={person.id}
+                                    />
+                                    <input
+                                      type="hidden"
+                                      name="awardId"
+                                      value={result.award.id}
+                                    />
+                                    <input
+                                      type="text"
+                                      name="reason"
+                                      className="form-control form-control-sm d-inline w-auto"
+                                      placeholder={t(
+                                        "people.exams.revokeReasonPlaceholder",
+                                      )}
+                                      required
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="btn btn-sm btn-outline-danger ms-1"
+                                    >
+                                      {t("people.exams.revokeAward")}
+                                    </button>
+                                  </form>
+                                ) : null}
+                                {result.award?.revokedAt ? (
+                                  <span className="text-muted ms-2">
+                                    {t("people.exams.awardRevoked")}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ))}
+                            <form action={recordExamResultAction}>
+                              <input
+                                type="hidden"
+                                name="personId"
+                                value={person.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="candidateId"
+                                value={candidate.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="clientEventId"
+                                value={randomUUID()}
+                              />
+                              <div className="input-group input-group-sm">
+                                <select
+                                  className="form-select"
+                                  name="outcome"
+                                  defaultValue="PASS"
+                                >
+                                  <option value="PASS">
+                                    {t("people.exams.outcomes.PASS")}
+                                  </option>
+                                  <option value="FAIL">
+                                    {t("people.exams.outcomes.FAIL")}
+                                  </option>
+                                </select>
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  name="remarks"
+                                  placeholder={t(
+                                    "people.exams.remarksPlaceholder",
+                                  )}
+                                />
+                                <button
+                                  type="submit"
+                                  className="btn btn-sm btn-outline-primary"
+                                >
+                                  {t("people.exams.recordResult")}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
+
+          {awardTypesForCandidacy?.ok &&
+          awardTypesForCandidacy.value.length > 0 &&
+          currentGroupsForCandidacy.length > 0 ? (
+            <form action={registerExamCandidateAction} className="row g-2 mt-2">
+              <input type="hidden" name="personId" value={person.id} />
+              <input
+                type="hidden"
+                name="studentProfileId"
+                value={person.studentProfile.id}
+              />
+              <div className="col-auto">
+                <select
+                  className="form-select form-select-sm"
+                  name="awardTypeId"
+                  required
+                >
+                  {awardTypesForCandidacy.value.map((awardType) => (
+                    <option key={awardType.id} value={awardType.id}>
+                      {awardType.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-auto">
+                <select
+                  className="form-select form-select-sm"
+                  name="groupId"
+                  required
+                >
+                  {currentGroupsForCandidacy.map((group) => (
+                    <option key={group.groupId} value={group.groupId}>
+                      {group.groupName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-auto">
+                <button
+                  type="submit"
+                  className="btn btn-sm btn-outline-primary"
+                >
+                  {t("people.exams.registerCandidate")}
+                </button>
+              </div>
+            </form>
           ) : null}
         </section>
       ) : null}
