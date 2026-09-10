@@ -359,6 +359,54 @@ export function assessmentGrantStatements(names: RoleModelNames): string[] {
 }
 
 /**
+ * THE EXAMS EXCEPTION — P-07's fifth member (phase 2.4), and the first one to
+ * need TWO DIFFERENT shapes for two tables in the same module.
+ *
+ * `ExamResult` gets the EXACT `assessmentGrantStatements` shape: the diploma
+ * decision's own evidential record (D-062 — "a candidate has 0..N results,
+ * not 0..1"), so the runtime role holds `SELECT, INSERT` and nothing else.
+ *
+ * `Award` gets a DIFFERENT shape, and this is new in this codebase:
+ * `01-domain-model.md` §3.5 gives it `revokedAt?`/`revokeReason?` on the
+ * issuance row itself — the `ScheduledSession.cancelledAt`/
+ * `cancellationReason` pattern, not the `supersedesXId` one — so "append-only"
+ * cannot mean "no UPDATE ever" without contradicting the domain model's own
+ * schema. Postgres COLUMN-LEVEL `GRANT` resolves it: the runtime role may
+ * `UPDATE` exactly `revokedAt, revokeReason` and nothing else, so `resultId`,
+ * `awardTypeId`, `number` and `issuedAt` are exactly as immutable — enforced
+ * by the database, not by review — as every other append-only table in this
+ * registry, while the one mutation the domain model itself asks for still
+ * works. Flagged in the phase 2.4 report as a considered, named departure
+ * from the literal D-061/D-062 shape.
+ *
+ * `PersonQualification` and `ExamCandidate` carry NO carve-out here — they
+ * are ordinary mutable tables (the `MembershipPeriod`/`WaitlistEntry` shape)
+ * and keep the database-wide default `databaseProvisionStatements` already
+ * grants.
+ */
+export function examsGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the exam-day result ────────────────
+    `REVOKE ALL ON TABLE "ExamResult" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "ExamResult" TO ${quote(app)}`,
+
+    // ── The retention role: the only UPDATE (sever) and DELETE (retention) ─
+    `REVOKE ALL ON TABLE "ExamResult" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "ExamResult" TO ${quote(retention)}`,
+
+    // ── The runtime role: append-only on issuance, PLUS the revocation pair ─
+    `REVOKE ALL ON TABLE "Award" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "Award" TO ${quote(app)}`,
+    `GRANT UPDATE ("revokedAt", "revokeReason") ON TABLE "Award" TO ${quote(app)}`,
+
+    // ── The retention role: full UPDATE (sever) and DELETE (retention) ──────
+    `REVOKE ALL ON TABLE "Award" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "Award" TO ${quote(retention)}`,
+  ];
+}
+
+/**
  * Puts ownership of everything in `public` back on the owner role.
  *
  * A self-heal, not the main path — `migrationUrlFrom` means objects are created

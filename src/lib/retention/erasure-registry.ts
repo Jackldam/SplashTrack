@@ -129,6 +129,35 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     // test's third assertion refuses a registered model with no `Person`
     // reference) — it cascades from `Assessment` and needs nothing further.
     CriterionWaiver: { kind: "erase" },
+    // Phase 2.4. `PersonQualification.personId` is `HARD_DELETE` (the
+    // holder's OWN credential, `Restrict` FK, explicit `deleteMany` — the
+    // `InstructorAssignment.personId` pattern); `grantedByPersonId` is
+    // `SEVER_AND_RETAIN`. An ordinary participant of its own.
+    PersonQualification: { kind: "erase" },
+    // `ExamCandidate.studentProfileId` cascades from `StudentProfile` (the
+    // pupil's own candidacy record); `confirmedByPersonId` and
+    // `qualifyingAssessmentId` are `SEVER_AND_RETAIN`/`SetNull` respectively.
+    // NOT `exempt`: `15-…` §5.2 is explicit that an erasure request does not
+    // automatically lose to a diploma register — a retention GROUND is what
+    // may justify keeping a record, decided per organisation and not fixed
+    // here, which is exactly what `RETENTION_CATALOGUE`'s
+    // `EXAM_RESULTS_AND_AWARDS` row already carries as
+    // `proposedLawfulBasis: UNRESOLVED` rather than a hardcoded exemption
+    // this file would otherwise have to invent.
+    ExamCandidate: { kind: "erase" },
+    // Cascades from `ExamCandidate`; `recordedByPersonId` is
+    // `SEVER_AND_RETAIN` on the `Assessment.assessorPersonId` pattern. Same
+    // §5.2 reasoning as `ExamCandidate` immediately above — an ordinary
+    // participant, the ground (if any) lives in the retention catalogue, not
+    // as a registry-level exemption.
+    ExamResult: { kind: "erase" },
+    // `Award` is NOT here, deliberately: it references no `Person` at all
+    // (`resultId`/`awardTypeId` only) — the exact `AssessmentCriterionResult`
+    // precedent immediately above (the completeness test's third assertion
+    // refuses a registered model with no `Person` reference). It has nothing
+    // of its own to sever; erasing the exam candidate's chain removes it by
+    // `Restrict`-then-cascade the same way, and its `revokedAt`/`revokeReason`
+    // pair carries no personal data either.
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },
