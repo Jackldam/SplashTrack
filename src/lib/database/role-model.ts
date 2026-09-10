@@ -322,6 +322,43 @@ export function skillProgressGrantStatements(names: RoleModelNames): string[] {
 }
 
 /**
+ * THE ASSESSMENT EXCEPTION — P-07's fourth member, and the first one built
+ * append-only from day one rather than retrofitted (phase 2.3). `Assessment`,
+ * `AssessmentCriterionResult` and `CriterionWaiver` are the most evidential
+ * record this schema has written yet — the basis on which a child was or was
+ * not admitted to an exam (D-085) — and CLAUDE.md names append-only history
+ * as one of the five rules a retrofit cannot cheaply repair.
+ *
+ * Same shape as {@link skillProgressGrantStatements}, all three tables
+ * together: the runtime role gets `SELECT, INSERT` and nothing else: the
+ * retention role gets `SELECT, UPDATE, DELETE` — `UPDATE` for the same
+ * sever-on-erasure reason `SkillProgress` needed it (an explicit
+ * `assessorPersonId`/`grantedByPersonId` `SET NULL` a future R-25
+ * `erasePersonData` may need to issue directly), `DELETE` for the future
+ * D-111-shaped prune neither `ASSESSMENT_REMARKS` nor `ASSESSMENT_RESULTS`
+ * has an automated job for yet (v1 ships no retention engine, D-120) — the
+ * capability is provisioned ahead of the job, on the same ordering CLAUDE.md
+ * rule 1 states for the encryption envelope.
+ */
+export function assessmentGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  const tables = [
+    "Assessment",
+    "AssessmentCriterionResult",
+    "CriterionWaiver",
+  ] as const;
+  return tables.flatMap((table) => [
+    // ── The runtime role: append-only on the aftest record ─────────────────
+    `REVOKE ALL ON TABLE "${table}" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "${table}" TO ${quote(app)}`,
+
+    // ── The retention role: the only UPDATE (sever) and DELETE (retention) ─
+    `REVOKE ALL ON TABLE "${table}" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "${table}" TO ${quote(retention)}`,
+  ]);
+}
+
+/**
  * Puts ownership of everything in `public` back on the owner role.
  *
  * A self-heal, not the main path — `migrationUrlFrom` means objects are created

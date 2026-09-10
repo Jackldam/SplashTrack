@@ -16,6 +16,7 @@ import {
   type GuardianAuthority,
   type PersonRelationshipView,
 } from "@/modules/people";
+import { getAssessmentsForStudent } from "@/modules/assessment";
 import { getAttendanceForStudent } from "@/modules/attendance";
 import { getSkillProgressForStudent } from "@/modules/skills";
 
@@ -190,6 +191,16 @@ export default async function PersonDetailPage({
   const attendance = person.studentProfile
     ? await guarded(() =>
         getAttendanceForStudent(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
+
+  // ── Assessment (phase 2.3) — read-only here; see the section below. ──
+  const assessments = person.studentProfile
+    ? await guarded(() =>
+        getAssessmentsForStudent(
           { principal: { personId: session.person.id }, at },
           person.studentProfile!.id,
         ),
@@ -923,6 +934,85 @@ export default async function PersonDetailPage({
                     <td className="text-muted">{entry.note ?? "—"}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* ── The formal aftest record (phase 2.3) ────────────────────────────
+          READ-ONLY here: recording happens on the LESSON screen, guarded on
+          `{ session }` — see `@/modules/assessment` `assessment-service.ts`.
+          This section guards `{ student }` and is then narrowed per row by
+          the caller's reach (only `GROUP` narrows, the exact
+          `getSkillProgressForStudent`/`getAttendanceForStudent` stance).
+          `remark` here is the SITTING-level note, decided 2026-09-10 (Jack)
+          to be unprotected plain text — see
+          `docs/build/phase-2.3-assessment-report.md` §1.5 — so it always
+          shows, with no `students.notes.read` gate. The per-criterion remark
+          (`AssessmentCriterionResult.remark`) stays protected under D-087 but
+          is not rendered on this screen at all yet. A superseded sitting
+          renders struck through, never hidden — the same D-061/D-062
+          discipline attendance already applies. */}
+      {person.studentProfile ? (
+        <section className="mt-5">
+          <h2 className="h4">{t("people.assessment.title")}</h2>
+
+          {assessments && !assessments.ok ? (
+            <p className="text-muted">
+              {t("people.assessment.denied", {
+                permission: assessments.permission,
+              })}
+            </p>
+          ) : assessments && assessments.value.length === 0 ? (
+            <p className="text-muted">{t("people.assessment.none")}</p>
+          ) : assessments ? (
+            <table className="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th scope="col">{t("people.assessment.awardType")}</th>
+                  <th scope="col">{t("people.assessment.outcome")}</th>
+                  <th scope="col">{t("people.assessment.assessedAt")}</th>
+                  <th scope="col">{t("people.assessment.remark")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const superseded = new Set(
+                    assessments.value
+                      .map((a) => a.supersedesAssessmentId)
+                      .filter((id): id is string => id !== null),
+                  );
+                  return assessments.value.map((entry) => (
+                    <tr
+                      key={entry.id}
+                      className={
+                        superseded.has(entry.id)
+                          ? "text-decoration-line-through text-muted"
+                          : undefined
+                      }
+                    >
+                      <td>
+                        {entry.awardTypeName} (v{entry.criterionSetVersion})
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            entry.outcome === "PASS"
+                              ? "badge text-bg-success"
+                              : "badge text-bg-danger"
+                          }
+                        >
+                          {t(
+                            `people.assessment.outcomes.${entry.outcome}` as "people.assessment.outcomes.PASS",
+                          )}
+                        </span>
+                      </td>
+                      <td>{formatMoment(entry.assessedAt)}</td>
+                      <td className="text-muted">{entry.remark ?? "—"}</td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           ) : null}

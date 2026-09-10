@@ -9,7 +9,6 @@ import { claimSchemaForOwner } from "@/lib/database/apply-role-model";
 import {
   migrationUrlFrom,
   REFERENCE_OWNER_ROLE,
-  REFERENCE_RETENTION_ROLE,
   roleNameFrom,
 } from "@/lib/database/role-model";
 import {

@@ -329,20 +329,27 @@ model Person {
 
   /// Groups this person teaches or has taught (phase 1.6). The person's OWN
   /// data — an instructor's teaching history — so `Restrict` and `HARD_DELETE`.
-  instructorAssignments InstructorAssignment[]
+  instructorAssignments   InstructorAssignment[]
   /// Group moves this person DECIDED. Somebody else's history, not theirs:
   /// accountability evidence, severed rather than deleted on erasure, so a
   /// child's record does not lose the fact that a move was a considered
   /// decision when the instructor who made it leaves.
-  groupMovesDecided     GroupMove[]            @relation("GroupMoveDecidedBy")
+  groupMovesDecided       GroupMove[]            @relation("GroupMoveDecidedBy")
   /// Skill-progress observations this person RECORDED (phase 2.1). Somebody
   /// else's history — the pupil's — so severed, not deleted, on erasure, on the
   /// `groupMovesDecided` pattern beside it.
-  skillProgressRecorded SkillProgress[]        @relation("SkillProgressAssessedBy")
+  skillProgressRecorded   SkillProgress[]        @relation("SkillProgressAssessedBy")
   /// Attendance events this person RECORDED (phase 2.2). Somebody else's
   /// history — the pupil's — so severed, not deleted, on erasure, on the
   /// `skillProgressRecorded` pattern immediately above.
-  attendanceRecorded    AttendanceEvent[]      @relation("AttendanceEventRecordedBy")
+  attendanceRecorded      AttendanceEvent[]      @relation("AttendanceEventRecordedBy")
+  /// Aftests this person ASSESSED (phase 2.3). Somebody else's evidential
+  /// record — the pupil's — so severed, not deleted, on erasure, on the
+  /// `attendanceRecorded` pattern immediately above.
+  assessmentsAssessed     Assessment[]           @relation("AssessmentAssessedBy")
+  /// Waivers this person GRANTED (phase 2.3), on the same sever-on-erasure
+  /// pattern.
+  criterionWaiversGranted CriterionWaiver[]      @relation("CriterionWaiverGrantedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -826,6 +833,10 @@ model StudentProfile {
   /// Proved in `tests/integration/attendance-append-only.test.ts`.
   attendanceEvents AttendanceEvent[]
 
+  /// Phase 2.3. Cascades with the pupil, on the `attendanceEvents` precedent
+  /// immediately above.
+  assessments Assessment[]
+
   @@index([unitId])
 }
 
@@ -1099,17 +1110,20 @@ model Group {
   unit        OrganizationUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
   courseLevel CourseLevel?      @relation(fields: [courseLevelId], references: [id], onDelete: Restrict)
 
-  memberships GroupMembership[]
-  moves       GroupMove[]            @relation("GroupMoveTo")
-  movesFrom   GroupMove[]            @relation("GroupMoveFrom")
-  instructors InstructorAssignment[]
-  recurrences SessionRecurrence[]
-  sessions    ScheduledSession[]
-  exceptions  ScheduleException[]
+  memberships          GroupMembership[]
+  moves                GroupMove[]            @relation("GroupMoveTo")
+  movesFrom            GroupMove[]            @relation("GroupMoveFrom")
+  instructors          InstructorAssignment[]
+  recurrences          SessionRecurrence[]
+  sessions             ScheduledSession[]
+  exceptions           ScheduleException[]
   skillProgressEntries SkillProgress[]
   /// Phase 2.2 — the read-side narrowing snapshot on every attendance event
   /// (D-145 rule 2), the `skillProgressEntries` shape one module later.
   attendanceEvents     AttendanceEvent[]
+  /// Phase 2.3 — the read-side narrowing snapshot on every `Assessment` row
+  /// (D-145 rule 2), the `attendanceEvents` shape one module later.
+  assessments          Assessment[]
 
   @@index([unitId])
   @@index([active])
@@ -1571,19 +1585,25 @@ model ScheduledSession {
   pool       Pool?              @relation(fields: [poolId], references: [id], onDelete: Restrict)
   recurrence SessionRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
 
-  lanes         SessionLane[]
-  rosterEntries SessionRosterEntry[]
+  lanes            SessionLane[]
+  rosterEntries    SessionRosterEntry[]
   /// Skill-progress rows recorded as observed IN this lesson (phase 2.1,
   /// optional — see `SkillProgress.sessionId`). `SetNull`, matching
   /// `recurrence` above: this session is never deleted by application code
   /// (cancelling is a status), so the edge is defence in depth.
-  skillProgress SkillProgress[]
+  skillProgress    SkillProgress[]
   /// The register written against this lesson (phase 2.2, D-057: `attendance`
   /// is a consumer of this table, never a second owner). `Restrict`, unlike
   /// `skillProgress` above: an attendance event without its session is a
   /// record that cannot answer "was my child there on the 12th?", and this
   /// session is never deleted by application code anyway.
   attendanceEvents AttendanceEvent[]
+  /// Aftests conducted at this lesson slot (phase 2.3, optional — see
+  /// `Assessment.scheduledSessionId`). `SetNull`, on the `skillProgress`
+  /// precedent above, not the `attendanceEvents` one: this phase's own write
+  /// path always supplies one, but the column stays optional in the general
+  /// entity (an `EXAM`-kind row would carry no `scheduledSessionId` at all).
+  assessments      Assessment[]
 
   /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
   /// so hand-scheduled lessons (`recurrenceId IS NULL`) never collide with each
@@ -2043,8 +2063,9 @@ model GradeValue {
 
   scale GradeScale @relation(fields: [scaleId], references: [id], onDelete: Restrict)
 
-  criterionSetFloors CriterionSet[] @relation("CriterionSetPassFloor")
-  criterionMinimums  Criterion[]    @relation("CriterionMinimumGrade")
+  criterionSetFloors CriterionSet[]              @relation("CriterionSetPassFloor")
+  criterionMinimums  Criterion[]                 @relation("CriterionMinimumGrade")
+  assessmentResults  AssessmentCriterionResult[]
 
   @@unique([scaleId, code])
   @@unique([scaleId, rank])
@@ -2130,7 +2151,8 @@ model CriterionSet {
   awardType      AwardType   @relation(fields: [awardTypeId], references: [id], onDelete: Restrict)
   passFloorGrade GradeValue? @relation("CriterionSetPassFloor", fields: [passFloorGradeId], references: [id], onDelete: Restrict)
 
-  criteria Criterion[]
+  criteria    Criterion[]
+  assessments Assessment[]
 
   @@unique([awardTypeId, version])
   @@index([awardTypeId])
@@ -2141,8 +2163,8 @@ model CriterionSet {
 /// *"watertrappen 1 minuut"*. `01-domain-model.md` §3.3, `15-…` §2.1/§2.6.
 ///
 /// THE SINGLE CRITERION CATALOGUE (D-084). This row is what `SkillProgress`
-/// (below) points at for the informal log, and what `AssessmentCriterionResult`
-/// (unbuilt) will point at for the formal one — one row, two consumers, never
+/// points at for the informal log, and what `AssessmentCriterionResult`
+/// (phase 2.3) points at for the formal one — one row, two consumers, never
 /// two catalogues to keep in sync.
 ///
 /// NO DELETE. A `DRAFT` set is corrected by editing a criterion's fields in
@@ -2183,7 +2205,9 @@ model Criterion {
   criterionSet CriterionSet @relation(fields: [criterionSetId], references: [id], onDelete: Restrict)
   minimumGrade GradeValue?  @relation("CriterionMinimumGrade", fields: [minimumGradeId], references: [id], onDelete: Restrict)
 
-  skillProgress SkillProgress[]
+  skillProgress     SkillProgress[]
+  assessmentResults AssessmentCriterionResult[]
+  waivers           CriterionWaiver[]
 
   @@unique([criterionSetId, code])
   @@unique([criterionSetId, sequence])
@@ -2361,12 +2385,12 @@ model AttendanceEvent {
 
   createdAt DateTime @default(now())
 
-  session        ScheduledSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
-  studentProfile StudentProfile   @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
-  recordedBy     Person?          @relation("AttendanceEventRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
-  supersedes     AttendanceEvent? @relation("AttendanceEventSupersedes", fields: [supersedesEventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session        ScheduledSession  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  studentProfile StudentProfile    @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  recordedBy     Person?           @relation("AttendanceEventRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
+  supersedes     AttendanceEvent?  @relation("AttendanceEventSupersedes", fields: [supersedesEventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   supersededBy   AttendanceEvent[] @relation("AttendanceEventSupersedes")
-  group          Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  group          Group             @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   /// D-061's own words: "a `(sessionId, studentProfileId, recordedAt)` index
   /// answers the derivation directly."
@@ -2375,6 +2399,298 @@ model AttendanceEvent {
   @@index([groupId])
   @@index([recordedByPersonId])
   @@index([supersedesEventId])
+}
+
+// ---------------------------------------------------------------------------
+// The formal, four-eyes-gated observation — the *aftest*
+// (phase 2.3, the `assessment` module). `15-assessment-and-fees.md` §2-5;
+// D-080 (pass rule), D-081 (pin the version), D-085 (the four-eyes gate),
+// D-087 (remarks are notes, not general student data).
+//
+// `assessment` DEPENDS ON `skills` (the `CriterionSet`/`Criterion`/
+// `GradeValue` catalogue — D-084's "one criterion catalogue, not two": this
+// module authors no second one) and on `sessions` (`ScheduledSession`, the
+// same D-057 consumer relationship `attendance` has). It owns none of their
+// tables and duplicates neither.
+//
+// WHAT THIS PHASE DOES NOT BUILD, AND WHY THE COLUMNS ARE SHAPED AROUND IT.
+// `15-…` §2.1 gives `Assessment` a `kind ∈ {PRE_EXAM, EXAM}` and both an
+// optional `scheduledSessionId` and an optional `examSessionId` — an
+// aftest happens at an ordinary lesson slot, an exam sitting at an
+// `ExamSession`. `ExamSession`/`ExamCandidate`/`ExamAssessor`/`ExamResult`/
+// `Award`/`PersonQualification` are the LATER `exams` phase's tables
+// (`01-domain-model.md` §3.5) and do not exist yet, so `examSessionId` is
+// NOT a column here — a nullable FK to a table that does not exist is the
+// dangling stub `CLAUDE.md` §4 and D-163 both refuse. `AssessmentKind`
+// therefore has exactly one member; `EXAM` and `examSessionId` arrive
+// together, in the migration that adds `ExamSession`, on the exact
+// `CourseLevel.awardTypeId` precedent ("real at last") the skills report
+// names. See `docs/build/phase-2.3-assessment-report.md` §1 for the full
+// reasoning and the alternative this rejected.
+//
+// THE FOUR-EYES GATE (D-085) ITSELF IS NOT ENFORCED HERE EITHER, and that is
+// a separate, deliberate boundary from the one above.
+// `01-domain-model.md` line ~130: *"The gate that `exams` enforces before
+// that (D-085) likewise reads `assessment` through its published service,
+// never its tables."* Refusing `ExamCandidate → CONFIRMED` is `exams`'
+// write, against a table this phase does not build. What THIS phase DOES
+// enforce, at write time, is the narrower and immediately checkable half of
+// D-085's own formula — independence: an assessor who currently holds an
+// ACTIVE `InstructorAssignment` for a group the student actively belongs to
+// may not record a `PRE_EXAM` assessment for that student, unless the actor
+// holds the override permission (`assessment.independence.override`,
+// mirroring `exams.candidacy.override`'s shape for the same D-085
+// trade-off: overridable, deliberately, and audited when used). The OTHER
+// half of D-085's formula — the assessor holding a valid
+// `PersonQualification` — cannot be checked at all in this phase, because
+// `PersonQualification` is itself an `exams`-phase table. See the report.
+//
+// THE PASS RULE (D-080) IS COMPUTED HERE, FOR REAL, AT LAST. Phase 2.1's
+// skills report §1.1 left `rank(result) ≥ rank(minimum ?? passFloor)`
+// unbuilt because the rows it reads (`AssessmentCriterionResult`,
+// `CriterionWaiver`) did not exist. They do now, and `outcome` /
+// `outcomeComputedAt` below are the function's output, computed once, in
+// the same transaction that writes the results and waivers it reads
+// (`01-domain-model.md` §4's aggregate boundary) — never typed by the
+// assessor, never recomputed later.
+//
+// `AssessmentCriterionResult.remark` IS THIS SCHEMA'S FIRST REAL
+// PROTECTED-FREE-TEXT COLUMN. D-087/D-148: it is column-encrypted under the
+// D-096 envelope (`@/lib/crypto`), audited on READ (not only on write), and
+// gated by `students.notes.read` / `students.notes.write` — never general
+// `students.read`/`assessment.read`. See `src/lib/crypto/encrypted-columns.ts`
+// for the registry entry and the assessment service for the audited-read
+// call site. D-087's own example — *"the remark is about the scissor kick,
+// not about the sitting"* — is exactly why the sitting-level `Assessment.remark`
+// does NOT carry the same protection; see that field's own comment below.
+//
+// DECIDED 2026-09-10 (Jack, phase 2.3 sign-off): `Assessment.remark` (the
+// sitting-level note) is UNPROTECTED plain text — no encryption, no
+// `students.notes.read` gate, no audit-on-read. `AssessmentCriterionResult.remark`
+// (the per-criterion note, where D-087 says the protected remark "actually"
+// lives) is UNCHANGED. See `docs/build/phase-2.3-assessment-report.md` §1.5.
+//
+// A RETENTION-GRANULARITY GAP, FLAGGED RATHER THAN SILENTLY RESOLVED.
+// `01-domain-model.md` §5 gives "Assessment remarks" and "Assessment
+// results (formal)" TWO DIFFERENT retention regimes — 12 months/DELETE
+// (D-087) versus 7 years/REVIEW — over what this phase, following the
+// design's own one-table entity shape (`15-…` §2.1), keeps as ONE row.
+// `DATA_CLASS_BY_MODEL` (`src/lib/retention/data-class-registry.ts`) binds
+// exactly one `DataClass` per model, so both tables below are bound to
+// `ASSESSMENT_RESULTS` (the longer, safer regime — a formal result must
+// never be under-retained) and the `remark` column's shorter policy is
+// NOT mechanically enforced by that registry. This gap now applies only to
+// `AssessmentCriterionResult.remark`, since `Assessment.remark` carries no
+// protected-text policy at all. See the phase 2.3 report for the two ways
+// to close this and why neither was chosen unilaterally.
+// ---------------------------------------------------------------------------
+
+/// Only `PRE_EXAM` is written by this phase's service. See the file comment
+/// for why `EXAM` is deferred rather than half-built.
+enum AssessmentKind {
+  PRE_EXAM
+}
+
+/// D-080's output, never its input — an assessor never types this directly.
+enum AssessmentOutcome {
+  PASS
+  FAIL
+}
+
+/// One *aftest* — a formal, graded sitting against a pinned `CriterionSet`
+/// version. `01-domain-model.md` line ~130, `15-assessment-and-fees.md` §2-5.
+///
+/// **APPEND-ONLY, THE D-061/D-062 SHAPE.** A re-assessment is a NEW row
+/// carrying `supersedesAssessmentId`; the superseded row is never modified.
+/// The effective assessment for a student/award-type pair is the latest
+/// non-superseded row — the same derivation `effectiveAttendanceByStudent`
+/// and `effectiveStateByCriterion` already use, applied a third time
+/// (`assessment-domain.ts`'s own `effectiveAssessmentsByAwardType`).
+///
+/// **`criterionSetId` PINS THE VERSION (D-081).** Never resolved from
+/// `assessedAt` — the exact `SkillProgress.criterionId` discipline, restated
+/// once in that model's own comment rather than twice.
+///
+/// **`scheduledSessionId` IS REQUIRED IN PRACTICE, NULLABLE IN THE COLUMN.**
+/// The design's general entity marks it optional (an `EXAM`-kind row would
+/// carry `examSessionId` instead — see the file comment). This phase writes
+/// only `PRE_EXAM` rows and its write guard is `{ session: scheduledSessionId
+/// }` (the attendance/D-179 precedent: the independent assessor holds no
+/// `{ group }` reach over a child who is not theirs, D-068's `SESSION`
+/// participation reach is what lets them record anything at all) — so
+/// `recordAssessment` refuses a `PRE_EXAM` assessment with no session, in the
+/// service, on the exact `CriterionSet.passFloorGradeId`
+/// nullable-column/service-enforced precedent.
+///
+/// **`groupId` IS A WRITE-TIME SNAPSHOT, NOT NULL** — the session's group,
+/// stamped from the same published fact attendance already reads
+/// (`findSessionRegisterFacts`), never re-derived. It is what narrows a
+/// `GROUP`-scoped read to its own rows (D-145 rule 2, the
+/// `AttendanceEvent.groupId` precedent). It no longer gates this model's own
+/// `remark` — see that field's comment — but still narrows the
+/// `AssessmentCriterionResult.remark` reach the same way (D-087's "Group +
+/// `students.notes.read`" reach).
+///
+/// **WHO RECORDED IT.** `assessorPersonId` is nullable so an erasure can
+/// SEVER it — this is the PUPIL's evidential record, not the assessor's, on
+/// the `SkillProgress.assessedByPersonId` / `AttendanceEvent.recordedByPersonId`
+/// pattern.
+///
+/// **`clientEventId` MAKES THE WRITE IDEMPOTENT (P-02)**, on the attendance
+/// precedent — ten minutes of grading twelve children is exactly the kind of
+/// session a flaky connection interrupts, and a retry must not risk a second,
+/// conflicting `Assessment` row for the same sitting.
+///
+/// @dataClass ASSESSMENT_RESULTS
+model Assessment {
+  id String @id @default(cuid(2))
+
+  /// Only `PRE_EXAM` is ever written this phase. See the file comment.
+  kind AssessmentKind
+
+  criterionSetId   String
+  studentProfileId String
+
+  /// WHO ASSESSED IT. Nullable — see the model comment.
+  assessorPersonId String?
+  assessedAt       DateTime
+
+  /// The lesson slot this aftest was conducted in. Required in practice for
+  /// every row this phase writes — see the model comment.
+  scheduledSessionId String?
+
+  /// D-080's output. Computed once, in the write transaction, from the
+  /// `AssessmentCriterionResult` and `CriterionWaiver` rows written beside
+  /// it — never typed by the assessor (`15-…` §4: "pass computed from the
+  /// scheme, never typed").
+  outcome           AssessmentOutcome
+  outcomeComputedAt DateTime
+
+  /// D-061/D-062: the assessment this one corrects, or NULL for an original
+  /// sitting. `NoAction`, the `AttendanceEvent.supersedesEventId` reasoning —
+  /// nothing here prunes a pair in one statement yet, but nothing should have
+  /// to change if it later does.
+  supersedesAssessmentId String?
+
+  /// The read-side narrowing snapshot — see the model comment. NOT NULL:
+  /// every row this phase writes carries a `scheduledSessionId`, and every
+  /// session has a group, so "no group context" cannot arise here, exactly
+  /// as `AttendanceEvent.groupId` reasons.
+  groupId String
+
+  /// Plain, unprotected free text about the SITTING as a whole — no
+  /// encryption, no `students.notes.read` gate, no audit-on-read. DECIDED
+  /// 2026-09-10 (Jack): D-087's own example, *"the remark is about the
+  /// scissor kick, not about the sitting"*, is exactly why this column does
+  /// not carry the same protection `AssessmentCriterionResult.remark` does —
+  /// see that model's comment and `docs/build/phase-2.3-assessment-report.md`
+  /// §1.5. Read and written directly by the assessment service, the same
+  /// ordinary-string handling `Course.description` gets.
+  remark String?
+
+  /// P-02's idempotency key — see the model comment.
+  clientEventId String @unique
+
+  createdAt DateTime @default(now())
+
+  criterionSet     CriterionSet      @relation(fields: [criterionSetId], references: [id], onDelete: Restrict)
+  studentProfile   StudentProfile    @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  assessor         Person?           @relation("AssessmentAssessedBy", fields: [assessorPersonId], references: [id], onDelete: SetNull)
+  scheduledSession ScheduledSession? @relation(fields: [scheduledSessionId], references: [id], onDelete: SetNull)
+  supersedes       Assessment?       @relation("AssessmentSupersedes", fields: [supersedesAssessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy     Assessment[]      @relation("AssessmentSupersedes")
+  group            Group             @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  criterionResults AssessmentCriterionResult[]
+  waivers          CriterionWaiver[]
+
+  @@index([studentProfileId, assessedAt])
+  @@index([criterionSetId])
+  @@index([scheduledSessionId])
+  @@index([assessorPersonId])
+  @@index([groupId])
+  @@index([supersedesAssessmentId])
+}
+
+/// The formal, graded observation for ONE criterion inside ONE `Assessment` —
+/// what a qualified assessor writes during an aftest, and what D-080's pass
+/// rule reads. `01-domain-model.md` §3.3's own words: "the formal graded
+/// observation ... it decides whether a child sits an exam", against the same
+/// `Criterion` catalogue `SkillProgress` uses informally (D-084).
+///
+/// One row per criterion per assessment (`@@unique`) — an assessor grades a
+/// criterion once per sitting; a correction is a new `Assessment`
+/// (supersession), never a second result row for the same pair.
+///
+/// **`gradeValueId` IS WHAT D-080 COMPARES**, via `GradeValue.rank` — never
+/// the label, on the `Criterion.minimumGradeId` precedent.
+///
+/// **`remark` IS PROTECTED FREE TEXT (D-087/D-148)**, and this is where D-087
+/// says it attaches PRIMARILY: *"the remark is about the scissor kick, not
+/// about the sitting"* — which is also why `Assessment.remark` (the sitting
+/// itself, above) is DELIBERATELY UNPROTECTED plain text as of 2026-09-10
+/// (Jack's decision, `docs/build/phase-2.3-assessment-report.md` §1.5). See
+/// the file comment for the mechanism: column-encrypted under the D-096
+/// envelope, audited on read, gated by `students.notes.read` /
+/// `students.notes.write`.
+/// @dataClass ASSESSMENT_RESULTS
+model AssessmentCriterionResult {
+  id           String @id @default(cuid(2))
+  assessmentId String
+  criterionId  String
+  gradeValueId String
+
+  /// @encrypted assessment.criterion_result_remark
+  remark String?
+
+  createdAt DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  criterion  Criterion  @relation(fields: [criterionId], references: [id], onDelete: Restrict)
+  gradeValue GradeValue @relation(fields: [gradeValueId], references: [id], onDelete: Restrict)
+
+  @@unique([assessmentId, criterionId])
+  @@index([criterionId])
+  @@index([gradeValueId])
+}
+
+/// "We let this one go" as a ROW WITH A NAME AND A REASON ON IT, never an
+/// absence of a row (`15-…` §2.1). D-080's pass rule treats a waiver exactly
+/// like a passing result for the criterion it names; the difference is that a
+/// waiver says so honestly instead of looking, after the fact, like a missed
+/// grade.
+///
+/// One row per criterion per assessment (`@@unique`), on the
+/// `AssessmentCriterionResult` precedent — a criterion is graded OR waived
+/// once per sitting. The service refuses both a result and a waiver for the
+/// same criterion in the same assessment (see `assessment-domain.ts`);
+/// nothing here forbids it at the database level, because the two rows would
+/// not corrupt the pass computation either way (`∃ r ... ∨ ∃ w`) — only
+/// confuse a reader.
+///
+/// **`grantedByPersonId` IS NULLABLE for the same sever-on-erasure reason
+/// every other "who decided this" column in this schema is.**
+/// @dataClass ASSESSMENT_RESULTS
+model CriterionWaiver {
+  id           String @id @default(cuid(2))
+  assessmentId String
+  criterionId  String
+
+  /// Why this criterion was not required — never absent for a waiver, unlike
+  /// every OTHER short reason field in this schema, which stays optional.
+  reason String
+
+  grantedByPersonId String?
+
+  createdAt DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  criterion  Criterion  @relation(fields: [criterionId], references: [id], onDelete: Restrict)
+  grantedBy  Person?    @relation("CriterionWaiverGrantedBy", fields: [grantedByPersonId], references: [id], onDelete: SetNull)
+
+  @@unique([assessmentId, criterionId])
+  @@index([criterionId])
+  @@index([grantedByPersonId])
 }
 
 // ---------------------------------------------------------------------------

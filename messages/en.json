@@ -273,6 +273,19 @@
       "state": "Status",
       "recordedAt": "Recorded at",
       "note": "Note"
+    },
+    "assessment": {
+      "title": "Aftests",
+      "none": "No aftest has been recorded for this pupil yet.",
+      "denied": "You may not see this pupil's aftests. Required permission: {permission}.",
+      "awardType": "Diploma/certificate",
+      "outcome": "Outcome",
+      "assessedAt": "Date",
+      "remark": "Remark",
+      "outcomes": {
+        "PASS": "Passed",
+        "FAIL": "Not passed"
+      }
     }
   },
   "mfaEnrolment": {
@@ -342,7 +355,17 @@
       "NOT_ON_ROSTER": "This pupil is not on this lesson's roster. Add the child first via 'Add guest' below — that covers a make-up lesson, a pupil from another group and a trial swimmer — then record their attendance.",
       "NOTHING_TO_REGISTER": "No attendance was supplied; there is nothing to record.",
       "DUPLICATE_PUPIL": "The same pupil appears twice in this registration. One lesson, one pupil, one observation — a correction is a separate act.",
-      "SUPERSEDED_EVENT_MISMATCH": "The observation being corrected does not belong to this lesson and this pupil. A correction always points at the observation it replaces."
+      "SUPERSEDED_EVENT_MISMATCH": "The observation being corrected does not belong to this lesson and this pupil. A correction always points at the observation it replaces.",
+      "CRITERION_SET_NOT_ACTIVE": "This criterion set is not active. An aftest is only recorded against the criterion set currently in force.",
+      "UNKNOWN_CRITERION": "One of the criteria does not belong to the chosen criterion set.",
+      "UNKNOWN_GRADE_VALUE": "One of the given grades does not exist on the grade scale.",
+      "DUPLICATE_CRITERION_RESULT": "More than one grade was given for one criterion.",
+      "DUPLICATE_CRITERION_WAIVER": "More than one waiver was given for one criterion.",
+      "DOUBLY_DISPOSED_CRITERION": "A criterion was given both a grade and a waiver. Choose one.",
+      "INCOMPLETE": "Not every criterion was graded or waived. An outcome is never computed over ungraded criteria.",
+      "TOO_MANY_ENTRIES": "Too many results were submitted at once.",
+      "NOT_INDEPENDENT": "The assessor is this pupil's own instructor. An aftest that counts toward exam admission is conducted by a different, qualified instructor.",
+      "SUPERSEDED_ASSESSMENT_MISMATCH": "The aftest being corrected does not belong to this pupil and criterion set."
     },
     "saved": {
       "group": "Group saved.",
@@ -367,7 +390,8 @@
       "lanesCleared": "This lesson follows the series' lanes again.",
       "progress": "Progress recorded.",
       "attendance": "Attendance recorded.",
-      "attendanceAmended": "Attendance corrected. The earlier observation stays visible in the history."
+      "attendanceAmended": "Attendance corrected. The earlier observation stays visible in the history.",
+      "assessment": "Aftest recorded."
     },
     "skillProgress": {
       "title": "Record progress",
@@ -582,6 +606,25 @@
         "ABSENT": "Absent",
         "EXCUSED": "Excused",
         "LATE": "Late"
+      }
+    },
+    "assessment": {
+      "title": "Aftest",
+      "denied": "You may not record or see an aftest here. Required permission: {permission}.",
+      "set": "Criterion set: {awardType} (version {version})",
+      "pickStudent": "Choose a pupil",
+      "criterion": "Criterion",
+      "grade": "Grade",
+      "waiver": "Waiver",
+      "waived": "Waived",
+      "waiverReason": "Waiver reason",
+      "remark": "Remark (optional)",
+      "remarkNote": "An ordinary remark about this sitting, visible to anyone who can see the aftest — not a diagnosis or an allegation, just what the pupil needs to work on.",
+      "submit": "Record aftest",
+      "reason": {
+        "NO_LEVEL": "This group has no level linked yet, so there is no criterion set to assess against.",
+        "NO_AWARD_TYPE": "This group's level does not yet lead to a diploma or certificate.",
+        "NO_ACTIVE_SET": "There is no active criterion set for this diploma/certificate yet."
       }
     }
   },

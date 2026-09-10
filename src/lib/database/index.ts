@@ -54,3 +54,7 @@ export type {
   SkillProgressState,
 } from "@/generated/prisma/client";
 export type { AttendanceState } from "@/generated/prisma/client";
+export type {
+  AssessmentKind,
+  AssessmentOutcome,
+} from "@/generated/prisma/client";

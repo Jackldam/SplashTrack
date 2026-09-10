@@ -20,6 +20,7 @@
 import { Client } from "pg";
 
 import {
+  assessmentGrantStatements,
   attendanceGrantStatements,
   auditGrantStatements,
   databaseProvisionStatements,
@@ -97,6 +98,7 @@ export async function applyRoleModel(
       ...auditGrantStatements(names),
       ...attendanceGrantStatements(names),
       ...skillProgressGrantStatements(names),
+      ...assessmentGrantStatements(names),
     ]) {
       await client.query(statement);
     }
@@ -284,6 +286,40 @@ async function verify(
         "so severing assessedByPersonId and pruning the log have no role to " +
         "run as.",
     );
+  }
+
+  // The assessment exception (phase 2.3) — same two properties, over all
+  // three tables the module writes: the runtime role cannot rewrite the
+  // aftest record, and the retention role can still sever and prune it.
+  for (const table of [
+    "Assessment",
+    "AssessmentCriterionResult",
+    "CriterionWaiver",
+  ] as const) {
+    const assessmentWrites = await client.query<{ privilege_type: string }>(
+      `SELECT privilege_type FROM information_schema.table_privileges
+        WHERE table_name = $2 AND grantee = $1
+          AND privilege_type IN ('UPDATE', 'DELETE', 'TRUNCATE')`,
+      [names.app, table],
+    );
+    for (const row of assessmentWrites.rows) {
+      failures.push(
+        `${names.app} still holds ${row.privilege_type} on ${table}.`,
+      );
+    }
+    const assessmentSever = await client.query(
+      `SELECT privilege_type FROM information_schema.table_privileges
+        WHERE table_name = $2 AND grantee = $1
+          AND privilege_type IN ('UPDATE', 'DELETE')`,
+      [names.retention, table],
+    );
+    if ((assessmentSever.rowCount ?? 0) < 2) {
+      failures.push(
+        `${names.retention} does not hold UPDATE and DELETE on ${table}, so ` +
+          "severing an assessor/granter pointer and pruning the record have " +
+          "no role to run as.",
+      );
+    }
   }
 
   return failures;

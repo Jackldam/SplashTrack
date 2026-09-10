@@ -694,6 +694,9 @@ skills.assess          skills.revoke
 
 attendance.read        attendance.record     attendance.amend
 
+assessment.read         assessment.record
+assessment.independence.override
+
 exams.read             exams.manage          exams.assess
 exams.results.record   exams.candidacy.override
 certificates.issue     certificates.revoke
@@ -732,6 +735,7 @@ privacy.export         privacy.erase
 | `inquiries.read` / `inquiries.manage` | **F-115.** Public inquiry free text routinely contains health data about a named child (§5.3) and was reachable through `pages.manage` |
 | `fees.read` / `.manage` / `.export` | Referenced by `01-domain-model.md` §5's reach column and by `15-assessment-and-fees.md` §6; never defined |
 | `exams.candidacy.override` | D-085's four-eyes gate is "overridable only with an explicit permission". This is it. The override rate is a number a chair can act on, which is the whole trade in D-085 |
+| `assessment.read` / `assessment.record` / `assessment.independence.override` | **Phase 2.3 build finding.** D-080/D-085/D-086/D-087 all describe the *aftest* — `Assessment`, `AssessmentCriterionResult`, `CriterionWaiver` — in detail without ever naming a permission for recording or reading one, the reverse of F-109's gap (a permission cited with no catalogue entry). `assessment.independence.override` is D-085's own override, applied to the one half of its formula the `assessment` module can enforce at write time (the assessor is not the student's own instructor) — a different power over a different table than `exams.candidacy.override`, which overrides the (later, `exams`-module) `ExamCandidate` confirmation gate itself |
 
 **Decision D-156 — The diagnostics page requires `diagnostics.read` at
 `ORGANIZATION` scope and is never served unauthenticated.** Its "safe to paste

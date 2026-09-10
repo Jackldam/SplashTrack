@@ -127,4 +127,18 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // CONTRACT, session date, 24 months, DELETE — D-111, never anonymised).
   // `SessionRosterEntry` above deliberately shares it; see that comment.
   AttendanceEvent: "ATTENDANCE_EVENTS",
+  // --- phase 2.3, the `assessment` module -----------------------------------
+  // The formal *aftest* record. Bound to the LONGER, SAFER of the two regimes
+  // `01-domain-model.md` §5 gives this domain — `ASSESSMENT_RESULTS` (7 years,
+  // REVIEW) rather than `ASSESSMENT_REMARKS` (12 months, DELETE, D-087) —
+  // because this registry binds one class per MODEL and a formal result must
+  // never be under-retained. The `remark` column's shorter policy is not
+  // mechanically enforced by this binding; see the `/// @dataClass` comment
+  // above `model Assessment` in `prisma/schema.prisma` and the phase 2.3
+  // report for why, and for the two ways to close the gap.
+  Assessment: "ASSESSMENT_RESULTS",
+  AssessmentCriterionResult: "ASSESSMENT_RESULTS",
+  // The waiver is part of the formal record's own basis (§2.1: "we let this
+  // one go" as a row with a name and a reason), so it shares the class.
+  CriterionWaiver: "ASSESSMENT_RESULTS",
 };

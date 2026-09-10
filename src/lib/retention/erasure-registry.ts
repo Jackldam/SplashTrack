@@ -115,6 +115,20 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     // application-initiated erasure removes attendance rows. Not `exempt`:
     // append-only constrains WHO may delete, not whether erasure applies.
     AttendanceEvent: { kind: "erase" },
+    // Phase 2.3. `Assessment.studentProfileId` cascades from `StudentProfile`
+    // (the pupil's evidential record); `assessorPersonId` is
+    // `SEVER_AND_RETAIN` (`PersonReferenceClassification`), on the
+    // `AttendanceEvent.recordedByPersonId` pattern.
+    Assessment: { kind: "erase" },
+    // `CriterionWaiver.grantedByPersonId` references `Person` directly
+    // (`SEVER_AND_RETAIN`, same pattern); its `assessmentId` cascades from
+    // `Assessment`. An ordinary participant of its own, unlike
+    // `AssessmentCriterionResult` immediately below, which references no
+    // `Person` at all and therefore takes NO entry, on the
+    // `GroupMembership`/`SessionRosterEntry` precedent (the completeness
+    // test's third assertion refuses a registered model with no `Person`
+    // reference) — it cascades from `Assessment` and needs nothing further.
+    CriterionWaiver: { kind: "erase" },
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },

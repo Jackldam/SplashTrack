@@ -273,6 +273,19 @@
       "state": "Status",
       "recordedAt": "Vastgelegd op",
       "note": "Notitie"
+    },
+    "assessment": {
+      "title": "Aftesten",
+      "none": "Er is nog geen aftest vastgelegd voor deze leerling.",
+      "denied": "Je mag de aftesten van deze leerling niet zien. De benodigde rechten: {permission}.",
+      "awardType": "Diploma/certificaat",
+      "outcome": "Uitslag",
+      "assessedAt": "Datum",
+      "remark": "Opmerking",
+      "outcomes": {
+        "PASS": "Geslaagd",
+        "FAIL": "Niet geslaagd"
+      }
     }
   },
   "mfaEnrolment": {
@@ -342,7 +355,17 @@
       "NOT_ON_ROSTER": "Deze leerling staat niet op de deelnemerslijst van deze les. Voeg het kind eerst toe via 'Gast toevoegen' hieronder — dat werkt voor een inhaalles, een leerling uit een andere groep én een proefzwemmer — en leg daarna de aanwezigheid vast.",
       "NOTHING_TO_REGISTER": "Er is geen enkele aanwezigheid opgegeven; er valt niets vast te leggen.",
       "DUPLICATE_PUPIL": "Dezelfde leerling staat twee keer in deze registratie. Eén les, één leerling, één waarneming — een correctie is een aparte handeling.",
-      "SUPERSEDED_EVENT_MISMATCH": "De te corrigeren waarneming hoort niet bij deze les en deze leerling. Een correctie wijst altijd naar de waarneming die zij vervangt."
+      "SUPERSEDED_EVENT_MISMATCH": "De te corrigeren waarneming hoort niet bij deze les en deze leerling. Een correctie wijst altijd naar de waarneming die zij vervangt.",
+      "CRITERION_SET_NOT_ACTIVE": "Deze eisenset is niet actief. Een aftest wordt alleen vastgelegd tegen de geldende versie van een eisenset.",
+      "UNKNOWN_CRITERION": "Een van de eisen hoort niet bij de gekozen eisenset.",
+      "UNKNOWN_GRADE_VALUE": "Een van de opgegeven cijfers bestaat niet op de beoordelingsschaal.",
+      "DUPLICATE_CRITERION_RESULT": "Voor één eis is meer dan één cijfer opgegeven.",
+      "DUPLICATE_CRITERION_WAIVER": "Voor één eis is meer dan één vrijstelling opgegeven.",
+      "DOUBLY_DISPOSED_CRITERION": "Een eis heeft zowel een cijfer als een vrijstelling gekregen. Kies één van de twee.",
+      "INCOMPLETE": "Niet elke eis is beoordeeld of vrijgesteld. Een uitslag wordt nooit berekend over onbeoordeelde eisen.",
+      "TOO_MANY_ENTRIES": "Er zijn te veel beoordelingen in één keer aangeboden.",
+      "NOT_INDEPENDENT": "De beoordelaar is de eigen instructeur van deze leerling. Een aftest die meetelt voor het examen wordt afgenomen door een andere, bevoegde instructeur.",
+      "SUPERSEDED_ASSESSMENT_MISMATCH": "De te corrigeren aftest hoort niet bij deze leerling en deze eisenset."
     },
     "saved": {
       "group": "Groep opgeslagen.",
@@ -367,7 +390,8 @@
       "lanesCleared": "Deze les volgt weer de banen van de lesreeks.",
       "progress": "Voortgang vastgelegd.",
       "attendance": "Aanwezigheid vastgelegd.",
-      "attendanceAmended": "Aanwezigheid gecorrigeerd. De eerdere waarneming blijft zichtbaar in de geschiedenis."
+      "attendanceAmended": "Aanwezigheid gecorrigeerd. De eerdere waarneming blijft zichtbaar in de geschiedenis.",
+      "assessment": "Aftest vastgelegd."
     },
     "skillProgress": {
       "title": "Voortgang vastleggen",
@@ -582,6 +606,25 @@
         "ABSENT": "Afwezig",
         "EXCUSED": "Afgemeld",
         "LATE": "Te laat"
+      }
+    },
+    "assessment": {
+      "title": "Aftest",
+      "denied": "Je mag hier geen aftest vastleggen of zien. De benodigde rechten: {permission}.",
+      "set": "Eisenset: {awardType} (versie {version})",
+      "pickStudent": "Kies een leerling",
+      "criterion": "Eis",
+      "grade": "Cijfer",
+      "waiver": "Vrijstelling",
+      "waived": "Vrijgesteld",
+      "waiverReason": "Reden vrijstelling",
+      "remark": "Opmerking (optioneel)",
+      "remarkNote": "Een gewone opmerking over deze zitting, zichtbaar voor iedereen die de aftest mag inzien — geen diagnose of beschuldiging, wel wat de leerling moet oefenen.",
+      "submit": "Aftest vastleggen",
+      "reason": {
+        "NO_LEVEL": "Aan deze groep is nog geen niveau gekoppeld, dus is er geen eisenset om af te testen.",
+        "NO_AWARD_TYPE": "Het niveau van deze groep leidt nog niet naar een diploma of certificaat.",
+        "NO_ACTIVE_SET": "Er is nog geen actieve eisenset voor dit diploma/certificaat."
       }
     }
   },

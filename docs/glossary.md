@@ -61,7 +61,7 @@ migration without asking.**
 | certificaat | `AwardType` (kind: `CERTIFICATE`) | fixed | Same machinery, relaxed thresholds — data, not a special case. |
 | eisen / eisenpakket | `CriterionSet` | fixed | Versioned. An assessment from 2026 stays readable against the criteria that applied in 2026 (D-160). **Not `AssessmentScheme`**: chapters 01 and 15 used that spelling with `SchemeCriterion` until D-189 settled it here, where D-159 puts the authority. |
 | cijfer / beoordeling | `GradeValue` | fixed | The five-value ordinal scale: *onvoldoende, matig, voldoende, goed, zeer goed*. Pass is "at least *voldoende*" unless the `CriterionSet` sets a lower threshold (D-160). |
-| opmerking | `AssessmentRemark` | fixed | Pedagogical, about the pupil — e.g. *"vertoont een schaarslag"*: not itself a fail if stuwing is sufficient, but a thing to work on. Protected free text (D-148). |
+| opmerking | `AssessmentRemark` | fixed | Pedagogical, about the pupil — e.g. *"vertoont een schaarslag"*: not itself a fail if stuwing is sufficient, but a thing to work on. Protected free text (D-148) **only at `AssessmentCriterionResult.remark`**; `Assessment.remark`, the sitting-level counterpart, is ordinary unprotected text (D-192). |
 
 ## Money
 

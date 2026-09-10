@@ -271,6 +271,30 @@ export async function criterionSetOfCriterion(criterionId: string): Promise<{
 }
 
 /**
+ * The rank of every requested `GradeValue`, by id — the published answer
+ * `assessment` (phase 2.3) builds D-080's pass computation from. `rank` is
+ * D-080's own comparison (`GradeValue.rank`'s own model comment: "`rank` IS
+ * THE COMPARISON"); an id with no matching row is simply absent from the
+ * returned map, on the same "positive membership only" discipline the
+ * authorization layer uses, so a caller handed a stale or foreign id fails
+ * closed rather than silently comparing against `undefined`.
+ *
+ * UNGUARDED, on the {@link criterionSetOfCriterion}/`listActiveCriteria`
+ * precedent: ids and ranks, nothing about anybody, and the caller has
+ * already guarded its own write or read before it asks.
+ */
+export async function gradeValuesByIds(
+  gradeValueIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (gradeValueIds.length === 0) return new Map();
+  const rows = await prisma.gradeValue.findMany({
+    where: { id: { in: [...gradeValueIds] } },
+    select: { id: true, rank: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.rank]));
+}
+
+/**
  * The ACTIVE criterion set's criteria for one `AwardType`, in order — what
  * `listCriteriaForGroup` renders as the picker. Empty when there is no
  * `ACTIVE` set yet (a `DRAFT` still being composed is never assessable,
