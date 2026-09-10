@@ -619,7 +619,7 @@
       "waived": "Waived",
       "waiverReason": "Waiver reason",
       "remark": "Remark (optional)",
-      "remarkNote": "Visible to anyone holding the notes permission — not a diagnosis or an allegation, just what the pupil needs to work on.",
+      "remarkNote": "An ordinary remark about this sitting, visible to anyone who can see the aftest — not a diagnosis or an allegation, just what the pupil needs to work on.",
       "submit": "Record aftest",
       "reason": {
         "NO_LEVEL": "This group has no level linked yet, so there is no criterion set to assess against.",

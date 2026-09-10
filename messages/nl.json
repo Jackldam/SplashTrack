@@ -619,7 +619,7 @@
       "waived": "Vrijgesteld",
       "waiverReason": "Reden vrijstelling",
       "remark": "Opmerking (optioneel)",
-      "remarkNote": "Zichtbaar voor iedereen met de notitiebevoegdheid — geen diagnose of beschuldiging, wel wat de leerling moet oefenen.",
+      "remarkNote": "Een gewone opmerking over deze zitting, zichtbaar voor iedereen die de aftest mag inzien — geen diagnose of beschuldiging, wel wat de leerling moet oefenen.",
       "submit": "Aftest vastleggen",
       "reason": {
         "NO_LEVEL": "Aan deze groep is nog geen niveau gekoppeld, dus is er geen eisenset om af te testen.",

@@ -1,13 +1,14 @@
 /**
  * `assessment-service.ts` against the real database — recording an aftest,
  * D-080's pass rule, D-086's completeness invariant, D-085's independence
- * check and its override, and D-087/D-148's remark protection (encryption,
- * the `students.notes.*` permission gate, audit-on-read).
+ * check and its override, and the two different remark regimes (decided
+ * 2026-09-10, `docs/build/phase-2.3-assessment-report.md` §1.5).
  *
  * The properties worth naming, because each is a design sentence:
  *
  *   - ONE TRANSACTION, ONE AUDIT EVENT per sitting (the D-126/`attendance`
- *     shape), and the remark NEVER appears in `changedFields`.
+ *     shape), and neither remark's VALUE ever appears in `changedFields`
+ *     (only `assessmentRemarkGiven`/`criterionRemarkGiven` booleans).
  *   - D-086: an outcome is NEVER computed over an unset criterion — recording
  *     refuses the whole write (`INCOMPLETE`) rather than partially grading.
  *   - D-080: no `AwardType.kind` anywhere; the pass floor and its per-criterion
@@ -17,10 +18,12 @@
  *     `assessment.independence.override`.
  *   - APPEND-ONLY corrections: a re-assessment is a new row carrying
  *     `supersedesAssessmentId`; the original is untouched.
- *   - Remarks are STORED SEALED (never plaintext), require
- *     `students.notes.write` to set and `students.notes.read` to see, and a
- *     read that discloses one is audited exactly once, never carrying the
- *     value itself.
+ *   - `Assessment.remark` (sitting-level) is PLAIN, UNPROTECTED TEXT: no
+ *     `students.notes.*` gate to set or see it, no audit-on-read.
+ *   - `AssessmentCriterionResult.remark` (per-criterion) is STILL STORED
+ *     SEALED (never plaintext), requires `students.notes.write` to set and
+ *     `students.notes.read` to see, and a read that discloses one is audited
+ *     exactly once, never carrying the value itself.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -472,8 +475,81 @@ describe("recordAssessment — D-085's independence check and its override", () 
   });
 });
 
-describe("remarks — D-087/D-148's protected free-text class", () => {
-  it("refuses the WHOLE write when a remark is given but the caller lacks students.notes.write", async () => {
+describe("Assessment.remark (sitting-level) — unprotected plain text, decided 2026-09-10", () => {
+  it("writes with a remark WITHOUT students.notes.write — the assessor role holds no notes permission at all", async () => {
+    const {
+      sessionId,
+      assessorId,
+      pupil,
+      criterionSetId,
+      criterionIds,
+      gradeIds,
+    } = await aSitting("plainwr");
+    // ASSESSOR_PERMISSIONS is assessment.record/read only — see the fixtures.
+
+    const result = await recordAssessment(assessor(assessorId), sessionId, {
+      studentProfileId: pupil.studentProfileId,
+      criterionSetId,
+      clientEventId: asid("ce_plain_wr"),
+      remark: "kind vertoont een schaarslag",
+      results: criterionIds.map((criterionId) => ({
+        criterionId,
+        gradeValueId: gradeIds.voldoende,
+      })),
+    });
+
+    expect(result.outcome).toBe("PASS");
+  });
+
+  it("is stored PLAINTEXT (never sealed) and is readable WITHOUT students.notes.read", async () => {
+    const { sessionId, pupil, criterionSetId, criterionIds, gradeIds } =
+      await aSitting("plainread");
+
+    const plaintext = "kind vertoont een schaarslag";
+    const result = await recordAssessment(admin(), sessionId, {
+      studentProfileId: pupil.studentProfileId,
+      criterionSetId,
+      clientEventId: asid("ce_plain_read"),
+      remark: plaintext,
+      results: criterionIds.map((criterionId) => ({
+        criterionId,
+        gradeValueId: gradeIds.voldoende,
+      })),
+    });
+
+    const stored = await prisma.assessment.findUniqueOrThrow({
+      where: { id: result.id },
+      select: { remark: true },
+    });
+    expect(stored.remark).toBe(plaintext);
+
+    const readerId = await makePerson("reader_no_notes_sitting");
+    await grantTo({
+      personId: readerId,
+      roleId: await makeRole("role_reader_no_notes_sitting", [
+        "assessment.read",
+      ]),
+      scopeType: "ORGANIZATION",
+    });
+
+    const assessments = await getAssessmentsForStudent(
+      { principal: { personId: readerId }, at: NOW },
+      pupil.studentProfileId,
+    );
+    expect(assessments[0]!.remark).toBe(plaintext);
+
+    const revealed = await prisma.auditEvent.count({
+      where: {
+        eventType: "assessment.remark_revealed",
+        targetId: pupil.studentProfileId,
+      },
+    });
+    expect(revealed).toBe(0);
+  });
+});
+
+describe("AssessmentCriterionResult.remark (per-criterion) — D-087/D-148's protected free-text class, unchanged", () => {
+  it("refuses the WHOLE write when a criterion-result remark is given but the caller lacks students.notes.write", async () => {
     const {
       sessionId,
       assessorId,
@@ -489,10 +565,10 @@ describe("remarks — D-087/D-148's protected free-text class", () => {
         studentProfileId: pupil.studentProfileId,
         criterionSetId,
         clientEventId: asid("ce_notes_denied"),
-        remark: "kind vertoont een schaarslag",
-        results: criterionIds.map((criterionId) => ({
+        results: criterionIds.map((criterionId, i) => ({
           criterionId,
           gradeValueId: gradeIds.voldoende,
+          ...(i === 0 ? { remark: "kind vertoont een schaarslag" } : {}),
         })),
       }),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
@@ -513,26 +589,29 @@ describe("remarks — D-087/D-148's protected free-text class", () => {
       studentProfileId: pupil.studentProfileId,
       criterionSetId,
       clientEventId: asid("ce_notes_ok"),
-      remark: plaintext,
-      results: criterionIds.map((criterionId) => ({
+      results: criterionIds.map((criterionId, i) => ({
         criterionId,
         gradeValueId: gradeIds.voldoende,
+        ...(i === 0 ? { remark: plaintext } : {}),
       })),
     });
 
-    const stored = await prisma.assessment.findUniqueOrThrow({
-      where: { id: result.id },
+    const stored = await prisma.assessmentCriterionResult.findMany({
+      where: { assessmentId: result.id, criterionId: criterionIds[0]! },
       select: { remark: true },
     });
-    expect(stored.remark).not.toBeNull();
-    expect(stored.remark).not.toBe(plaintext);
-    expect(stored.remark).toMatch(/^v1:/);
+    expect(stored[0]!.remark).not.toBeNull();
+    expect(stored[0]!.remark).not.toBe(plaintext);
+    expect(stored[0]!.remark).toMatch(/^v1:/);
 
     const assessments = await getAssessmentsForStudent(
       admin(),
       pupil.studentProfileId,
     );
-    expect(assessments[0]!.remark).toBe(plaintext);
+    const revealedResult = assessments[0]!.results.find(
+      (r) => r.criterionId === criterionIds[0],
+    );
+    expect(revealedResult?.remark).toBe(plaintext);
 
     const revealed = await prisma.auditEvent.findMany({
       where: {
@@ -552,10 +631,10 @@ describe("remarks — D-087/D-148's protected free-text class", () => {
       studentProfileId: pupil.studentProfileId,
       criterionSetId,
       clientEventId: asid("ce_notes_degrade"),
-      remark: "vertrouwelijk",
-      results: criterionIds.map((criterionId) => ({
+      results: criterionIds.map((criterionId, i) => ({
         criterionId,
         gradeValueId: gradeIds.voldoende,
+        ...(i === 0 ? { remark: "vertrouwelijk" } : {}),
       })),
     });
 
@@ -570,7 +649,9 @@ describe("remarks — D-087/D-148's protected free-text class", () => {
       { principal: { personId: readerId }, at: NOW },
       pupil.studentProfileId,
     );
-    expect(assessments[0]!.remark).toBeNull();
+    expect(
+      assessments[0]!.results.find((r) => r.criterionId === criterionIds[0]),
+    ).toMatchObject({ remark: null });
     expect(assessments[0]!.outcome).toBe("PASS");
 
     const revealed = await prisma.auditEvent.count({

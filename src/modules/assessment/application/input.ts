@@ -7,11 +7,14 @@ export const TEXT_MAX = {
   /** An id arriving from a form field. */
   id: 40,
   /**
-   * A protected-free-text remark (D-087/D-148), in the assessor's own words.
-   * Bounded the same as `SkillProgress.note`/`GroupMove.reason` — generous,
-   * because refusing a legitimate observation for being long is the wrong
-   * failure. Applies to `Assessment.remark` and
-   * `AssessmentCriterionResult.remark` alike.
+   * A remark in the assessor's own words. Bounded the same as
+   * `SkillProgress.note`/`GroupMove.reason` — generous, because refusing a
+   * legitimate observation for being long is the wrong failure. Applies to
+   * both `Assessment.remark` (sitting-level, unprotected — decided
+   * 2026-09-10, `docs/build/phase-2.3-assessment-report.md` §1.5) and
+   * `AssessmentCriterionResult.remark` (criterion-level, still protected
+   * free text under D-087/D-148) — the bound is about typing effort, not
+   * about which protection regime the column carries.
    */
   remark: 1000,
   /** `CriterionWaiver.reason` — why a criterion was not required. */

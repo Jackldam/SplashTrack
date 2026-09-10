@@ -2454,13 +2454,21 @@ model AttendanceEvent {
 // (`01-domain-model.md` §4's aggregate boundary) — never typed by the
 // assessor, never recomputed later.
 //
-// REMARKS ARE THE FIRST REAL PROTECTED-FREE-TEXT COLUMNS IN THIS SCHEMA.
-// D-087/D-148: `Assessment.remark` and `AssessmentCriterionResult.remark`
-// are column-encrypted under the D-096 envelope (`@/lib/crypto`), audited
-// on READ (not only on write), and gated by `students.notes.read` /
-// `students.notes.write` — never general `students.read`/`assessment.read`.
-// See `src/lib/crypto/encrypted-columns.ts` for the registry entries and
-// the assessment service for the audited-read call site.
+// `AssessmentCriterionResult.remark` IS THIS SCHEMA'S FIRST REAL
+// PROTECTED-FREE-TEXT COLUMN. D-087/D-148: it is column-encrypted under the
+// D-096 envelope (`@/lib/crypto`), audited on READ (not only on write), and
+// gated by `students.notes.read` / `students.notes.write` — never general
+// `students.read`/`assessment.read`. See `src/lib/crypto/encrypted-columns.ts`
+// for the registry entry and the assessment service for the audited-read
+// call site. D-087's own example — *"the remark is about the scissor kick,
+// not about the sitting"* — is exactly why the sitting-level `Assessment.remark`
+// does NOT carry the same protection; see that field's own comment below.
+//
+// DECIDED 2026-09-10 (Jack, phase 2.3 sign-off): `Assessment.remark` (the
+// sitting-level note) is UNPROTECTED plain text — no encryption, no
+// `students.notes.read` gate, no audit-on-read. `AssessmentCriterionResult.remark`
+// (the per-criterion note, where D-087 says the protected remark "actually"
+// lives) is UNCHANGED. See `docs/build/phase-2.3-assessment-report.md` §1.5.
 //
 // A RETENTION-GRANULARITY GAP, FLAGGED RATHER THAN SILENTLY RESOLVED.
 // `01-domain-model.md` §5 gives "Assessment remarks" and "Assessment
@@ -2471,8 +2479,10 @@ model AttendanceEvent {
 // exactly one `DataClass` per model, so both tables below are bound to
 // `ASSESSMENT_RESULTS` (the longer, safer regime — a formal result must
 // never be under-retained) and the `remark` column's shorter policy is
-// NOT mechanically enforced by that registry. See the phase 2.3 report for
-// the two ways to close this and why neither was chosen unilaterally.
+// NOT mechanically enforced by that registry. This gap now applies only to
+// `AssessmentCriterionResult.remark`, since `Assessment.remark` carries no
+// protected-text policy at all. See the phase 2.3 report for the two ways
+// to close this and why neither was chosen unilaterally.
 // ---------------------------------------------------------------------------
 
 /// Only `PRE_EXAM` is written by this phase's service. See the file comment
@@ -2516,8 +2526,9 @@ enum AssessmentOutcome {
 /// stamped from the same published fact attendance already reads
 /// (`findSessionRegisterFacts`), never re-derived. It is what narrows a
 /// `GROUP`-scoped read to its own rows (D-145 rule 2, the
-/// `AttendanceEvent.groupId` precedent) and, together with
-/// `students.notes.read`, what gates `remark` visibility (D-087's "Group +
+/// `AttendanceEvent.groupId` precedent). It no longer gates this model's own
+/// `remark` — see that field's comment — but still narrows the
+/// `AssessmentCriterionResult.remark` reach the same way (D-087's "Group +
 /// `students.notes.read`" reach).
 ///
 /// **WHO RECORDED IT.** `assessorPersonId` is nullable so an erasure can
@@ -2530,10 +2541,6 @@ enum AssessmentOutcome {
 /// session a flaky connection interrupts, and a retry must not risk a second,
 /// conflicting `Assessment` row for the same sitting.
 ///
-/// **`remark` IS PROTECTED FREE TEXT (D-087/D-148)** — see the file comment.
-/// Stores the D-096 envelope (`v1:<keyId>:<nonce>:<ct>`), never plaintext;
-/// `/// @encrypted assessment.assessment_remark` below is its registry
-/// binding.
 /// @dataClass ASSESSMENT_RESULTS
 model Assessment {
   id String @id @default(cuid(2))
@@ -2571,7 +2578,14 @@ model Assessment {
   /// as `AttendanceEvent.groupId` reasons.
   groupId String
 
-  /// @encrypted assessment.assessment_remark
+  /// Plain, unprotected free text about the SITTING as a whole — no
+  /// encryption, no `students.notes.read` gate, no audit-on-read. DECIDED
+  /// 2026-09-10 (Jack): D-087's own example, *"the remark is about the
+  /// scissor kick, not about the sitting"*, is exactly why this column does
+  /// not carry the same protection `AssessmentCriterionResult.remark` does —
+  /// see that model's comment and `docs/build/phase-2.3-assessment-report.md`
+  /// §1.5. Read and written directly by the assessment service, the same
+  /// ordinary-string handling `Course.description` gets.
   remark String?
 
   /// P-02's idempotency key — see the model comment.
@@ -2611,10 +2625,14 @@ model Assessment {
 /// **`gradeValueId` IS WHAT D-080 COMPARES**, via `GradeValue.rank` — never
 /// the label, on the `Criterion.minimumGradeId` precedent.
 ///
-/// **`remark` IS PROTECTED FREE TEXT (D-087)**, and this is where D-087 says
-/// it attaches PRIMARILY: *"the remark is about the scissor kick, not about
-/// the sitting"*. See the file comment and `Assessment.remark` above for the
-/// mechanism, identical here.
+/// **`remark` IS PROTECTED FREE TEXT (D-087/D-148)**, and this is where D-087
+/// says it attaches PRIMARILY: *"the remark is about the scissor kick, not
+/// about the sitting"* — which is also why `Assessment.remark` (the sitting
+/// itself, above) is DELIBERATELY UNPROTECTED plain text as of 2026-09-10
+/// (Jack's decision, `docs/build/phase-2.3-assessment-report.md` §1.5). See
+/// the file comment for the mechanism: column-encrypted under the D-096
+/// envelope, audited on read, gated by `students.notes.read` /
+/// `students.notes.write`.
 /// @dataClass ASSESSMENT_RESULTS
 model AssessmentCriterionResult {
   id           String @id @default(cuid(2))

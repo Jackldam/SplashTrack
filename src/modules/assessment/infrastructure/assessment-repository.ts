@@ -7,14 +7,20 @@
  * `{ student: studentProfileId }`, then narrowed to what the caller's
  * `Reach` covers per row — the `findSkillProgressForStudent` shape.
  *
- * REMARKS ARE RETURNED SEALED, NEVER DECRYPTED. `remarkSealed` is the raw
- * D-096 envelope string or `null`; decrypting it needs the row's own id as
- * the AAD primary key AND a separate `students.notes.read` check the service
- * performs once for the whole call, together with the audited-read event
- * (D-148). Doing that here would smear the permission check and the audit
- * write across a repository that has neither `requirePermission` nor
- * `recordAuditEvent` in scope, on the same "guard and query are never
- * separable" discipline the module boundary elsewhere enforces.
+ * `Assessment.remark` (the sitting-level note) IS PLAIN, UNPROTECTED TEXT —
+ * decided 2026-09-10 (Jack, phase 2.3 sign-off; see
+ * `docs/build/phase-2.3-assessment-report.md` §1.5) — so it is read straight
+ * off the row here, no gate, no audit.
+ *
+ * `AssessmentCriterionResult.remark` IS RETURNED SEALED, NEVER DECRYPTED.
+ * `remarkSealed` is the raw D-096 envelope string or `null`; decrypting it
+ * needs the row's own id as the AAD primary key AND a separate
+ * `students.notes.read` check the service performs once for the whole call,
+ * together with the audited-read event (D-148). Doing that here would smear
+ * the permission check and the audit write across a repository that has
+ * neither `requirePermission` nor `recordAuditEvent` in scope, on the same
+ * "guard and query are never separable" discipline the module boundary
+ * elsewhere enforces.
  *
  * SERVER-ONLY.
  */
@@ -53,7 +59,8 @@ export interface AssessmentView {
   readonly outcome: AssessmentOutcomeValue;
   readonly supersedesAssessmentId: string | null;
   readonly groupId: string;
-  readonly remarkSealed: string | null;
+  /** Plain, unprotected text — see the file comment. Never sealed. */
+  readonly remark: string | null;
   readonly results: readonly AssessmentCriterionResultView[];
   readonly waivers: readonly CriterionWaiverView[];
 }
@@ -108,7 +115,7 @@ function toView(row: AssessmentRow): AssessmentView {
     outcome: row.outcome,
     supersedesAssessmentId: row.supersedesAssessmentId,
     groupId: row.groupId,
-    remarkSealed: row.remark,
+    remark: row.remark,
     results: row.criterionResults.map((result) => ({
       id: result.id,
       criterionId: result.criterionId,

@@ -64,14 +64,18 @@ it.
   `grantedByPersonId?`) — "we let this one go" as a named row, one per
   criterion per sitting. The service refuses a criterion carrying both a
   result and a waiver in one submission (§1.6).
-- **Both remark columns are the first real production entries in
+- **`AssessmentCriterionResult.remark` is the first real production entry in
   `ENCRYPTED_COLUMNS` beyond `person_relationships.authority_evidence`** —
-  `assessment.assessment_remark` and `assessment.criterion_result_remark`,
-  both under the `medical-v1` HKDF purpose D-112's own diagram already
-  reserves for "special-category columns... assessment remarks." Audited on
-  read (`assessment.remark_revealed`, once per call, before decryption — the
-  `revealRelationshipEvidence` pattern), gated by `students.notes.read` /
-  `students.notes.write` rather than `assessment.read`/`.record`.
+  `assessment.criterion_result_remark`, under the `medical-v1` HKDF purpose
+  D-112's own diagram already reserves for "special-category columns...
+  assessment remarks." Audited on read (`assessment.remark_revealed`, once
+  per call, before decryption — the `revealRelationshipEvidence` pattern),
+  gated by `students.notes.read` / `students.notes.write` rather than
+  `assessment.read`/`.record`. **This phase originally shipped
+  `Assessment.remark` (the sitting-level field) under the identical
+  protection, as `assessment.assessment_remark`; DECIDED 2026-09-10 (Jack,
+  §1.5) that the sitting-level remark is ordinary, unprotected text instead —
+  only `AssessmentCriterionResult.remark` carries this protection now.**
 - **One hand-written constraint**, `Assessment_no_self_supersede_check`,
   proved in `tests/integration/assessment-constraints.test.ts` — the
   `AttendanceEvent_no_self_supersede_check` pattern.
@@ -85,8 +89,11 @@ it.
   (D-086). `recordAssessment` refuses the whole write (`INCOMPLETE`) first.
 - Branch on `AwardType.kind` anywhere. D-080's function is one function over
   `CriterionSet`/`Criterion`/`GradeValue` rows.
-- Let a remark reach an audit event, an operational log, or a caller without
-  `students.notes.read`/`.write`.
+- Let an `AssessmentCriterionResult.remark` (per-criterion) VALUE reach an
+  audit event, an operational log, or a caller without
+  `students.notes.read`/`.write`. `Assessment.remark` (sitting-level) is
+  unprotected plain text since 2026-09-10 (§1.5) and carries no such
+  restriction.
 - Refuse `ExamCandidate → CONFIRMED`. That is `exams`' write, against a table
   this phase does not build — see §1.1.
 
@@ -224,18 +231,76 @@ the test permanently red, or inventing a way to special-case `assessment.*`
 out of the sync check — is worse. Worth a glance from Jack to confirm the
 addition reads as intended, not because the mechanism is in question.
 
-### 1.5 Both `Assessment.remark` and `AssessmentCriterionResult.remark` are protected — D-087 says the second is where it "actually gets written"
+### 1.5 `Assessment.remark` is unprotected plain text; `AssessmentCriterionResult.remark` stays protected — DECIDED 2026-09-10 (Jack)
 
-D-087's own words: remarks attach "PRIMARILY" at the criterion result — *"the
-remark is about the scissor kick, not about the sitting."* The entity list
-in `15-…` §2.1 still gives `Assessment` its own `remark?` field. This phase
-protects both identically (same envelope class, same permission gate, same
-audit-on-read) rather than only the primary one, on the reading that
-"primarily" describes where an assessor will usually type, not a carve-out
-for the rarer field. Flagged in case "primarily" was meant to imply the
-sitting-level remark is a lesser case that does not need the full protected
-class — nothing about the mechanism would change if that reading is wrong,
-only whether `Assessment.remark` should have shipped as ordinary text.
+This was flagged as an open question at first sign-off: D-087's own words say
+remarks attach "PRIMARILY" at the criterion result — *"the remark is about
+the scissor kick, not about the sitting."* — while the entity list in `15-…`
+§2.1 still gives `Assessment` its own `remark?` field, and the phase shipped
+protecting both identically (same D-096 envelope class under `medical-v1`,
+same `students.notes.*` permission gate, same audit-on-read) rather than only
+the primary one.
+
+**Decided 2026-09-10, by Jack, on review of the finished module:**
+`Assessment.remark` (the SITTING-level note) reverts to an ordinary,
+unprotected string column — no encryption, no `students.notes.read` gate, no
+audit-on-read. `AssessmentCriterionResult.remark` (the PER-CRITERION note,
+where D-087 says the remark "actually" gets written) is UNCHANGED and keeps
+the full protected-free-text treatment. The reading that "primarily" was
+describing where the protected class genuinely lives — not merely where an
+assessor usually happens to type — is the one adopted.
+
+What changed in code, in one commit:
+
+- `prisma/schema.prisma` — the `/// @encrypted assessment.assessment_remark`
+  marker is removed from `Assessment.remark`; the field stays `String?`
+  (no column-type change, so no migration SQL was needed — confirmed with
+  `prisma migrate diff` against the applied schema, which produced an empty
+  script). `AssessmentCriterionResult.remark` keeps its
+  `/// @encrypted assessment.criterion_result_remark` marker untouched.
+- `src/lib/crypto/encrypted-columns.ts` — the
+  `"assessment.assessment_remark"` registry entry is removed;
+  `"assessment.criterion_result_remark"` is untouched. The bidirectional
+  `tests/unit/encrypted-column-registry.test.ts` check (D-167) enforces that
+  the schema and the registry agree.
+- `src/modules/assessment/application/assessment-service.ts` — `recordAssessment`
+  writes `Assessment.remark` directly (no `seal()`), and no longer requires
+  `students.notes.write` to set a non-empty sitting-level remark (only a
+  non-empty criterion-result remark still requires it). `revealRemarks`
+  no longer touches the sitting-level `remark` at all: it is exposed exactly
+  as stored, for every caller who can already reach `assessment.read`, with
+  no `students.notes.read` check and no `assessment.remark_revealed` audit
+  event for it. `AssessmentCriterionResult.remark` keeps `seal()`/`open()`,
+  the `students.notes.*` gate and the audited reveal, unchanged.
+- `src/modules/assessment/infrastructure/assessment-repository.ts` —
+  `AssessmentView.remarkSealed` becomes `AssessmentView.remark: string | null`
+  (plain, read straight off the row); `AssessmentCriterionResultView.remarkSealed`
+  is unchanged.
+- UI (`src/app/people/[personId]/page.tsx`) — the sitting-level remark column
+  now always shows the stored text (never redacted to `—` for lack of
+  `students.notes.read`); the per-criterion remark is not rendered on this
+  screen at all, unchanged from before this decision. The aftest-recording
+  form (`src/app/groups/[groupId]/sessions/[sessionId]/page.tsx`) already
+  showed the sitting-level remark as a plain, ungated textarea with no
+  criterion-level remark input at all — that was true before this decision
+  and needed no code change.
+- Tests (`tests/integration/assessment-services.test.ts`) — the shared
+  "remarks" suite is split into an unprotected-sitting-remark suite (writable
+  without `students.notes.write`, readable without `students.notes.read`,
+  never sealed) and an unchanged protected-criterion-remark suite (requires
+  `students.notes.write` to set, `students.notes.read` to see, sealed at
+  rest, audited on reveal).
+
+**Honesty note on the UI step:** the design brief for this decision assumed
+the sitting-level remark sat behind the same disclosure/reveal-button flow as
+the criterion-level one. In the code as shipped, neither remark has a
+distinct reveal-button UI component — both were rendered directly from
+server-computed values (redacted to `null`/`—` server-side for a reader
+without `students.notes.read`, on the read screen; shown as a plain textarea
+with no gate at all, on the write screen), and the per-criterion remark has
+no UI at all yet, on either screen. So "moving the sitting-level field out
+from behind the reveal flow" reduced, in practice, to removing the
+server-side redaction for it — there was no reveal button to remove client-side.
 
 ### 1.6 A criterion may not carry both a result and a waiver in one submission — not stated, decided for legibility
 
@@ -348,7 +413,7 @@ imports `assessment`.
 | `Person`-reference registry | `Assessment.assessorPersonId` and `CriterionWaiver.grantedByPersonId` — `SEVER_AND_RETAIN`, on the `AttendanceEvent.recordedByPersonId`/`SkillProgress.assessedByPersonId` pattern. `AssessmentCriterionResult` references no `Person` directly and correctly takes no entry (it cascades from `Assessment`) |
 | Erasure registry | `Assessment: { kind: "erase" }`, `CriterionWaiver: { kind: "erase" }` |
 | Retention (`DATA_CLASS_BY_MODEL`) | All three models bound to `ASSESSMENT_RESULTS` — the longer, safer of the two regimes the design gives this domain; the shorter `ASSESSMENT_REMARKS` policy is not mechanically enforced by this binding, flagged and left open in §1.3 |
-| Encrypted columns | `assessment.assessment_remark`, `assessment.criterion_result_remark` — registered, audited on read, gated by `students.notes.*` |
+| Encrypted columns | `assessment.criterion_result_remark` only — registered, audited on read, gated by `students.notes.*`. `assessment.assessment_remark` was removed 2026-09-10 (Jack, §1.5): `Assessment.remark` is now unprotected plain text |
 | CI | `npx vitest run`: 78 files / 916 tests passed, zero regressions in the pre-existing 868. `npm run typecheck`: clean. `npm run lint`: clean (the one pre-existing, unrelated warning phases 2.0-2.2 also noted, in `database-role-model.test.ts`). `npm run format:check`: clean on every file this phase touched. `npm run build`: blocked by a pre-existing worktree limitation, §1.10 |
 | Jack's approval | Not yet requested — this report is the handoff |
 
@@ -366,8 +431,9 @@ imports `assessment`.
    named; neither picked.
 3. §1.4 — `assessment.*` added to `02-security-privacy.md` §2.5 as well as
    to code, on precedent. Worth a glance, not a real question.
-4. §1.5 — both `Assessment.remark` and `AssessmentCriterionResult.remark`
-   protected identically, though D-087 calls the second "primary."
+4. §1.5 — **CLOSED 2026-09-10 (Jack).** `Assessment.remark` is now
+   unprotected plain text; `AssessmentCriterionResult.remark` stays protected
+   under D-087/D-148, unchanged. See §1.5 for what changed in code.
 5. §1.9 — the UI is one-student-per-sitting, matching the D-061-style
    aggregate boundary; the multi-candidate batch screen `04-ux.md` §4.7
    sketches is real follow-up work, not built here.

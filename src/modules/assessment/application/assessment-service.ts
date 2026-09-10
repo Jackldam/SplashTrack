@@ -40,30 +40,45 @@
  * made a server-side invariant, not only a UI convention.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * REMARKS ARE PROTECTED FREE TEXT (D-087/D-148), NOT GENERAL STUDENT DATA
+ * ONLY THE CRITERION-RESULT REMARK IS PROTECTED FREE TEXT (D-087/D-148)
  *
- * Writing a non-empty remark (at the sitting level or at any criterion
- * result) additionally requires `students.notes.write` — refusing the WHOLE
- * write rather than silently dropping the assessor's typed text, D-153's
- * fail-loudly spirit applied to a write instead of an export. Reading a
- * remark additionally requires `students.notes.read`; without it the caller
- * still sees every grade, on D-087's own words: *"an assessor without the
- * notes permission sees grades without the reasoning."* Every read that
- * DOES disclose a remark is audited (`assessment.remark_revealed`), once per
- * call, before the value is decrypted — the `revealRelationshipEvidence`
- * pattern (`@/modules/people`).
+ * DECIDED 2026-09-10 (Jack, phase 2.3 sign-off;
+ * `docs/build/phase-2.3-assessment-report.md` §1.5): `Assessment.remark` (the
+ * SITTING-level note) is ordinary, unprotected text — read and written
+ * directly, no `seal()`/`open()`, no `students.notes.*` gate, no audit-on-read
+ * — the exact `StudentLifecycleEvent.reason` treatment
+ * (`@/modules/people/application/student-service.ts`). Only
+ * `AssessmentCriterionResult.remark` (the per-criterion note) still carries
+ * D-087/D-148's protection, because that is where D-087 says the remark
+ * "actually" attaches: *"the remark is about the scissor kick, not about the
+ * sitting."*
+ *
+ * Writing a non-empty CRITERION-RESULT remark additionally requires
+ * `students.notes.write` — refusing the WHOLE write rather than silently
+ * dropping the assessor's typed text, D-153's fail-loudly spirit applied to a
+ * write instead of an export. Reading one additionally requires
+ * `students.notes.read`; without it the caller still sees every grade, on
+ * D-087's own words: *"an assessor without the notes permission sees grades
+ * without the reasoning."* Every read that DOES disclose a criterion-result
+ * remark is audited (`assessment.remark_revealed`), once per call, before the
+ * value is decrypted — the `revealRelationshipEvidence` pattern
+ * (`@/modules/people`).
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * IDS ARE PRE-GENERATED, NOT LEFT TO `@default(cuid(2))`
  *
- * `Assessment.remark` and `AssessmentCriterionResult.remark` are encrypted
- * under an envelope whose AAD binds the ROW'S OWN PRIMARY KEY (D-096) — so
- * the id must be known BEFORE the row is written, not after. Every other
- * encrypted column in this schema (`PersonRelationship.evidence`) belongs to
- * an ordinarily-mutable table and could create-then-update; `Assessment` is
- * append-only (the runtime role holds no UPDATE — `assessmentGrantStatements`)
- * so that escape does not exist here. `randomUUID()` supplies the id; Prisma
- * uses exactly what is given and never overwrites a supplied `id`.
+ * `AssessmentCriterionResult.remark` is encrypted under an envelope whose AAD
+ * binds the ROW'S OWN PRIMARY KEY (D-096) — so the id must be known BEFORE the
+ * row is written, not after. Every other encrypted column in this schema
+ * (`PersonRelationship.evidence`) belongs to an ordinarily-mutable table and
+ * could create-then-update; `Assessment`/`AssessmentCriterionResult` are
+ * append-only (the runtime role holds no UPDATE —
+ * `assessmentGrantStatements`) so that escape does not exist here.
+ * `randomUUID()` supplies the id; Prisma uses exactly what is given and never
+ * overwrites a supplied `id`. `Assessment`'s own id is still pre-generated
+ * (its `AssessmentCriterionResult` and `CriterionWaiver` children need it to
+ * write in the same transaction), even though `remark` itself no longer needs
+ * it for an AAD.
  *
  * ONE TRANSACTION, ONE AUDIT EVENT, P-02 IDEMPOTENT via `clientEventId` — the
  * `registerSessionAttendance` shape, applied to one sitting instead of one
@@ -362,8 +377,11 @@ export async function recordAssessment(
     }
   }
 
-  const hasRemark = remark !== null || results.some((r) => r.remark !== null);
-  if (hasRemark) {
+  // `Assessment.remark` (the sitting-level note) is unprotected — see the
+  // file comment — so only a non-empty CRITERION-RESULT remark gates the
+  // write on `students.notes.write`.
+  const hasCriterionRemark = results.some((r) => r.remark !== null);
+  if (hasCriterionRemark) {
     await requirePermission(
       actor.principal,
       "students.notes.write",
@@ -422,10 +440,8 @@ export async function recordAssessment(
         outcomeComputedAt: at,
         supersedesAssessmentId,
         groupId: session.groupId,
-        remark:
-          remark === null
-            ? null
-            : seal("assessment.assessment_remark", assessmentId, remark),
+        // Plain text, never sealed — see the file comment.
+        remark,
         clientEventId,
       },
     });
@@ -472,9 +488,12 @@ export async function recordAssessment(
         targetType: "student_profile",
         targetId: studentProfileId,
         requestId: actor.requestId ?? null,
-        // IDS, COUNTS AND CLOSED-VOCABULARY TOKENS — never the remark
-        // (D-148-adjacent restraint, the `skills.progress.recorded`/
-        // `attendance.registered` precedent).
+        // IDS, COUNTS AND CLOSED-VOCABULARY TOKENS — never the remark VALUE.
+        // `assessmentRemarkGiven` is safe to log even though the field itself
+        // is unprotected plain text (D-153: an audit log is not the place to
+        // duplicate a note either), while `criterionRemarkGiven` is the
+        // D-148-adjacent restraint the `skills.progress.recorded`/
+        // `attendance.registered` precedent already applies.
         changedFields: {
           assessmentId,
           criterionSetId,
@@ -483,7 +502,8 @@ export async function recordAssessment(
           waiverCount: waivers.length,
           supersedesAssessmentId,
           independentAssessor: !isOwnInstructor,
-          remarkGiven: hasRemark,
+          assessmentRemarkGiven: remark !== null,
+          criterionRemarkGiven: hasCriterionRemark,
         },
       },
       tx,
@@ -493,12 +513,12 @@ export async function recordAssessment(
   });
 }
 
-/** One assessment's remarks, decrypted — the shape {@link revealRemarks} returns. */
-export interface RevealedAssessment extends Omit<
-  AssessmentView,
-  "remarkSealed" | "results"
-> {
-  readonly remark: string | null;
+/**
+ * One assessment with its criterion-result remarks decrypted — the shape
+ * {@link revealRemarks} returns. `remark` (the sitting-level note) is ALREADY
+ * plain on {@link AssessmentView}; only `results[].remark` needed opening.
+ */
+export interface RevealedAssessment extends Omit<AssessmentView, "results"> {
   readonly results: readonly (Omit<
     AssessmentCriterionResultView,
     "remarkSealed"
@@ -508,12 +528,14 @@ export interface RevealedAssessment extends Omit<
 }
 
 /**
- * Degrades every remark to `null` (grades survive), or — when the caller
- * holds `students.notes.read` — decrypts every remark and audits the
- * disclosure ONCE for the whole call, before any value is opened (the
+ * Degrades every CRITERION-RESULT remark to `null` (grades and the
+ * sitting-level `remark` survive either way), or — when the caller holds
+ * `students.notes.read` — decrypts every one and audits the disclosure ONCE
+ * for the whole call, before any value is opened (the
  * `revealRelationshipEvidence` "no access without a record" pattern,
  * `@/modules/people`). D-087: *"an assessor without the notes permission
- * sees grades without the reasoning."*
+ * sees grades without the reasoning."* `Assessment.remark` is unprotected —
+ * see the file comment — so it is never touched here.
  */
 async function revealRemarks(
   actor: ActorContext,
@@ -537,17 +559,14 @@ async function revealRemarks(
   if (!canReadNotes) {
     return assessments.map((a) => ({
       ...a,
-      remark: null,
       results: a.results.map((r) => ({ ...r, remark: null })),
     }));
   }
 
-  const sealedCount =
-    assessments.filter((a) => a.remarkSealed !== null).length +
-    assessments.reduce(
-      (sum, a) => sum + a.results.filter((r) => r.remarkSealed !== null).length,
-      0,
-    );
+  const sealedCount = assessments.reduce(
+    (sum, a) => sum + a.results.filter((r) => r.remarkSealed !== null).length,
+    0,
+  );
 
   if (sealedCount > 0) {
     await recordAuditEvent({
@@ -563,16 +582,12 @@ async function revealRemarks(
         remarksRevealed: sealedCount,
       },
       reason:
-        "Assessment remarks disclosed to a signed-in principal holding students.notes.read.",
+        "Assessment criterion-result remarks disclosed to a signed-in principal holding students.notes.read.",
     });
   }
 
   return assessments.map((a) => ({
     ...a,
-    remark:
-      a.remarkSealed === null
-        ? null
-        : open("assessment.assessment_remark", a.id, a.remarkSealed),
     results: a.results.map((r) => ({
       ...r,
       remark:
@@ -586,8 +601,10 @@ async function revealRemarks(
 /**
  * A pupil's aftest history, most recent sitting first, narrowed to what the
  * caller's `Reach` covers (only `GROUP` narrows — see
- * `assessment-reach-filter.ts`) and with remarks gated behind
- * `students.notes.read` independently of `assessment.read`.
+ * `assessment-reach-filter.ts`) and with CRITERION-RESULT remarks gated
+ * behind `students.notes.read` independently of `assessment.read`. The
+ * sitting-level `remark` is unprotected and always included — see the file
+ * comment.
  */
 export async function getAssessmentsForStudent(
   actor: ActorContext,

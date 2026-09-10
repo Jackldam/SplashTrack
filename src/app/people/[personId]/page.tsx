@@ -946,9 +946,13 @@ export default async function PersonDetailPage({
           This section guards `{ student }` and is then narrowed per row by
           the caller's reach (only `GROUP` narrows, the exact
           `getSkillProgressForStudent`/`getAttendanceForStudent` stance).
-          `remark` is `null` here for a reader without `students.notes.read`
-          — D-087: grades are visible, the reasoning is not. A superseded
-          sitting renders struck through, never hidden — the same D-061/D-062
+          `remark` here is the SITTING-level note, decided 2026-09-10 (Jack)
+          to be unprotected plain text — see
+          `docs/build/phase-2.3-assessment-report.md` §1.5 — so it always
+          shows, with no `students.notes.read` gate. The per-criterion remark
+          (`AssessmentCriterionResult.remark`) stays protected under D-087 but
+          is not rendered on this screen at all yet. A superseded sitting
+          renders struck through, never hidden — the same D-061/D-062
           discipline attendance already applies. */}
       {person.studentProfile ? (
         <section className="mt-5">

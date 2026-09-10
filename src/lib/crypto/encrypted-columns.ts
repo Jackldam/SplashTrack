@@ -104,20 +104,17 @@ export const ENCRYPTED_COLUMNS = {
       "to the database alone must not disclose it.",
   },
   // --- phase 2.3, the `assessment` module — D-087/D-148 ---------------------
-  // The first real production columns under `medical-v1`: D-148's own words,
+  // The first real production column under `medical-v1`: D-148's own words,
   // "special category by inference (D-148, D-087)" — a developmental
   // observation about a minor's body and behaviour, at least as sensitive as
   // a medical note even though an instructor, not a nurse, wrote it.
-  "assessment.assessment_remark": {
-    columnId: "assessment.assessment_remark",
-    model: "Assessment",
-    field: "remark",
-    purpose: "medical-v1",
-    note:
-      "A remark about the SITTING as a whole. D-087 says remarks attach " +
-      "PRIMARILY at the criterion result (see the entry below); this is the " +
-      "rarer, assessment-level counterpart the same entity list names.",
-  },
+  //
+  // `Assessment.remark` (the sitting-level counterpart) DELIBERATELY HAS NO
+  // ENTRY HERE. Decided 2026-09-10 (Jack, phase 2.3 sign-off): D-087's own
+  // words — remarks attach PRIMARILY at the criterion result, "the remark is
+  // about the scissor kick, not about the sitting" — are exactly why the
+  // sitting-level remark is plain, unprotected text instead. See
+  // `docs/build/phase-2.3-assessment-report.md` §1.5.
   "assessment.criterion_result_remark": {
     columnId: "assessment.criterion_result_remark",
     model: "AssessmentCriterionResult",
