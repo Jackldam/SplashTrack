@@ -179,6 +179,11 @@ export async function updateGroupAction(formData: FormData): Promise<void> {
       name: formData.get("name"),
       capacity: formData.get("capacity"),
       active: formData.get("active"),
+      // `?? undefined`, unlike `active` above: the screen renders no select
+      // and no hidden field when the caller has no levels to offer (see
+      // `groups/[groupId]/page.tsx`), and a save from that state must leave
+      // the column alone rather than clear a level the caller cannot see.
+      courseLevelId: formData.get("courseLevelId") ?? undefined,
     });
   });
   revalidatePath(`/groups/${groupId}`);
