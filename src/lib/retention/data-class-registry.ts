@@ -141,4 +141,14 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   // The waiver is part of the formal record's own basis (§2.1: "we let this
   // one go" as a row with a name and a reason), so it shares the class.
   CriterionWaiver: "ASSESSMENT_RESULTS",
+  // --- phase 2.4, the `exams` module -----------------------------------------
+  // "een leraar die bevoegd is" — a professional credential fact about a
+  // person, the `InstructorAssignment` shape one module later.
+  PersonQualification: "PERSON_QUALIFICATIONS",
+  // The candidacy, the exam-day result and the issued document are one
+  // register — "01-domain-model.md" §5's own row, "Exam results & awards" —
+  // bound to the class phase 0.4b already provisioned for it.
+  ExamCandidate: "EXAM_RESULTS_AND_AWARDS",
+  ExamResult: "EXAM_RESULTS_AND_AWARDS",
+  Award: "EXAM_RESULTS_AND_AWARDS",
 };

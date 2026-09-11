@@ -253,6 +253,48 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "record and survives the granter's erasure; only the name goes. Same " +
       "SetNull-or-retention-UPDATE severing mechanism as Assessment.",
   },
+  "PersonQualification.personId": {
+    category: "HARD_DELETE",
+    reason:
+      'The HOLDER\'s own credential — "een leraar die bevoegd is" — their ' +
+      "data, from their side, on the exact InstructorAssignment.personId " +
+      "pattern: Restrict FK, an explicit deleteMany in the erasure. It is " +
+      "NOT a grant and deleting it revokes nothing by itself; what it does " +
+      "do is remove the fact D-085's confirmation check reads.",
+  },
+  "PersonQualification.grantedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO GRANTED the qualification — accountability evidence about " +
+      "somebody else's credential, on the exact CriterionWaiver." +
+      "grantedByPersonId pattern immediately above. The qualification row " +
+      "survives the granter's erasure; only the name goes. Ordinary " +
+      "onDelete: SetNull severing — this table carries no append-only " +
+      "carve-out, so the application may sever it directly as well.",
+  },
+  "ExamCandidate.confirmedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO CONFIRMED an exam candidacy — accountability evidence about " +
+      "somebody else's record, on the exact Assessment.assessorPersonId " +
+      "pattern. The candidacy belongs to the STUDENT's evidential record " +
+      "and survives the confirmer's erasure; only the name goes. Ordinary " +
+      "onDelete: SetNull severing — ExamCandidate carries no append-only " +
+      "carve-out.",
+  },
+  "ExamResult.recordedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO RECORDED an exam-day outcome — accountability evidence about " +
+      "somebody else's record, on the exact Assessment.assessorPersonId " +
+      "pattern. The row belongs to the CANDIDATE's evidential record — the " +
+      "basis on which a diploma was or was not awarded (D-062, D-089) — and " +
+      "survives the recorder's erasure; only the name goes. The FK is " +
+      "onDelete: SetNull, and here — as with Assessment — that referential " +
+      "action or the retention role's UPDATE (examsGrantStatements) is the " +
+      "only severing mechanism: the runtime role holds no UPDATE on this " +
+      "table (the append-only carve-out).",
+  },
   "RetentionPolicy.confirmedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:

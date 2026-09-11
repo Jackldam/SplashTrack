@@ -128,7 +128,28 @@
       "invalidNumber": "That number is not usable. It must be 1-32 characters of letters, digits, dot, underscore, slash or hyphen, starting with a letter or a digit.",
       "duplicateNumber": "That number is already in use by someone else.",
       "AUTHORITY_REQUIRES_GUARDIAN": "Only a guardian relationship may give consent. An emergency contact is someone to telephone, not someone who may consent on a child's behalf.",
-      "AUTHORITY_REQUIRES_EVIDENCE": "Fill in the evidence when you tick that this person may give consent — record HOW the authority was established."
+      "AUTHORITY_REQUIRES_EVIDENCE": "Fill in the evidence when you tick that this person may give consent — record HOW the authority was established.",
+      "CANDIDATE_NOT_FOUND": "This exam candidate does not exist.",
+      "ALREADY_CONFIRMED": "This candidate has already been confirmed for the exam.",
+      "ALREADY_WITHDRAWN": "This candidacy has been withdrawn.",
+      "NO_QUALIFYING_ASSESSMENT": "There is no valid, passed aftest for this student and this diploma/certificate. A candidate can only be confirmed after a passed aftest (the four-eyes principle, D-085).",
+      "NOT_INDEPENDENT": "The aftest's assessor is this student's own instructor — re-checked at the moment of confirmation. Only with the matching override permission can this be confirmed anyway.",
+      "ASSESSOR_NOT_QUALIFIED": "The aftest's assessor holds no valid qualification (PersonQualification) at the time of the aftest. Only with the matching override permission can this be confirmed anyway.",
+      "OVERRIDE_REASON_REQUIRED": "An override of the four-eyes principle requires a reason.",
+      "STUDENT_NOT_IN_GROUP": "This student is not an active member of the given group.",
+      "GROUP_NOT_FOUND": "This group does not exist.",
+      "CANDIDATE_NOT_CONFIRMED": "This candidate has not been confirmed for the exam. An exam result is only recorded for a confirmed candidate.",
+      "SUPERSEDED_RESULT_MISMATCH": "The result being corrected does not belong to this candidate.",
+      "CORRECTION_REASON_REQUIRED": "A correction or re-assessment of an exam result requires a reason.",
+      "RESULT_NOT_FOUND": "This exam result does not exist.",
+      "RESULT_NOT_PASS": "A diploma/certificate is only issued against a passing result.",
+      "RESULT_ALREADY_HAS_AWARD": "A diploma/certificate has already been issued for this result.",
+      "AWARD_NOT_FOUND": "This diploma/certificate does not exist.",
+      "AWARD_ALREADY_REVOKED": "This diploma/certificate has already been revoked.",
+      "REVOKE_REASON_REQUIRED": "Revoking a diploma/certificate requires a reason.",
+      "QUALIFICATION_NOT_FOUND": "This qualification does not exist.",
+      "ALREADY_ENDED": "This qualification has already ended.",
+      "INVALID_WINDOW": "The end date is before the start date."
     },
     "search": {
       "label": "Search",
@@ -286,6 +307,37 @@
         "PASS": "Passed",
         "FAIL": "Not passed"
       }
+    },
+    "exams": {
+      "title": "Exams",
+      "none": "No exam candidacy has been registered for this student yet.",
+      "denied": "You may not see this student's exams. The required permission: {permission}.",
+      "awardType": "Diploma/certificate",
+      "status": "Status",
+      "confirmedAt": "Confirmed on",
+      "actions": "Actions",
+      "statuses": {
+        "PENDING": "Pending",
+        "CONFIRMED": "Confirmed",
+        "WITHDRAWN": "Withdrawn"
+      },
+      "outcomes": {
+        "PASS": "Passed",
+        "FAIL": "Failed"
+      },
+      "overrideBadge": "Override applied",
+      "overrideReasonPlaceholder": "Override reason (optional)",
+      "withdrawReasonPlaceholder": "Reason for withdrawal",
+      "confirm": "Confirm candidate",
+      "withdraw": "Withdraw",
+      "recordResult": "Record result",
+      "remarksPlaceholder": "Remark (optional)",
+      "issueAward": "Issue",
+      "awardNumberPlaceholder": "Diploma number",
+      "revokeAward": "Revoke",
+      "revokeReasonPlaceholder": "Reason for revocation",
+      "awardRevoked": "Revoked",
+      "registerCandidate": "Register candidate"
     }
   },
   "mfaEnrolment": {

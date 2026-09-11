@@ -350,6 +350,23 @@ model Person {
   /// Waivers this person GRANTED (phase 2.3), on the same sever-on-erasure
   /// pattern.
   criterionWaiversGranted CriterionWaiver[]      @relation("CriterionWaiverGrantedBy")
+
+  /// Phase 2.4. This person's OWN qualification history — *"bevoegd binnen de
+  /// vereniging"* — so `Restrict`/`HARD_DELETE`, on the
+  /// `InstructorAssignment.personId` pattern: a credential is the holder's own
+  /// data, not somebody else's evidence about them.
+  qualifications          PersonQualification[] @relation("PersonQualificationHolder")
+  /// Qualifications this person GRANTED to someone else. Accountability
+  /// evidence, severed rather than deleted on erasure, on the
+  /// `criterionWaiversGranted` pattern immediately above.
+  qualificationsGranted   PersonQualification[] @relation("PersonQualificationGrantedBy")
+  /// `ExamCandidate` rows this person CONFIRMED (phase 2.4). Somebody else's
+  /// evidential record — the candidate's — so severed, not deleted, on
+  /// erasure, on the `assessmentsAssessed` pattern above.
+  examCandidatesConfirmed ExamCandidate[]       @relation("ExamCandidateConfirmedBy")
+  /// `ExamResult` rows this person RECORDED (phase 2.4), the same
+  /// sever-on-erasure shape as `assessmentsAssessed`.
+  examResultsRecorded     ExamResult[]          @relation("ExamResultRecordedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -837,6 +854,10 @@ model StudentProfile {
   /// immediately above.
   assessments Assessment[]
 
+  /// Phase 2.4. Cascades with the pupil, on the `assessments` precedent
+  /// immediately above — a candidacy is part of the pupil's own record.
+  examCandidates ExamCandidate[]
+
   @@index([unitId])
 }
 
@@ -1124,6 +1145,9 @@ model Group {
   /// Phase 2.3 — the read-side narrowing snapshot on every `Assessment` row
   /// (D-145 rule 2), the `attendanceEvents` shape one module later.
   assessments          Assessment[]
+  /// Phase 2.4 — the read-side narrowing snapshot on every `ExamCandidate` row
+  /// (D-145 rule 2), the `assessments` shape one module later.
+  examCandidates       ExamCandidate[]
 
   @@index([unitId])
   @@index([active])
@@ -1604,6 +1628,12 @@ model ScheduledSession {
   /// path always supplies one, but the column stays optional in the general
   /// entity (an `EXAM`-kind row would carry no `scheduledSessionId` at all).
   assessments      Assessment[]
+  /// Exam-day results recorded against this lesson slot (phase 2.4, optional —
+  /// see `ExamResult.scheduledSessionId`). `SetNull`, on the `assessments`
+  /// precedent immediately above: the column exists so a `SESSION`-scoped
+  /// external examiner (D-052/D-068) has a resource to be scoped against, not
+  /// because every result is tied to one.
+  examResults      ExamResult[]
 
   /// THE IDEMPOTENCY KEY. Postgres treats NULLs as distinct in a unique index,
   /// so hand-scheduled lessons (`recurrenceId IS NULL`) never collide with each
@@ -2004,8 +2034,12 @@ model AwardType {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  courseLevels  CourseLevel[]
-  criterionSets CriterionSet[]
+  courseLevels   CourseLevel[]
+  criterionSets  CriterionSet[]
+  /// Phase 2.4 — candidates registered for this award, and awards issued of
+  /// this type.
+  examCandidates ExamCandidate[]
+  awards         Award[]
 
   @@index([kind])
 }
@@ -2603,6 +2637,11 @@ model Assessment {
 
   criterionResults AssessmentCriterionResult[]
   waivers          CriterionWaiver[]
+  /// Phase 2.4 — `ExamResult` rows pointing back at the qualifying aftest they
+  /// were confirmed against (`ExamResult.assessmentId`, optional traceability
+  /// only; see that column's own comment).
+  examResults      ExamResult[]
+  examCandidates   ExamCandidate[]
 
   @@index([studentProfileId, assessedAt])
   @@index([criterionSetId])
@@ -2691,6 +2730,282 @@ model CriterionWaiver {
   @@unique([assessmentId, criterionId])
   @@index([criterionId])
   @@index([grantedByPersonId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2.4 — the `exams` module: `PersonQualification`, `ExamCandidate`,
+// `ExamResult`, `Award` (`01-domain-model.md` §3.1/§3.5, `15-…` §3; D-085,
+// D-052, D-062, D-089).
+//
+// `ExamSession`/`ExamAssessor` (`01-domain-model.md` §3.5) and
+// `Assessment.examSessionId`/`AssessmentKind.EXAM` (deferred by the
+// assessment phase, see its report §1.2) are DELIBERATELY NOT BUILT HERE —
+// same reasoning, same precedent: `ExamSession.locationId` names a `Location`
+// table D-175 already superseded with `Pool`/`Lane`, and a nullable FK to a
+// table that does not exist is the dangling stub CLAUDE.md §4/D-163 forbids.
+// `ExamCandidate` therefore carries no `examSessionId`; `ExamResult` carries
+// an OPTIONAL `scheduledSessionId` instead, reusing `sessions`' own table on
+// the exact `Assessment.scheduledSessionId` precedent, so a `SESSION`-scoped
+// external examiner (D-052/D-068) has a resource to be scoped against
+// without a second scheduling primitive. See the phase 2.4 report §1 for the
+// full reasoning and what is flagged for Jack.
+// ---------------------------------------------------------------------------
+
+/// The state machine D-085's `CONFIRMED` transition gates. Three members —
+/// no `REJECTED`: a candidacy that does not qualify simply stays `PENDING`
+/// (or is withdrawn), on the same "absence is the answer" reasoning D-086
+/// applies to an ungraded criterion.
+enum ExamCandidateStatus {
+  /// The default. Registered, not yet confirmed.
+  PENDING
+  /// D-085's own gate passed (or overridden) — see `Assessment.remark`'s
+  /// sibling reasoning: CONFIRMED is a write this module makes, never typed
+  /// directly.
+  CONFIRMED
+  /// Withdrawn before confirmation, or after — a candidacy that will not sit
+  /// (or did not). `withdrawnAt`/`withdrawnReason` are set together with this,
+  /// the `ScheduledSession.cancelledAt`/`cancellationReason` pattern.
+  WITHDRAWN
+}
+
+/// D-080's two-value shape, reused rather than re-invented — an exam-day
+/// outcome is graded PASS/FAIL exactly as an aftest is (`15-…` §2.2's formula
+/// is unchanged by the occasion). Its own enum, not `AssessmentOutcome`,
+/// because `ExamResult` is not an `Assessment` row and the two must be free to
+/// diverge later (an appeal outcome is not obviously the same vocabulary).
+enum ExamResultOutcome {
+  PASS
+  FAIL
+}
+
+/// *"een leraar die bevoegd is binnen de vereniging"* (`15-…` §2.1) — what
+/// D-085's `assessorPersonId holds a valid PersonQualification` clause
+/// checks, now that the table exists. One row per grant; ending one early is
+/// an ordinary mutation of `validTo`, the `MembershipPeriod` shape (D-059):
+/// an open-ended interval closed by setting its own end column, not a new row
+/// pointing at the one it replaces — there is no correction/supersession
+/// concept here, only "this qualification lapsed on this date."
+///
+/// NOT append-only, and deliberately: unlike `Assessment`/`AttendanceEvent`,
+/// this table has no evidential "what was decided and when" shape to
+/// protect — it is a licence register, and `MembershipPeriod` is its
+/// precedent, not `AttendanceEvent`.
+///
+/// `type` IS A FREE STRING, NOT AN ENUM — flagged in the phase 2.4 report.
+/// Neither `01-domain-model.md` nor `15-…` names a closed vocabulary of
+/// qualification types, and D-085's own formula asks only "does ANY valid
+/// `PersonQualification` exist at `assessedAt`", never "of which type" — so
+/// this phase does not invent a vocabulary the design never specified.
+/// @dataClass PERSON_QUALIFICATIONS
+model PersonQualification {
+  id String @id @default(cuid(2))
+
+  personId String
+
+  /// The organisation's own label for what this qualifies the holder to do —
+  /// see the model comment for why this is a string, not an enum.
+  type String
+
+  validFrom DateTime
+  /// NULL = currently valid. The ONLY signal D-085's check reads, on the
+  /// `InstructorAssignment.toDate` / `MembershipPeriod.endedAt` convention.
+  validTo   DateTime?
+
+  /// WHO GRANTED IT — accountability evidence about the decision to qualify
+  /// someone, not about the holder. Nullable because the very first
+  /// qualifications in an installation may predate any recorded grantor
+  /// (imported, or granted by the break-glass administrator).
+  grantedByPersonId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The holder's OWN credential — `Restrict`/`HARD_DELETE`, on the
+  /// `InstructorAssignment.personId` pattern: this is their data, from their
+  /// side, not somebody else's evidence about them.
+  person    Person  @relation("PersonQualificationHolder", fields: [personId], references: [id], onDelete: Restrict)
+  grantedBy Person? @relation("PersonQualificationGrantedBy", fields: [grantedByPersonId], references: [id], onDelete: SetNull)
+
+  @@index([personId])
+  @@index([grantedByPersonId])
+}
+
+/// The candidacy state machine (`01-domain-model.md` §3.5). `examSessionId`
+/// is deliberately absent — see the file comment above. `awardTypeId`
+/// resolves which `CriterionSet` (`assessment`'s `qualifyingAftestFacts`) and
+/// which `Award` a `CONFIRMED` candidacy is heading toward.
+///
+/// NOT append-only: a candidacy is one mutable row moving through
+/// `PENDING -> CONFIRMED` or `PENDING -> WITHDRAWN`, the `WaitlistEntry`
+/// shape (D-180) — "placement creates the enrolment; the entry is closed, not
+/// deleted" — rather than the `Assessment`/`AttendanceEvent` event-log shape.
+/// What IS append-only, and carries the evidential weight D-062 asks for, is
+/// `ExamResult` below, which a `CONFIRMED` candidacy owns 0..N of.
+/// @dataClass EXAM_RESULTS_AND_AWARDS
+model ExamCandidate {
+  id String @id @default(cuid(2))
+
+  studentProfileId String
+  awardTypeId      String
+
+  /// The read-side narrowing snapshot — the `Assessment.groupId` pattern
+  /// (D-145 rule 2): the student's group AT REGISTRATION time, so a
+  /// `GROUP`-scoped instructor sees candidacies for pupils they actually
+  /// teach even after the pupil later moves groups.
+  groupId String
+
+  status ExamCandidateStatus @default(PENDING)
+
+  /// D-085's formula, captured at the moment it was satisfied — see the
+  /// service's own doc comment for why this is a read-time re-verification,
+  /// not a cache of `assessment`'s write-time independence check.
+  ///
+  /// `confirmedAt` is required by a hand-written CHECK the moment
+  /// `status = CONFIRMED`; `confirmedByPersonId` deliberately is NOT — it is
+  /// SEVER_AND_RETAIN (`PERSON_REFERENCE_CLASSIFICATION`, `onDelete: SetNull`,
+  /// the `Assessment.assessorPersonId` pattern), so erasing the confirming
+  /// person must be able to null it without putting an already-confirmed
+  /// candidacy in violation of a CHECK it can no longer satisfy.
+  confirmedAt            DateTime?
+  confirmedByPersonId    String?
+  /// The qualifying `Assessment` `qualifyingAftestFacts` pointed at when this
+  /// candidacy was confirmed — traceability only; `assessment`'s own tables
+  /// remain the source of truth (D-057, `CLAUDE.md` §4).
+  qualifyingAssessmentId String?
+
+  /// D-085's override, audited (`exams.candidacy.override`). `overrideReason`
+  /// is never absent when `overrideUsed` is true, and never present when it
+  /// is not — the `Award.revokeReason` pairing, a hand-written CHECK below.
+  overrideUsed   Boolean @default(false)
+  overrideReason String?
+
+  withdrawnAt     DateTime?
+  withdrawnReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentProfile       StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  awardType            AwardType      @relation(fields: [awardTypeId], references: [id], onDelete: Restrict)
+  group                Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  confirmedBy          Person?        @relation("ExamCandidateConfirmedBy", fields: [confirmedByPersonId], references: [id], onDelete: SetNull)
+  qualifyingAssessment Assessment?    @relation(fields: [qualifyingAssessmentId], references: [id], onDelete: SetNull)
+
+  results ExamResult[]
+
+  @@index([studentProfileId])
+  @@index([awardTypeId])
+  @@index([groupId])
+  @@index([confirmedByPersonId])
+  @@index([qualifyingAssessmentId])
+  @@index([status])
+}
+
+/// The exam-day outcome (`01-domain-model.md` §3.5). **Append-only** — D-062:
+/// "a candidate has 0..N results, not 0..1", a correction is a NEW row
+/// carrying `supersedesResultId`, and the effective result is the latest row
+/// nothing supersedes. `remarks` is plain, unprotected text, on the
+/// `Assessment.remark` precedent (phase 2.3 report §1.5) — a decision reason,
+/// not a developmental observation about a child's body.
+/// @dataClass EXAM_RESULTS_AND_AWARDS
+model ExamResult {
+  id String @id @default(cuid(2))
+
+  candidateId String
+
+  outcome ExamResultOutcome
+
+  recordedByPersonId String?
+  recordedAt         DateTime
+
+  /// D-061/D-062's supersession field — a correction or appeal outcome is a
+  /// new row pointing at the one it replaces, never an edit.
+  supersedesResultId String?
+  /// Why this row corrects the one it supersedes — never absent for a
+  /// correction (enforced by the service, the `GroupMove` reason-required
+  /// pattern), always absent for an original recording.
+  reason             String?
+  /// Plain, unprotected free text — see the model comment.
+  remarks            String?
+
+  /// Traceability only, to the qualifying `PRE_EXAM` `Assessment` (see the
+  /// model comment on `ExamCandidate.qualifyingAssessmentId`). NOT the
+  /// exam-day per-criterion grading `01-domain-model.md` §3.5 imagines —
+  /// that needs `AssessmentKind.EXAM`, deliberately deferred (file comment).
+  assessmentId       String?
+  /// The lesson slot this result was recorded in, if any — see the file
+  /// comment for why this column exists at all (a `SESSION`-scoped external
+  /// examiner's own resource to be guarded against, D-052/D-068).
+  scheduledSessionId String?
+
+  /// P-02's idempotency key, the `Assessment`/`AttendanceEvent` shape.
+  clientEventId String @unique
+
+  createdAt DateTime @default(now())
+
+  candidate        ExamCandidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  recordedBy       Person?           @relation("ExamResultRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
+  supersedes       ExamResult?       @relation("ExamResultSupersedes", fields: [supersedesResultId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy     ExamResult[]      @relation("ExamResultSupersedes")
+  assessment       Assessment?       @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  scheduledSession ScheduledSession? @relation(fields: [scheduledSessionId], references: [id], onDelete: SetNull)
+
+  award Award?
+
+  @@index([candidateId])
+  @@index([recordedByPersonId])
+  @@index([supersedesResultId])
+  @@index([assessmentId])
+  @@index([scheduledSessionId])
+}
+
+/// The issued document (`01-domain-model.md` §3.5, renamed from `Certificate`
+/// by D-082). Issued against a SPECIFIC `ExamResult`; correcting a result
+/// revokes the award and issues a new one — never edits `resultId`,
+/// `awardTypeId`, `number` or `issuedAt` in place.
+///
+/// **A DELIBERATE, NAMED DEPARTURE FROM PURE APPEND-ONLY** — flagged in the
+/// phase 2.4 report. D-061/D-062's shape (a correction is a new row) cannot
+/// hold literally here, because `01-domain-model.md` §3.5 gives `Award` its
+/// OWN `revokedAt?`/`revokeReason?` columns on the SAME row, the
+/// `ScheduledSession.cancelledAt`/`cancellationReason` pattern rather than
+/// the `Assessment.supersedesAssessmentId` one. The runtime role's grant
+/// (`examsGrantStatements`) resolves the tension at the database itself:
+/// `SELECT, INSERT`, plus `UPDATE` on EXACTLY `revokedAt, revokeReason` —
+/// Postgres column-level `GRANT` — so the issuance fields are as immutable as
+/// `Assessment`'s are, and revocation is the one column-pair mutation the
+/// domain model itself asks for.
+/// @dataClass EXAM_RESULTS_AND_AWARDS
+model Award {
+  id String @id @default(cuid(2))
+
+  resultId    String @unique
+  awardTypeId String
+
+  /// The physical certificate/diploma number — administrator-assigned, the
+  /// `Membership.memberNumber`/`StudentProfile.studentNumber` shape.
+  number String @unique
+
+  issuedAt DateTime
+
+  /// Set together, by the hand-written `Award_revocation_reason_check`
+  /// below — the `ScheduledSession` cancellation pattern.
+  revokedAt    DateTime?
+  revokeReason String?
+
+  createdAt DateTime @default(now())
+
+  /// `Cascade`, NOT `Restrict` — the one place this table follows
+  /// `AssessmentCriterionResult`'s shape rather than `ScheduledSession`'s.
+  /// `ExamResult` is erased only by cascading from `StudentProfile` through
+  /// `ExamCandidate` (there is no other application-level deletion of an
+  /// append-only row); a `Restrict` here would make that cascade fail with a
+  /// foreign-key violation the moment a passing result had an issued award,
+  /// which is exactly the case erasure most needs to succeed.
+  result    ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  awardType AwardType  @relation(fields: [awardTypeId], references: [id], onDelete: Restrict)
+
+  @@index([awardTypeId])
 }
 
 // ---------------------------------------------------------------------------
@@ -3501,6 +3816,12 @@ enum DataClass {
   /// **Not in §5's table.** The `ApiCredential` register. No integration exists
   /// in v1 (D-163); the table does, and it names its creator.
   API_CREDENTIALS
+  /// **Not in §5's table.** `PersonQualification` — phase 2.4, the `exams`
+  /// module: *"een leraar die bevoegd is"* (`15-…` §2.1). It needed a class of
+  /// its own for the same reason `INSTRUCTOR_ASSIGNMENTS` did: D-066 counts a
+  /// professional qualification as a relationship that HOLDS a person, so it
+  /// had to be a classified table before it could be a relationship source.
+  PERSON_QUALIFICATIONS
 }
 
 /// The Article 6 (and, for special category, Article 9) basis a class is held

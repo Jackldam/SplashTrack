@@ -420,6 +420,28 @@ export const RETENTION_CATALOGUE: readonly RetentionProposal[] = [
     source: "Not in §5 — added by phase 0.4b; see the report §3",
   },
   {
+    dataClass: "PERSON_QUALIFICATIONS",
+    purpose:
+      "Recording who is 'bevoegd' to conduct an aftest or an exam within the " +
+      "club — the fact D-085's four-eyes gate checks before an exam candidacy " +
+      "may be confirmed.",
+    // NOT IN §5'S TABLE, and unresolved rather than guessed — the
+    // INSTRUCTOR_ASSIGNMENTS precedent immediately explains why: a
+    // qualification is arguably held on CONTRACT (administering who may run
+    // the club's own exams) or on LEGITIMATE_INTEREST (the record behind a
+    // later dispute about who was authorised to sign off a diploma). Guessing
+    // would put a basis nobody chose behind every qualified assessor.
+    proposedLawfulBasis: "UNRESOLVED",
+    // D-066's rule, on the holder's side: the row is held as long as the
+    // person is held by anything, and this row is itself one of the things
+    // holding them — the INSTRUCTOR_ASSIGNMENTS shape.
+    trigger: "LAST_RELATIONSHIP_END",
+    retainForDays: null,
+    onExpiry: "REVIEW",
+    evidencedByAudit: true,
+    source: "Not in §5 — added by phase 2.4; see the report",
+  },
+  {
     dataClass: "API_CREDENTIALS",
     purpose:
       "Machine callers, and who minted them. No integration exists in v1 " +

@@ -128,7 +128,28 @@
       "invalidNumber": "Dit nummer is niet bruikbaar. Het moet 1-32 tekens zijn: letters, cijfers, punt, underscore, schuine streep of koppelteken, beginnend met een letter of cijfer.",
       "duplicateNumber": "Dit nummer is al in gebruik bij iemand anders.",
       "AUTHORITY_REQUIRES_GUARDIAN": "Alleen een relatie 'ouder of voogd' mag toestemming geven. Een noodcontact is iemand om te bellen, geen persoon die namens een kind toestemming mag geven.",
-      "AUTHORITY_REQUIRES_EVIDENCE": "Vul de onderbouwing in wanneer je aanvinkt dat deze persoon toestemming mag geven — leg vast hóe het gezag is vastgesteld."
+      "AUTHORITY_REQUIRES_EVIDENCE": "Vul de onderbouwing in wanneer je aanvinkt dat deze persoon toestemming mag geven — leg vast hóe het gezag is vastgesteld.",
+      "CANDIDATE_NOT_FOUND": "Deze examenkandidaat bestaat niet.",
+      "ALREADY_CONFIRMED": "Deze kandidaat is al bevestigd voor het examen.",
+      "ALREADY_WITHDRAWN": "Deze kandidatuur is teruggetrokken.",
+      "NO_QUALIFYING_ASSESSMENT": "Er is geen geldige, geslaagde aftest voor deze leerling en dit diploma/certificaat. Een kandidaat kan alleen worden bevestigd na een geslaagde aftest (het vier-ogen-principe, D-085).",
+      "NOT_INDEPENDENT": "De beoordelaar van de aftest is de eigen instructeur van deze leerling — opnieuw gecontroleerd op het moment van bevestigen. Alleen met de bijbehorende uitzonderingsbevoegdheid kan dit toch worden bevestigd.",
+      "ASSESSOR_NOT_QUALIFIED": "De beoordelaar van de aftest heeft geen geldige bevoegdheid (PersonQualification) op het moment van de aftest. Alleen met de bijbehorende uitzonderingsbevoegdheid kan dit toch worden bevestigd.",
+      "OVERRIDE_REASON_REQUIRED": "Voor een uitzondering op het vier-ogen-principe is een reden verplicht.",
+      "STUDENT_NOT_IN_GROUP": "Deze leerling is geen actief lid van de opgegeven groep.",
+      "GROUP_NOT_FOUND": "Deze groep bestaat niet.",
+      "CANDIDATE_NOT_CONFIRMED": "Deze kandidaat is niet bevestigd voor het examen. Een examenresultaat wordt alleen vastgelegd voor een bevestigde kandidaat.",
+      "SUPERSEDED_RESULT_MISMATCH": "Het te corrigeren resultaat hoort niet bij deze kandidaat.",
+      "CORRECTION_REASON_REQUIRED": "Voor een correctie of herbeoordeling van een examenresultaat is een reden verplicht.",
+      "RESULT_NOT_FOUND": "Dit examenresultaat bestaat niet.",
+      "RESULT_NOT_PASS": "Een diploma/certificaat wordt alleen uitgereikt tegen een geslaagd resultaat.",
+      "RESULT_ALREADY_HAS_AWARD": "Voor dit resultaat is al een diploma/certificaat uitgereikt.",
+      "AWARD_NOT_FOUND": "Dit diploma/certificaat bestaat niet.",
+      "AWARD_ALREADY_REVOKED": "Dit diploma/certificaat is al ingetrokken.",
+      "REVOKE_REASON_REQUIRED": "Voor het intrekken van een diploma/certificaat is een reden verplicht.",
+      "QUALIFICATION_NOT_FOUND": "Deze bevoegdheid bestaat niet.",
+      "ALREADY_ENDED": "Deze bevoegdheid is al beëindigd.",
+      "INVALID_WINDOW": "De einddatum ligt voor de begindatum."
     },
     "search": {
       "label": "Zoeken",
@@ -286,6 +307,37 @@
         "PASS": "Geslaagd",
         "FAIL": "Niet geslaagd"
       }
+    },
+    "exams": {
+      "title": "Examens",
+      "none": "Er is nog geen examenkandidatuur voor deze leerling.",
+      "denied": "Je mag de examens van deze leerling niet zien. De benodigde rechten: {permission}.",
+      "awardType": "Diploma/certificaat",
+      "status": "Status",
+      "confirmedAt": "Bevestigd op",
+      "actions": "Acties",
+      "statuses": {
+        "PENDING": "In afwachting",
+        "CONFIRMED": "Bevestigd",
+        "WITHDRAWN": "Teruggetrokken"
+      },
+      "outcomes": {
+        "PASS": "Geslaagd",
+        "FAIL": "Niet geslaagd"
+      },
+      "overrideBadge": "Uitzondering toegepast",
+      "overrideReasonPlaceholder": "Reden voor uitzondering (optioneel)",
+      "withdrawReasonPlaceholder": "Reden voor terugtrekken",
+      "confirm": "Bevestig kandidaat",
+      "withdraw": "Trek terug",
+      "recordResult": "Leg resultaat vast",
+      "remarksPlaceholder": "Opmerking (optioneel)",
+      "issueAward": "Reik uit",
+      "awardNumberPlaceholder": "Diplomanummer",
+      "revokeAward": "Trek in",
+      "revokeReasonPlaceholder": "Reden voor intrekken",
+      "awardRevoked": "Ingetrokken",
+      "registerCandidate": "Registreer kandidaat"
     }
   },
   "mfaEnrolment": {
