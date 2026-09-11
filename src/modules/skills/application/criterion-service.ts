@@ -18,7 +18,7 @@
  * SERVER-ONLY.
  */
 import { requirePermission } from "@/lib/authorization";
-import { prisma } from "@/lib/database";
+import { prisma, type DatabaseClient } from "@/lib/database";
 import { optionalText, requiredInt, requiredText } from "@/lib/validation";
 import { recordAuditEvent } from "@/modules/audit";
 
@@ -47,6 +47,7 @@ export async function createCriterion(
   actor: ActorContext,
   criterionSetId: string,
   input: CreateCriterionInput,
+  client: DatabaseClient = prisma,
 ): Promise<{ id: string }> {
   const at = instant(actor);
   await requirePermission(
@@ -75,7 +76,7 @@ export async function createCriterion(
     TEXT_MAX.id,
   );
 
-  return prisma.$transaction(async (tx) => {
+  const run = async (tx: DatabaseClient) => {
     const set = await tx.criterionSet.findUnique({
       where: { id: criterionSetId },
       select: { status: true },
@@ -115,7 +116,9 @@ export async function createCriterion(
     );
 
     return criterion;
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }
 
 export interface UpdateCriterionInput {
@@ -131,10 +134,11 @@ export async function updateCriterion(
   actor: ActorContext,
   criterionId: string,
   input: UpdateCriterionInput,
+  client: DatabaseClient = prisma,
 ): Promise<void> {
   const at = instant(actor);
 
-  const parent = await criterionSetOfCriterion(criterionId);
+  const parent = await criterionSetOfCriterion(criterionId, client);
   // A criterion id naming no row is neither a denial nor an error — the same
   // reading `updateCourseLevel` gives an absent level.
   if (parent === null) return;
@@ -158,7 +162,7 @@ export async function updateCriterion(
       ? undefined
       : optionalText("minimumGradeId", input.minimumGradeId, TEXT_MAX.id);
 
-  await prisma.$transaction(async (tx) => {
+  const run = async (tx: DatabaseClient) => {
     const before = await tx.criterion.findUnique({
       where: { id: criterionId },
       select: {
@@ -211,5 +215,7 @@ export async function updateCriterion(
       },
       tx,
     );
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }

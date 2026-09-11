@@ -8,7 +8,7 @@
  * SERVER-ONLY.
  */
 import { requirePermission } from "@/lib/authorization";
-import { prisma } from "@/lib/database";
+import { prisma, type DatabaseClient } from "@/lib/database";
 import { optionalText, requiredEnum } from "@/lib/validation";
 import { recordAuditEvent } from "@/modules/audit";
 
@@ -61,6 +61,7 @@ export async function createCriterionSet(
   actor: ActorContext,
   awardTypeId: string,
   input: CreateCriterionSetInput,
+  client: DatabaseClient = prisma,
 ): Promise<{ id: string }> {
   const at = instant(actor);
   await requirePermission(
@@ -72,11 +73,15 @@ export async function createCriterionSet(
 
   const source = requiredEnum("source", input.source, CRITERION_SET_SOURCES);
 
-  const openDraft = await findOpenDraft(awardTypeId);
-  if (openDraft) throw new CriterionSetError("NOT_DRAFT");
+  // Both reads moved INSIDE the transaction below (against `tx`, not
+  // `client`/the module-level `prisma`), so a caller composing this into a
+  // bigger transaction — the JSON importer creating several versions of one
+  // `AwardType` in a single upload — sees its own not-yet-committed writes.
+  const run = async (tx: DatabaseClient) => {
+    const openDraft = await findOpenDraft(awardTypeId, tx);
+    if (openDraft) throw new CriterionSetError("NOT_DRAFT");
 
-  return prisma.$transaction(async (tx) => {
-    const versions = await listCriterionSetVersions(awardTypeId);
+    const versions = await listCriterionSetVersions(awardTypeId, tx);
     const version = nextVersion(versions);
 
     const set = await tx.criterionSet.create({
@@ -99,7 +104,9 @@ export async function createCriterionSet(
     );
 
     return set;
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }
 
 export interface UpdateCriterionSetInput {
@@ -115,6 +122,7 @@ export async function updateCriterionSet(
   actor: ActorContext,
   criterionSetId: string,
   input: UpdateCriterionSetInput,
+  client: DatabaseClient = prisma,
 ): Promise<void> {
   const at = instant(actor);
   await requirePermission(
@@ -131,7 +139,7 @@ export async function updateCriterionSet(
     TEXT_MAX.id,
   );
 
-  await prisma.$transaction(async (tx) => {
+  const run = async (tx: DatabaseClient) => {
     const before = await tx.criterionSet.findUnique({
       where: { id: criterionSetId },
       select: { source: true, status: true, passFloorGradeId: true },
@@ -165,7 +173,9 @@ export async function updateCriterionSet(
       },
       tx,
     );
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }
 
 /**
@@ -181,6 +191,7 @@ export async function updateCriterionSet(
 export async function publishCriterionSet(
   actor: ActorContext,
   criterionSetId: string,
+  client: DatabaseClient = prisma,
 ): Promise<void> {
   const at = instant(actor);
   await requirePermission(
@@ -190,7 +201,7 @@ export async function publishCriterionSet(
     { at },
   );
 
-  await prisma.$transaction(async (tx) => {
+  const run = async (tx: DatabaseClient) => {
     const row = await tx.criterionSet.findUnique({
       where: { id: criterionSetId },
       select: {
@@ -242,5 +253,7 @@ export async function publishCriterionSet(
       },
       tx,
     );
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }
