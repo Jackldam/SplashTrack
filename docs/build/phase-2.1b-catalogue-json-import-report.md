@@ -231,54 +231,54 @@ forty-criterion document names nobody; this does.
 
 ## 4. Tests
 
-New: `tests/unit/catalogue-json-document.test.ts` (structural parsing —
-shape errors named by exact path) and
+New: `tests/unit/catalogue-json-document.test.ts` (7 tests — structural
+parsing, shape errors named by exact path) and
 `tests/integration/skills-catalogue-json.test.ts` (12 tests: guard checks,
 export serialisation with grade codes rather than ids, a full
 export → wipe → re-import round trip compared by content, all-or-nothing
 rollback verified by querying the database after a refusal, reconciling an
 open `DRAFT`, and refusing to silently rewrite an already-published
-version). Both pass, and pass together with phase 2.1's own three suites
-(`skills-services.test.ts`, `skills-constraints.test.ts`,
-`skills-scope-escape.test.ts`) and the message-catalog parity test —
-**8 files, 85 tests, all green** — run repeatedly to confirm this is not
-incidental.
+version).
 
 `npm run typecheck`: clean. `npm run lint`: clean. `npm run format:check`:
 clean on every file this phase touched.
 
-### 4.1 The full suite, in this environment — a pre-existing condition, not a regression
+### 4.1 The full suite — 1015/1015, once a real cause of flakiness was found and worked around
 
-Running the entire suite in one `npx vitest run` (or `npm test`) invocation in
-this sandbox is unreliable **independent of this phase's changes**:
+The full suite (`npx vitest run`) was **not** reliable on the first several
+attempts in this session — different, unrelated files failed each time
+(`recurrence-correction.test.ts`, `audit-checkpoint.test.ts`,
+`attendance-*`, `courses-scope-escape.test.ts`, `people-writes.test.ts`, none
+of them `skills`), with the failure count varying between runs. Traced to a
+concrete, external cause rather than accepted as unexplained noise:
 
-- A single full run was killed outright by the OOM killer (`exit 137`) —
-  `free -h` shows headroom at the host level, so the limit is a container/
-  cgroup one this phase has no way to raise.
-- Repeated full runs that did complete produced wildly different failure
-  counts (19, 41, 59, 82 failing tests) across identical invocations, always
-  in files this phase never touches — `recurrence-correction.test.ts`,
-  `audit-checkpoint.test.ts`, `lane-assignment.test.ts`,
-  `exams-services.test.ts`, `attendance-*`, none of them `skills`.
-- **Confirmed pre-existing, not introduced by this branch**: checked out
-  `7860c88` (this branch's own base, in a separate disposable worktree,
-  before any of this phase's code existed) and ran `audit-checkpoint.test.ts`
-  alone, freshly, against the same test database — 9 of its tests failed
-  there too.
-- Isolating batches of ~12 integration files at a time (rather than all 86
-  files together) reduces but does not eliminate the flakiness, which points
-  at shared-database/connection pressure across a long sequential run rather
-  than a specific broken test.
+- `ps aux` during a failing run showed a **second** `vitest`/`npm test`
+  process alive at the same time, spawned by an earlier shell invocation in
+  this same session that had exceeded its own timeout and been moved to the
+  background rather than actually finishing.
+- This repository is checked out as *two* worktrees on this host
+  (`st-skills`, this branch, and `st-attendance`, a sibling branch). Both
+  derive their vitest database name as `<dev-db-name>_test` from the same
+  `.env`, so **both worktrees share the literal same Postgres database** —
+  `vitest.config.ts`'s own `fileParallelism: false` serialises test files
+  *within* one `vitest` invocation specifically to avoid this class of
+  cross-file unique-key collision, but it cannot serialise against a
+  *second, independent* `vitest`/`npm test` process, whether from a stray
+  backgrounded command in this session or a genuinely concurrent run in the
+  sibling worktree.
+- Killing every stray `vitest`/`npm test`/`node .../forks.js` process
+  (confirmed via `ps aux` immediately beforehand) and running once, alone,
+  produced **86 files, 1015 tests, all passing**, reproduced on a second
+  clean run.
 
-**What this phase's own tests were verified against, repeatedly and
-reliably**: the 8-file, 85-test `skills`-only batch above, `typecheck`,
-`lint`, `format:check`, and (§5) a real browser. None of this phase's new or
-modified files appear in the unrelated-suite failure lists across any of the
-repeated full-suite attempts. Flagged for Jack rather than silently
-"fixed" by, say, reducing test isolation or skipping suites — the fix (more
-memory, or per-file database isolation as `vitest.config.ts`'s own comment on
-`fileParallelism: false` already anticipates wanting) is an environment or
-test-infrastructure change outside this phase's scope.
+**Flagged for whoever owns CI or provisions further worktrees**: two
+worktrees of this repository cannot safely run `npm test`/`vitest run` at
+the same time on this host today, because the test database name is not
+worktree- or branch-scoped. Not something this phase caused or can fix from
+inside one worktree (it is a property of `scripts/setup-test-db.ts`'s naming
+and `.env`, shared infrastructure), but worth a real fix (a worktree- or
+branch-suffixed test database name) before a second concurrent contributor
+hits it again.
 
 ---
 
@@ -349,7 +349,7 @@ originally.
 | UI | Export link (list + per-award-type detail) and upload panel on `/skills`, Dutch/English strings, parity-tested |
 | Reuse, not a parallel importer | No new validation rule anywhere in `catalogue-json-service.ts` — every field check, every business rule, every audit event is the existing service's own |
 | Real browser verification | `tests/e2e/catalogue-json-import.spec.ts` — happy path and refusal path, both against a real Chromium browser, both passing repeatedly |
-| CI | `skills`-scoped suite: 8 files / 85 tests, green, repeatedly. `typecheck`/`lint`/`format:check`: clean. Full-suite run: pre-existing environment flakiness, not a regression — §4.1 |
+| CI | Full suite: 86 files / 1015 tests, green (996 baseline + 19 new), reproduced on a clean re-run once the cause of earlier flakiness (§4.1 — a second, independent `vitest` process sharing this host's test database) was found and worked around. `typecheck`/`lint`/`format:check`: clean |
 | Jack's approval | Not yet requested — this report is the handoff |
 
 **Open items for review (§3 has the detail):**
@@ -364,3 +364,8 @@ originally.
    full diff.
 5. `e2e-spec-only`'s two commits are now duplicated (cherry-picked) onto this
    branch — reconcile when both branches eventually merge (§5).
+6. This host runs two worktrees of this repository sharing one literal test
+   database (§4.1) — not something this phase caused, but a real risk for
+   the next contributor who runs `npm test` in either worktree while the
+   other is mid-run. Worth a real fix (worktree-scoped test database naming)
+   independent of this feature.
