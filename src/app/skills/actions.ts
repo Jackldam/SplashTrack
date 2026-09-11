@@ -208,6 +208,11 @@ export async function updateCriterionAction(formData: FormData): Promise<void> {
   redirect(`${back}?saved=criterionUpdated`);
 }
 
+// D-188's JSON import/export surface is `src/app/api/skills/catalogue/route.ts`
+// (a route handler, not a Server Action here — a file download needs
+// `Content-Disposition`, which only a `Response` can set) plus
+// `src/app/skills/catalogue-json-panel.tsx`, which calls it directly.
+
 // ── progress log ─────────────────────────────────────────────────────────────
 
 /**

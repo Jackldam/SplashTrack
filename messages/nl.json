@@ -892,6 +892,19 @@
       "criterion": "Eis toegevoegd.",
       "criterionUpdated": "Eis opgeslagen.",
       "published": "Eisenset gepubliceerd. De vorige versie is ingetrokken."
+    },
+    "json": {
+      "title": "Catalogus als JSON",
+      "explanation": "De catalogus is ook één JSON-document (D-188): exporteer de huidige stand, of upload een (aangepast) bestand om diploma's, eisensets en eisen in bulk aan te maken of aan te vullen. Beide vormen gebruiken dezelfde validatie als het formulier hierboven.",
+      "export": "Volledige catalogus exporteren",
+      "exportOne": "Dit diploma/certificaat exporteren",
+      "uploadTitle": "Catalogus importeren",
+      "uploadLabel": "JSON-bestand",
+      "upload": "Importeren",
+      "working": "Bezig met importeren...",
+      "success": "Geïmporteerd: {awardTypes} diplomatype(n), {criterionSets} eisenset(ten), {criteria} eis(en).",
+      "errorPrefix": "Import geweigerd —",
+      "errorNoFile": "Kies eerst een JSON-bestand."
     }
   }
 }

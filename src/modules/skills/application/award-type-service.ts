@@ -23,7 +23,7 @@
  * SERVER-ONLY.
  */
 import { requirePermission, type Principal } from "@/lib/authorization";
-import { prisma } from "@/lib/database";
+import { prisma, type DatabaseClient } from "@/lib/database";
 import { requiredEnum, requiredText } from "@/lib/validation";
 import { recordAuditEvent } from "@/modules/audit";
 
@@ -90,6 +90,7 @@ export interface CreateAwardTypeInput {
 export async function createAwardType(
   actor: ActorContext,
   input: CreateAwardTypeInput,
+  client: DatabaseClient = prisma,
 ): Promise<{ id: string }> {
   const at = instant(actor);
   await requirePermission(
@@ -110,7 +111,13 @@ export async function createAwardType(
     ),
   };
 
-  return prisma.$transaction(async (tx) => {
+  // `client` defaults to the module-level `prisma`, in which case this opens
+  // its own transaction as it always has. A caller composing several
+  // catalogue writes into one all-or-nothing unit — the JSON importer,
+  // `catalogue-json-service.ts` — passes its OWN transaction client instead,
+  // and this simply writes through it rather than nesting a second
+  // transaction inside the first.
+  const run = async (tx: DatabaseClient) => {
     const awardType = await tx.awardType.create({
       data,
       select: { id: true },
@@ -137,7 +144,9 @@ export async function createAwardType(
     );
 
     return awardType;
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }
 
 export interface UpdateAwardTypeInput {
@@ -163,6 +172,7 @@ export async function updateAwardType(
   actor: ActorContext,
   awardTypeId: string,
   input: UpdateAwardTypeInput,
+  client: DatabaseClient = prisma,
 ): Promise<void> {
   const at = instant(actor);
   await requirePermission(
@@ -181,7 +191,7 @@ export async function updateAwardType(
     ),
   };
 
-  await prisma.$transaction(async (tx) => {
+  const run = async (tx: DatabaseClient) => {
     const before = await tx.awardType.findUnique({
       where: { id: awardTypeId },
       select: { name: true, issuingBody: true },
@@ -208,5 +218,7 @@ export async function updateAwardType(
       },
       tx,
     );
-  });
+  };
+
+  return client === prisma ? prisma.$transaction(run) : run(client);
 }

@@ -17,7 +17,7 @@
  *
  * SERVER-ONLY.
  */
-import { prisma } from "@/lib/database";
+import { prisma, type DatabaseClient } from "@/lib/database";
 
 import { inSequence } from "../domain/criterion";
 
@@ -180,8 +180,9 @@ export interface CriterionSetDetail {
 
 export async function findCriterionSetDetail(
   criterionSetId: string,
+  client: DatabaseClient = prisma,
 ): Promise<CriterionSetDetail | null> {
-  const row = await prisma.criterionSet.findUnique({
+  const row = await client.criterionSet.findUnique({
     where: { id: criterionSetId },
     select: {
       id: true,
@@ -221,24 +222,105 @@ export async function findCriterionSetDetail(
   };
 }
 
-/** Every version of one `AwardType`'s criterion sets, for version allocation. */
+/**
+ * Every version of one `AwardType`'s criterion sets, for version allocation.
+ * Takes `client` (the `person-repository.ts` pattern) so a caller composing
+ * this into a bigger transaction — `createCriterionSet` itself, and the JSON
+ * importer, `catalogue-json-service.ts` — sees its own not-yet-committed
+ * writes rather than a stale read from the module-level `prisma`.
+ */
 export async function listCriterionSetVersions(
   awardTypeId: string,
+  client: DatabaseClient = prisma,
 ): Promise<{ version: number }[]> {
-  return prisma.criterionSet.findMany({
+  return client.criterionSet.findMany({
     where: { awardTypeId },
     select: { version: true },
   });
 }
 
-/** The open `DRAFT`, if one exists — `createCriterionSet` refuses a second. */
+/**
+ * The open `DRAFT`, if one exists — `createCriterionSet` refuses a second.
+ * Takes `client` for the same read-your-own-writes reason as
+ * {@link listCriterionSetVersions}.
+ */
 export async function findOpenDraft(
   awardTypeId: string,
+  client: DatabaseClient = prisma,
 ): Promise<{ id: string } | null> {
-  return prisma.criterionSet.findFirst({
+  return client.criterionSet.findFirst({
     where: { awardTypeId, status: "DRAFT" },
     select: { id: true },
   });
+}
+
+/** One `AwardType` by its stable, administrator-facing code, or null. */
+export async function findAwardTypeByCode(
+  code: string,
+  client: DatabaseClient = prisma,
+): Promise<{ id: string; kind: string } | null> {
+  return client.awardType.findUnique({
+    where: { code },
+    select: { id: true, kind: true },
+  });
+}
+
+/** One `CriterionSet` by its `(awardTypeId, version)` pair, or null. */
+export async function findCriterionSetByVersion(
+  awardTypeId: string,
+  version: number,
+  client: DatabaseClient = prisma,
+): Promise<{ id: string; status: string } | null> {
+  return client.criterionSet.findUnique({
+    where: { awardTypeId_version: { awardTypeId, version } },
+    select: { id: true, status: true },
+  });
+}
+
+/** One `Criterion` by its `(criterionSetId, code)` pair, or null. */
+export async function findCriterionByCode(
+  criterionSetId: string,
+  code: string,
+  client: DatabaseClient = prisma,
+): Promise<{ id: string } | null> {
+  return client.criterion.findUnique({
+    where: { criterionSetId_code: { criterionSetId, code } },
+    select: { id: true },
+  });
+}
+
+/**
+ * One `GradeValue` by its scale's code and its own code — the portable key
+ * the catalogue JSON document uses instead of an internal id. See
+ * `catalogue-json-service.ts`'s file comment for why.
+ */
+export async function findGradeValueByCodes(
+  scaleCode: string,
+  valueCode: string,
+  client: DatabaseClient = prisma,
+): Promise<{ id: string } | null> {
+  const scale = await client.gradeScale.findUnique({
+    where: { code: scaleCode },
+    select: { id: true },
+  });
+  if (!scale) return null;
+  return client.gradeValue.findUnique({
+    where: { scaleId_code: { scaleId: scale.id, code: valueCode } },
+    select: { id: true },
+  });
+}
+
+/** A `GradeValue`'s own code and its scale's code, by id — export's mirror. */
+export async function gradeValueCodesById(
+  gradeValueId: string,
+  client: DatabaseClient = prisma,
+): Promise<{ scaleCode: string; valueCode: string } | null> {
+  const row = await client.gradeValue.findUnique({
+    where: { id: gradeValueId },
+    select: { code: true, scale: { select: { code: true } } },
+  });
+  if (!row) return null;
+  return { scaleCode: row.scale.code, valueCode: row.code };
 }
 
 /** The current `ACTIVE` set of an `AwardType`, if one exists. */
@@ -252,11 +334,14 @@ export async function findActiveCriterionSet(
 }
 
 /** Which `CriterionSet` a criterion belongs to, and that set's status. */
-export async function criterionSetOfCriterion(criterionId: string): Promise<{
+export async function criterionSetOfCriterion(
+  criterionId: string,
+  client: DatabaseClient = prisma,
+): Promise<{
   criterionSetId: string;
   status: string;
 } | null> {
-  const row = await prisma.criterion.findUnique({
+  const row = await client.criterion.findUnique({
     where: { id: criterionId },
     select: {
       criterionSetId: true,

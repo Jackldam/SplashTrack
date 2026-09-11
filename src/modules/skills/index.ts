@@ -26,9 +26,10 @@
  *   - Anything that UPDATES an existing `SkillProgress` row. It is
  *     append-only, like every other event log in this schema — a correction
  *     is a new row, `REVOKED` included.
- *   - `AwardType.code`/`AwardType.kind` correction, and the D-188 JSON
- *     import/export surface. Both are out of this phase's scope — see the
- *     phase 2.1 report's open questions.
+ *   - `AwardType.code`/`AwardType.kind` correction. Still out of scope — see
+ *     the phase 2.1 report's open questions. The D-188 JSON import/export
+ *     surface itself is now built; see `catalogue-json-service.ts` and
+ *     `docs/build/phase-2.1b-catalogue-json-import-report.md`.
  */
 
 export {
@@ -131,3 +132,23 @@ export { gradeValuesByIds } from "./infrastructure/catalogue-repository";
 export { findActiveCriterionSet as activeCriterionSetOfAwardType } from "./infrastructure/catalogue-repository";
 
 export type { SkillProgressEntry } from "./infrastructure/skill-progress-repository";
+
+/**
+ * D-188's second surface — the catalogue as one JSON document, validated and
+ * written through exactly the services above (`catalogue-json-service.ts`'s
+ * own file comment explains how). `parseCatalogueDocument` is exported apart
+ * from `importCatalogue` so a caller (an upload route) can report a shape
+ * problem before touching the database at all.
+ */
+export {
+  exportCatalogue,
+  importCatalogue,
+  parseCatalogueDocument,
+  CatalogueImportError,
+  type CatalogueAwardTypeDocument,
+  type CatalogueCriterionDocument,
+  type CatalogueCriterionSetDocument,
+  type CatalogueDocument,
+  type CatalogueGradeRef,
+  type ImportCatalogueResult,
+} from "./application/catalogue-json-service";
