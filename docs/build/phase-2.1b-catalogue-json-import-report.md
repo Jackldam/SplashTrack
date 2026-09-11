@@ -1,8 +1,7 @@
 # Phase 2.1b — D-188's JSON authoring surface
 
-**Branch** `feat/skills-catalogue-json-import` · **From** `7860c88` (1015
-tests recorded at the time this phase started work) · **Not pushed, not
-merged, not deployed.**
+**Branch** `feat/skills-catalogue-json-import` · **From** `7860c88` (996
+tests) · **To** 1015 tests · **Not pushed, not merged, not deployed.**
 
 D-188's second surface over the assessment catalogue: an administrator can
 export the current `AwardType`/`GradeScale`/`GradeValue`/`CriterionSet`/
