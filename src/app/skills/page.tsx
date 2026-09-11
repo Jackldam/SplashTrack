@@ -5,6 +5,7 @@ import { listAwardTypesForPrincipal } from "@/modules/skills";
 
 import { guarded, requireSignedIn } from "./access";
 import { createAwardTypeAction } from "./actions";
+import { CatalogueJsonPanel } from "./catalogue-json-panel";
 
 /**
  * The award-type catalogue — *Diploma's en certificaten*.
@@ -167,6 +168,8 @@ export default async function SkillsListPage({
           </div>
         </form>
       </details>
+
+      <CatalogueJsonPanel />
     </main>
   );
 }

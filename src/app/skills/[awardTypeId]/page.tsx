@@ -89,6 +89,10 @@ export default async function AwardTypeDetailPage({
         {t(
           `skills.issuingBody.${awardType.issuingBody}` as "skills.issuingBody.NRZ",
         )}
+        {" · "}
+        <a href={`/api/skills/catalogue?awardTypeId=${awardType.id}`}>
+          {t("skills.json.exportOne")}
+        </a>
       </p>
 
       {query.error ? (

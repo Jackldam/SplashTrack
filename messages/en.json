@@ -892,6 +892,19 @@
       "criterion": "Requirement added.",
       "criterionUpdated": "Requirement saved.",
       "published": "Requirement set published. The previous version has been retired."
+    },
+    "json": {
+      "title": "Catalogue as JSON",
+      "explanation": "The catalogue is also one JSON document (D-188): export the current state, or upload a (modified) file to create or add award types, criterion sets and criteria in bulk. Both surfaces use the same validation as the form above.",
+      "export": "Export the full catalogue",
+      "exportOne": "Export this award type",
+      "uploadTitle": "Import catalogue",
+      "uploadLabel": "JSON file",
+      "upload": "Import",
+      "working": "Importing...",
+      "success": "Imported: {awardTypes} award type(s), {criterionSets} criterion set(s), {criteria} criterion/criteria.",
+      "errorPrefix": "Import rejected —",
+      "errorNoFile": "Choose a JSON file first."
     }
   }
 }
