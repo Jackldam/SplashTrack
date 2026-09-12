@@ -14,7 +14,12 @@
  */
 import { requirePermission, type Principal } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
-import { optionalDate, requiredDate, requiredText } from "@/lib/validation";
+import {
+  optionalDate,
+  requiredDate,
+  requiredEnum,
+  requiredText,
+} from "@/lib/validation";
 import { recordAuditEvent } from "@/modules/audit";
 
 import { TEXT_MAX } from "./input";
@@ -22,6 +27,7 @@ import {
   findQualificationById,
   findQualificationsForPerson,
   hasValidQualification,
+  type PersonQualificationTypeValue,
   type PersonQualificationView,
 } from "../infrastructure/person-qualification-repository";
 
@@ -29,7 +35,18 @@ export {
   findQualificationsForPerson as listQualifications,
   hasValidQualification,
 };
-export type { PersonQualificationView };
+export type { PersonQualificationView, PersonQualificationTypeValue };
+
+/**
+ * `PersonQualification.type`'s closed vocabulary at runtime — kept in sync
+ * BY HAND with `prisma/schema.prisma`'s `PersonQualificationType` enum and
+ * `PersonQualificationTypeValue` (the repository's own literal union), the
+ * `ExamResultOutcomeValue`/`OUTCOMES` precedent in `exam-result-service.ts`.
+ */
+export const QUALIFICATION_TYPES: readonly PersonQualificationTypeValue[] = [
+  "INDEPENDENT_ASSESSOR",
+  "EXTERNAL_EXAMINER",
+];
 
 export interface ActorContext {
   readonly principal: Principal;
@@ -71,7 +88,7 @@ export async function grantQualification(
 ): Promise<{ id: string }> {
   const at = instant(actor);
   const personId = requiredText("personId", input.personId, TEXT_MAX.id);
-  const type = requiredText("type", input.type, TEXT_MAX.qualificationType);
+  const type = requiredEnum("type", input.type, QUALIFICATION_TYPES);
   const validFrom =
     input.validFrom === undefined ||
     input.validFrom === null ||

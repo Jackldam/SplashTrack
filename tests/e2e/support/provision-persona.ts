@@ -15,12 +15,11 @@
  * same pattern, kept around because these specs need it every run rather
  * than once.
  *
- * `grant-qualification` exists for the identical reason at a smaller scale:
- * `grantQualificationAction` (`src/app/exams/actions.ts`) is wired to no form
- * anywhere in `src/app` — a genuine gap, flagged in the e2e report this
- * script's specs belong to, not silently worked around here. `PersonQualification`
- * rows are written directly, the same shape `tests/support/exams-fixtures.ts`
- * writes them for the vitest suite.
+ * `PersonQualification` grants no longer go through this script — the
+ * person page's "Bevoegdheden" section (`grantQualificationAction`) is a
+ * real, browser-reachable screen now, and the specs that used to call a
+ * `grant-qualification` command here drive that screen instead
+ * (`grantQualificationViaUI`, `e2e-common.ts`).
  *
  * Usage (run from the repo root, with `.env.e2e` already sourced into the
  * shell — see `tests/e2e/group-course-level.spec.ts`'s own header):
@@ -29,10 +28,7 @@
  *     --email a@example.invalid --name "A B" --password '...' \
  *     --permissions assessment.read,assessment.record
  *
- *   npx tsx tests/e2e/support/provision-persona.ts grant-qualification \
- *     --personId <id> --type INSTRUCTEUR_ZWEMMEN
- *
- * Both print one JSON line on stdout and nothing else, so a caller can
+ * Prints one JSON line on stdout and nothing else, so a caller can
  * `JSON.parse` it directly — the `execFileSync` convention the existing specs
  * already use for `admin:create`'s own stdout-is-a-contract commands.
  */
@@ -144,31 +140,12 @@ async function createAccount(): Promise<void> {
   );
 }
 
-async function grantQualification(): Promise<void> {
-  const personId = flag("personId");
-  const type = flag("type");
-  const row = await prisma.personQualification.create({
-    data: {
-      personId,
-      type,
-      validFrom: new Date("2020-01-01T00:00:00Z"),
-      validTo: null,
-    },
-    select: { id: true },
-  });
-  process.stdout.write(JSON.stringify({ qualificationId: row.id }) + "\n");
-}
-
 async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === "create-account") {
     await createAccount();
-  } else if (command === "grant-qualification") {
-    await grantQualification();
   } else {
-    throw new Error(
-      `Unknown command "${command}". Use "create-account" or "grant-qualification".`,
-    );
+    throw new Error(`Unknown command "${command}". Use "create-account".`);
   }
 }
 

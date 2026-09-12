@@ -2778,6 +2778,22 @@ enum ExamResultOutcome {
   FAIL
 }
 
+/// `PersonQualification.type`'s closed vocabulary — the two roles the
+/// decision register already names (D-052, D-068, D-085) that need a
+/// `PersonQualification` row at all. Not exhaustive of every future
+/// qualification an organisation might want to track; extending this enum
+/// is a migration, on the same trade-off `AwardTypeKind`/`AwardIssuingBody`
+/// already accept.
+enum PersonQualificationType {
+  /// Holds a `PersonQualification` valid at `assessedAt` AND is not an
+  /// `InstructorAssignment` holder for the student's group — D-085's own
+  /// two-clause formula for who may grade a qualifying aftest.
+  INDEPENDENT_ASSESSOR
+  /// D-052's examiner: a `Person` with no membership, present for one exam
+  /// day, never a shared login.
+  EXTERNAL_EXAMINER
+}
+
 /// *"een leraar die bevoegd is binnen de vereniging"* (`15-…` §2.1) — what
 /// D-085's `assessorPersonId holds a valid PersonQualification` clause
 /// checks, now that the table exists. One row per grant; ending one early is
@@ -2791,20 +2807,24 @@ enum ExamResultOutcome {
 /// protect — it is a licence register, and `MembershipPeriod` is its
 /// precedent, not `AttendanceEvent`.
 ///
-/// `type` IS A FREE STRING, NOT AN ENUM — flagged in the phase 2.4 report.
-/// Neither `01-domain-model.md` nor `15-…` names a closed vocabulary of
-/// qualification types, and D-085's own formula asks only "does ANY valid
-/// `PersonQualification` exist at `assessedAt`", never "of which type" — so
-/// this phase does not invent a vocabulary the design never specified.
+/// `type` IS AN ENUM, decided after the phase 2.4 report flagged it as a
+/// free string with no closed vocabulary named anywhere in the design set.
+/// Neither `01-domain-model.md` nor `15-…` enumerates qualification types
+/// and D-085's own formula asks only "does ANY valid `PersonQualification`
+/// exist at `assessedAt`", never "of which type" — so the two values below
+/// are the MINIMUM the decision register's own vocabulary already commits
+/// to (D-052's external examiner with no membership, D-068/D-085's
+/// independent aftest assessor), not a vocabulary invented here. Pending
+/// Jack's confirmation — see the phase report this migration belongs to.
 /// @dataClass PERSON_QUALIFICATIONS
 model PersonQualification {
   id String @id @default(cuid(2))
 
   personId String
 
-  /// The organisation's own label for what this qualifies the holder to do —
-  /// see the model comment for why this is a string, not an enum.
-  type String
+  /// What this qualifies the holder to do — a closed vocabulary, see the
+  /// model comment.
+  type PersonQualificationType
 
   validFrom DateTime
   /// NULL = currently valid. The ONLY signal D-085's check reads, on the

@@ -61,7 +61,9 @@ export {
   listQualifications,
   hasValidQualification,
   PersonQualificationError,
+  QUALIFICATION_TYPES,
   type PersonQualificationView,
+  type PersonQualificationTypeValue,
   type GrantQualificationInput,
   type EndQualificationInput,
 } from "./application/person-qualification-service";

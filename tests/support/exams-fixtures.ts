@@ -25,6 +25,7 @@
 import { resetScopeRelations } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
 import { resetRelationshipSources } from "@/lib/retention/last-relationship";
+import type { PersonQualificationTypeValue } from "@/modules/exams";
 import {
   ensureGroupsRegistrations,
   resetGroupsRegistrations,
@@ -305,12 +306,16 @@ export async function makeAssessableSet(suffix: string): Promise<{
 export async function makeQualification(
   personId: string,
   suffix: string,
-  options: { validFrom?: Date; validTo?: Date | null; type?: string } = {},
+  options: {
+    validFrom?: Date;
+    validTo?: Date | null;
+    type?: PersonQualificationTypeValue;
+  } = {},
 ): Promise<string> {
   const row = await prisma.personQualification.create({
     data: {
       personId,
-      type: options.type ?? "AFTEST_ASSESSOR",
+      type: options.type ?? "INDEPENDENT_ASSESSOR",
       validFrom: options.validFrom ?? new Date("2020-01-01T00:00:00Z"),
       validTo: options.validTo ?? null,
     },

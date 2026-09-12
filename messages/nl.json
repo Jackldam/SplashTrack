@@ -338,6 +338,20 @@
       "revokeReasonPlaceholder": "Reden voor intrekken",
       "awardRevoked": "Ingetrokken",
       "registerCandidate": "Registreer kandidaat"
+    },
+    "qualifications": {
+      "title": "Bevoegdheden",
+      "none": "Deze persoon heeft nog geen bevoegdheid.",
+      "type": "Type",
+      "validFrom": "Geldig vanaf",
+      "validTo": "Geldig tot",
+      "current": "Nog geldig",
+      "typePlaceholder": "Type bevoegdheid",
+      "grant": "Ken bevoegdheid toe",
+      "types": {
+        "INDEPENDENT_ASSESSOR": "Onafhankelijk beoordelaar (aftest)",
+        "EXTERNAL_EXAMINER": "Externe examinator"
+      }
     }
   },
   "mfaEnrolment": {

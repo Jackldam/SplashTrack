@@ -24,6 +24,8 @@ import { getAttendanceForStudent } from "@/modules/attendance";
 import {
   getExamCandidatesForStudent,
   getExamResultsForCandidate,
+  listQualifications,
+  QUALIFICATION_TYPES,
 } from "@/modules/exams";
 import { listAwardTypesForPrincipal } from "@/modules/skills";
 import { getSkillProgressForStudent } from "@/modules/skills";
@@ -33,6 +35,7 @@ import { LiveSearchPicker } from "@/components/live-search-picker/live-search-pi
 import { endEnrolmentAction, enrolStudentAction } from "@/app/courses/actions";
 import {
   confirmExamCandidateAction,
+  grantQualificationAction,
   issueAwardAction,
   recordExamResultAction,
   registerExamCandidateAction,
@@ -273,6 +276,17 @@ export default async function PersonDetailPage({
         (g) => g.toDate === null,
       )
     : [];
+
+  // ── Qualifications (D-085's `PersonQualification`) ──────────────────────
+  //
+  // Deliberately NOT gated on `person.studentProfile`: the holder of a
+  // qualification is the ASSESSOR, not the pupil — an instructor's own
+  // person page is exactly where an administrator grants it. `grantQualification`
+  // runs its own `requirePermission` on submit (`exams.manage`); this screen
+  // renders the form unconditionally, on the `assignInstructorAction` /
+  // `groups/[groupId]/page.tsx` precedent, and a caller without the
+  // permission simply gets `?error=denied` back.
+  const qualifications = await listQualifications(person.id);
 
   return (
     <main className="container py-5">
@@ -1408,6 +1422,78 @@ export default async function PersonDetailPage({
           ) : null}
         </section>
       ) : null}
+
+      {/* ── Qualifications — the screen `grantQualificationAction` needed ───
+          `PersonQualification` is D-085's own "assessorPersonId holds a
+          valid PersonQualification" clause: without a way to grant one, no
+          one could ever satisfy it and the four-eyes gate could never pass.
+          Not append-only (see the model comment) — the table only grows by
+          a new grant, never rewritten here; ending one early is a separate,
+          not-yet-wired action (`endQualification`). */}
+      <section className="mt-5">
+        <h2 className="h4">{t("people.qualifications.title")}</h2>
+
+        {qualifications.length === 0 ? (
+          <p className="text-muted">{t("people.qualifications.none")}</p>
+        ) : (
+          <table className="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th scope="col">{t("people.qualifications.type")}</th>
+                <th scope="col">{t("people.qualifications.validFrom")}</th>
+                <th scope="col">{t("people.qualifications.validTo")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qualifications.map((qualification) => (
+                <tr key={qualification.id}>
+                  <td>
+                    {t(
+                      `people.qualifications.types.${qualification.type}` as "people.qualifications.types.INDEPENDENT_ASSESSOR",
+                    )}
+                  </td>
+                  <td>{formatCalendarDate(qualification.validFrom)}</td>
+                  <td>
+                    {qualification.validTo
+                      ? formatCalendarDate(qualification.validTo)
+                      : t("people.qualifications.current")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <form action={grantQualificationAction} className="row g-2 mt-2">
+          <input type="hidden" name="personId" value={person.id} />
+          <input type="hidden" name="qualificationPersonId" value={person.id} />
+          <div className="col-auto">
+            <select
+              className="form-select form-select-sm"
+              id="qualificationType"
+              name="type"
+              required
+              defaultValue=""
+            >
+              <option value="" disabled>
+                {t("people.qualifications.typePlaceholder")}
+              </option>
+              {QUALIFICATION_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {t(
+                    `people.qualifications.types.${type}` as "people.qualifications.types.INDEPENDENT_ASSESSOR",
+                  )}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-auto">
+            <button type="submit" className="btn btn-sm btn-outline-primary">
+              {t("people.qualifications.grant")}
+            </button>
+          </div>
+        </form>
+      </section>
 
       {/* ── Who answers for this person, and who they answer for ──────────── */}
       <section className="mt-5">

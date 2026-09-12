@@ -338,6 +338,20 @@
       "revokeReasonPlaceholder": "Reason for revocation",
       "awardRevoked": "Revoked",
       "registerCandidate": "Register candidate"
+    },
+    "qualifications": {
+      "title": "Qualifications",
+      "none": "This person does not yet hold a qualification.",
+      "type": "Type",
+      "validFrom": "Valid from",
+      "validTo": "Valid to",
+      "current": "Still valid",
+      "typePlaceholder": "Qualification type",
+      "grant": "Grant qualification",
+      "types": {
+        "INDEPENDENT_ASSESSOR": "Independent assessor (aftest)",
+        "EXTERNAL_EXAMINER": "External examiner"
+      }
     }
   },
   "mfaEnrolment": {

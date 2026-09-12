@@ -22,6 +22,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { PermissionDeniedError } from "@/lib/authorization";
 import { prisma } from "@/lib/database";
+import { ApiError } from "@/lib/errors";
 import { recordAssessment } from "@/modules/assessment";
 import {
   confirmExamCandidate,
@@ -658,7 +659,7 @@ describe("PersonQualification — grant / end", () => {
     const holder = await makePerson("qual_holder1");
     const { id } = await grantQualification(admin(), {
       personId: holder,
-      type: "AFTEST_ASSESSOR",
+      type: "INDEPENDENT_ASSESSOR",
     });
     const row = await prisma.personQualification.findUnique({ where: { id } });
     expect(row).not.toBeNull();
@@ -666,12 +667,25 @@ describe("PersonQualification — grant / end", () => {
     expect(row!.validTo).toBeNull();
   });
 
+  it("refuses a type outside the closed vocabulary (ApiError VALIDATION_ERROR)", async () => {
+    const holder = await makePerson("qual_holder_bad_type");
+    await expect(
+      grantQualification(admin(), {
+        personId: holder,
+        // Free text — the constraint the phase 2.4 report flagged and D-052/
+        // D-068/D-085's own minimal vocabulary (`PersonQualificationType`)
+        // now closes. Not one of "INDEPENDENT_ASSESSOR"/"EXTERNAL_EXAMINER".
+        type: "ZWEMBOND_INSTRUCTEUR",
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
   it("refuses an end date before the start date", async () => {
     const holder = await makePerson("qual_holder2");
     await expect(
       grantQualification(admin(), {
         personId: holder,
-        type: "AFTEST_ASSESSOR",
+        type: "INDEPENDENT_ASSESSOR",
         validFrom: "2026-01-01",
         validTo: "2025-01-01",
       }),
@@ -682,7 +696,7 @@ describe("PersonQualification — grant / end", () => {
     const holder = await makePerson("qual_holder3");
     const { id } = await grantQualification(admin(), {
       personId: holder,
-      type: "AFTEST_ASSESSOR",
+      type: "INDEPENDENT_ASSESSOR",
       validFrom: "2020-01-01",
     });
 

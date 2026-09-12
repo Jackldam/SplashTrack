@@ -25,13 +25,12 @@
  *     `confirmExamCandidateAction`) — unlike `assessment-aftest.spec.ts`,
  *     which found none on the aftest screen itself.
  *
- * `grantQualificationAction` (`src/app/exams/actions.ts`) exists in the code
- * but is wired to NO form anywhere in `src/app` — there is no browser-reachable
- * way to grant a `PersonQualification` in this build. Both scenarios below
- * grant it directly (`tests/e2e/support/provision-persona.ts`'s
- * `grant-qualification` command, the same throwaway-script pattern the phase
- * report's own browser verification used) and this gap is flagged again in
- * the e2e report this spec belongs to, not silently routed around.
+ * `grantQualificationAction` (`src/app/exams/actions.ts`) is wired to the
+ * "Bevoegdheden" section on the person page (`src/app/people/[personId]/page.tsx`)
+ * — the gap this spec used to flag (granting a `PersonQualification` via a
+ * throwaway script, `provision-persona.ts`'s `grant-qualification` command)
+ * is closed. Both scenarios below grant the assessor's qualification through
+ * that real screen (`grantQualificationViaUI`, `e2e-common.ts`).
  *
  * Shares `group-course-level.spec.ts`'s scratch-database/admin-bootstrap
  * infrastructure and this worktree's own dedicated
@@ -48,7 +47,7 @@ import { expect, test } from "@playwright/test";
 import {
   createAdmin,
   createStudent,
-  grantQualification,
+  grantQualificationViaUI,
   openDetails,
   pickFromLiveSearch,
   provisionPersona,
@@ -116,7 +115,11 @@ test("compleet gelukt: registratie, bevestiging zonder uitzondering, resultaat, 
     assessorPassword,
     ["planning.read", "assessment.read", "assessment.record"],
   );
-  grantQualification(assessor.personId, "ZWEMBOND_INSTRUCTEUR");
+  await grantQualificationViaUI(
+    page,
+    assessor.personId,
+    "INDEPENDENT_ASSESSOR",
+  );
 
   const assessorContext = await browser.newContext();
   const assessorPage = await assessorContext.newPage();
@@ -211,7 +214,11 @@ test("D-085 volledig geverifieerd bij bevestiging: geweigerd zonder uitzondering
       "assessment.independence.override",
     ],
   );
-  grantQualification(assessor.personId, "ZWEMBOND_INSTRUCTEUR");
+  await grantQualificationViaUI(
+    page,
+    assessor.personId,
+    "INDEPENDENT_ASSESSOR",
+  );
 
   await page.goto(`/groups/${groupId}`);
   await openDetails(page, "Lesgever toewijzen");
