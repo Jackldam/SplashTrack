@@ -81,20 +81,24 @@ export function provisionPersona(
   };
 }
 
-/** `PersonQualification` has no UI anywhere in this build — see the same file. */
-export function grantQualification(personId: string, type: string): void {
-  execFileSync(
-    TSX_BIN,
-    [
-      "tests/e2e/support/provision-persona.ts",
-      "grant-qualification",
-      "--personId",
-      personId,
-      "--type",
-      type,
-    ],
-    { cwd: REPO_ROOT, stdio: "inherit" },
-  );
+/**
+ * Grants a `PersonQualification` through the real screen (the person page's
+ * "Bevoegdheden" section, `grantQualificationAction`) — no longer the
+ * `provision-persona.ts` throwaway script this repo used before that screen
+ * existed. `page` must already be signed in as someone holding `exams.manage`.
+ */
+export async function grantQualificationViaUI(
+  page: Page,
+  personId: string,
+  type: string,
+): Promise<void> {
+  await page.goto(`/people/${personId}`);
+  const form = page.locator("form", {
+    has: page.locator('input[name="type"]'),
+  });
+  await form.locator('input[name="type"]').fill(type);
+  await form.getByRole("button", { name: "Ken bevoegdheid toe" }).click();
+  await expect(page).toHaveURL(/saved=qualificationGranted/);
 }
 
 /** Base32 manual-key -> current TOTP code — `group-course-level.spec.ts`'s helper. */
