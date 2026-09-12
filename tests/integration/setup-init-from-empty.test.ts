@@ -198,6 +198,27 @@ async function asRuntime<T>(
   }
 }
 
+/**
+ * A handful of statements as the SCHEMA OWNER — `setup-wizard.test.ts`'s own
+ * helper, needed here for the same reason: simulating "setup has completed"
+ * by writing `InstallationBootstrap.completedAt` directly, rather than
+ * driving a real browser enrolment `mfa-enrolment.test.ts` already covers.
+ */
+async function asOwner(database: string, statements: string[]): Promise<void> {
+  const client = new Client({
+    connectionString: migrationUrlFrom(
+      maintenanceUrlFor(database),
+      REFERENCE_OWNER_ROLE,
+    ),
+  });
+  await client.connect();
+  try {
+    for (const statement of statements) await client.query(statement);
+  } finally {
+    await client.end();
+  }
+}
+
 afterAll(async () => {
   for (const database of created) {
     await withAdmin((client) =>
@@ -521,6 +542,123 @@ describe("the first-run path, end to end", () => {
         line: "PENDING_ENROLMENT SETUP_MODE",
         status: 0,
       });
+    },
+  );
+});
+
+/**
+ * Jack's confirmed rule: a second administrator may only be created AFTER
+ * setup has fully completed, never before. `admin:create`'s own comment used
+ * to claim the opposite — a second run with a different address "creates a
+ * second administrator" while setup was still incomplete — but that describes
+ * a branch the `PENDING_ENROLMENT` boot-state refusal above already made
+ * unreachable (see the corrected comment in `src/cli/commands/admin.ts`).
+ * This is the test that pins the ACTUAL behaviour rather than the comment
+ * that used to describe it.
+ */
+describe("a second administrator, before and after setup completes", () => {
+  it(
+    "refuses a second admin:create while the first has not yet enrolled",
+    { timeout: 180_000 },
+    async () => {
+      const database = await createEmptyDatabase("secondbefore");
+      runCli(database, "setup:init");
+      createAdministrator(database, "--email", "eerste@example.org");
+
+      expect(bootState(database)).toEqual({
+        line: "PENDING_ENROLMENT SETUP_MODE",
+        status: 0,
+      });
+
+      // The exact case the stale comment claimed worked: retrying with a
+      // DIFFERENT address while the first account is still `mfa_pending`.
+      const second = runCliRaw(database, [
+        "admin:create",
+        "--email",
+        "tweede@example.org",
+        "--name",
+        "Tweede Beheerder",
+      ]);
+      expect(second.status).toBe(1);
+      expect(`${second.stdout}${second.stderr}`).toContain(
+        "This installation is PENDING_ENROLMENT; refusing.",
+      );
+
+      // Refused before it ever created anything — the ONE account from
+      // `setup:init`/`admin:create` above is still the only one.
+      await asRuntime(database, async (client) => {
+        const rows = await client.query('SELECT email FROM "UserAccount"');
+        expect(rows.rows).toEqual([{ email: "eerste@example.org" }]);
+      });
+    },
+  );
+
+  it(
+    "still refuses admin:create once setup has completed — a second administrator afterward is admin:grant-admin's job, not admin:create's",
+    { timeout: 180_000 },
+    async () => {
+      const database = await createEmptyDatabase("secondafter");
+      runCli(database, "setup:init");
+      createAdministrator(database, "--email", "eerste@example.org");
+
+      // What `verifyEnrolment` writes at the instant D-141's invariant first
+      // holds — written directly, the `setup-wizard.test.ts` precedent,
+      // rather than driving a real browser enrolment `mfa-enrolment.test.ts`
+      // already covers.
+      await asOwner(database, [
+        `UPDATE "InstallationBootstrap"
+            SET "completedAt" = now(), "completedVia" = 'wizard'`,
+      ]);
+      expect(bootState(database)).toEqual({
+        line: "CURRENT SERVE",
+        status: 0,
+      });
+
+      // `admin:create` NEVER creates a second administrator — not before
+      // completion (the case above) and not after either. It is D-141's
+      // break-glass FIRST administrator only.
+      const second = runCliRaw(database, [
+        "admin:create",
+        "--email",
+        "tweede@example.org",
+        "--name",
+        "Tweede Beheerder",
+      ]);
+      expect(second.status).toBe(1);
+      expect(`${second.stdout}${second.stderr}`).toContain(
+        "This installation has already completed first-run setup",
+      );
+
+      // The mechanism that refusal itself names is what adds a second
+      // administrator AFTER completion — and, unlike admin:create above, it
+      // is not gated on boot state at all: an administrator once the
+      // catalogue is seeded is exactly what "afterward" means for this rule.
+      // `admin:grant-admin` grants an EXISTING account the role rather than
+      // creating a new one, so a second account is created directly here —
+      // the shape `tests/e2e/support/provision-persona.ts` uses for the
+      // identical need in the e2e suite — before granting it.
+      await asRuntime(database, (client) =>
+        client.query(
+          `INSERT INTO "Person" (id, "givenName", "familyName", "createdAt", "updatedAt")
+             VALUES ('secondadmin_person', 'Tweede', 'Beheerder', now(), now())`,
+        ),
+      );
+      await asRuntime(database, (client) =>
+        client.query(
+          `INSERT INTO "UserAccount" (id, "personId", email, name, "emailVerified", "createdAt", "updatedAt")
+             VALUES ('secondadmin_account', 'secondadmin_person', 'tweede@example.org', 'Tweede Beheerder', true, now(), now())`,
+        ),
+      );
+
+      const grant = runCliRaw(database, [
+        "admin:grant-admin",
+        "--email",
+        "tweede@example.org",
+      ]);
+      expect(grant.status).toBe(0);
+      expect(`${grant.stdout}${grant.stderr}`).toContain(
+        "Granted instance_administrator @ ORGANIZATION to tweede@example.org",
+      );
     },
   );
 });

@@ -175,28 +175,36 @@ export async function adminCreate(ctx: CommandContext): Promise<number> {
     return 1;
   }
 
-  // Since D-185 this command no longer closes setup mode, so it is no longer
-  // self-limiting: a second run with a different address creates a second
-  // administrator. That is REPORTED rather than refused, because refusing would
-  // strand an operator who mistyped the address on the first run — the account
-  // they cannot use would also be the one blocking the account they need.
-  // Nothing is widened by allowing it: every one of these accounts is
-  // `mfa_pending` until somebody proves a factor, host access is already total
-  // authority here, and each invocation writes its own break-glass audit event
-  // and raises its own banner.
-  const existingAccounts = await prisma.userAccount.findMany({
-    select: { email: true },
-  });
-  if (existingAccounts.length > 0) {
-    ctx.error(
-      `NOTE: ${existingAccounts.length} account(s) already exist and setup is ` +
-        "not complete, so none of them has enrolled MFA yet: " +
-        `${existingAccounts.map((row) => row.email).join(", ")}. Creating ` +
-        "another is allowed and audited; whichever enrols first completes " +
-        "setup. Remove the rest from the application afterwards.",
-    );
-  }
-
+  // THIS COMMAND NEVER CREATES A SECOND ADMINISTRATOR, BEFORE OR AFTER SETUP
+  // COMPLETES — Jack's confirmed rule ("a second administrator may only be
+  // created AFTER setup has fully completed, never before") is enforced
+  // ABOVE THIS POINT, not here, and the two enforcement points do not agree
+  // on wording so read them together:
+  //
+  //   BEFORE completion: the moment the first `admin:create` succeeds, this
+  //   installation holds a person/account/grant with no verified MFA factor,
+  //   so `detectBootState()` reports `PENDING_ENROLMENT` — neither
+  //   `EMPTY`/`PARTIAL` nor `CURRENT`/`EXISTING` — and a second invocation is
+  //   already refused by the `state.state !== "CURRENT" && ... !== "EXISTING"`
+  //   branch above (`"This installation is PENDING_ENROLMENT; refusing."`),
+  //   before it ever reaches this line. An OLDER version of this comment
+  //   claimed the opposite — that a second run "with a different address
+  //   creates a second administrator" as a deliberate typo-recovery
+  //   affordance — but that describes code that the `PENDING_ENROLMENT`
+  //   refusal above had already made UNREACHABLE: `existingAccounts.length`
+  //   can only be positive when boot state is `PENDING_ENROLMENT` or later,
+  //   and every one of those states either refuses above or (once completed)
+  //   refuses via the `bootstrap` check below. The comment was simply wrong
+  //   about what the code does, and has been corrected rather than the gate
+  //   changed, since the gate is what Jack's rule asks for.
+  //
+  //   AFTER completion: refused unconditionally by the `bootstrap` check
+  //   above ("this installation has already completed first-run setup").
+  //   `admin:create` is D-141's break-glass FIRST administrator only, never
+  //   the ongoing way to add one — a second administrator once setup has
+  //   completed is `admin:grant-admin` (or the in-app flow, once it exists),
+  //   named in that refusal's own message.
+  //
   // `--password-file` IS GONE FROM THIS COMMAND (D-187). It was offered as the
   // fix for a TTY that mangled the owner's input and it was rejected, in his
   // words: *"Dit gaan we dus niet doen ik ga niet een wachtwoord in een bestand
