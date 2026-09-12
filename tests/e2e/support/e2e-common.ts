@@ -86,17 +86,24 @@ export function provisionPersona(
  * "Bevoegdheden" section, `grantQualificationAction`) — no longer the
  * `provision-persona.ts` throwaway script this repo used before that screen
  * existed. `page` must already be signed in as someone holding `exams.manage`.
+ *
+ * `type` is one of `PersonQualificationType`'s two enum values
+ * (`prisma/schema.prisma`) — the screen renders a `<select>`, not a free-text
+ * field, since that type became a closed vocabulary.
  */
 export async function grantQualificationViaUI(
   page: Page,
   personId: string,
-  type: string,
+  type: "INDEPENDENT_ASSESSOR" | "EXTERNAL_EXAMINER",
 ): Promise<void> {
   await page.goto(`/people/${personId}`);
+  // `#qualificationType` because the person page has OTHER `name="type"`
+  // selects (the lifecycle event, the relationship type) that a bare
+  // `select[name="type"]` locator would also match.
   const form = page.locator("form", {
-    has: page.locator('input[name="type"]'),
+    has: page.locator("#qualificationType"),
   });
-  await form.locator('input[name="type"]').fill(type);
+  await form.locator("#qualificationType").selectOption(type);
   await form.getByRole("button", { name: "Ken bevoegdheid toe" }).click();
   await expect(page).toHaveURL(/saved=qualificationGranted/);
 }

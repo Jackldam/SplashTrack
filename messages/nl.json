@@ -347,7 +347,11 @@
       "validTo": "Geldig tot",
       "current": "Nog geldig",
       "typePlaceholder": "Type bevoegdheid",
-      "grant": "Ken bevoegdheid toe"
+      "grant": "Ken bevoegdheid toe",
+      "types": {
+        "INDEPENDENT_ASSESSOR": "Onafhankelijk beoordelaar (aftest)",
+        "EXTERNAL_EXAMINER": "Externe examinator"
+      }
     }
   },
   "mfaEnrolment": {

@@ -27,6 +27,7 @@ import { expect, test } from "@playwright/test";
 import {
   createAdmin,
   createStudent,
+  grantQualificationViaUI,
   resetScratchDatabase,
   signInAndEnrol,
 } from "./support/e2e-common";
@@ -56,16 +57,17 @@ test("kent een bevoegdheid toe via het scherm, en die verschijnt in de lijst", a
     page.getByText("Deze persoon heeft nog geen bevoegdheid."),
   ).toBeVisible();
 
-  const qualificationType = `ZWEMBOND_INSTRUCTEUR_${suffix}`;
-  await page.locator('input[name="type"]').fill(qualificationType);
-  await page.getByRole("button", { name: "Ken bevoegdheid toe" }).click();
-
-  await expect(page).toHaveURL(/saved=qualificationGranted/);
+  // `type` is a closed vocabulary (`PersonQualificationType`,
+  // `prisma/schema.prisma`) — a `<select>`, not a free-text field. The
+  // person page has several unrelated `name="type"` selects (lifecycle
+  // event, relationship type), so `grantQualificationViaUI` scopes to the
+  // "Bevoegdheden" form specifically.
+  await grantQualificationViaUI(page, personId, "EXTERNAL_EXAMINER");
   await expect(
     page.getByText("Deze persoon heeft nog geen bevoegdheid."),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("cell", { name: qualificationType }),
+    page.getByRole("cell", { name: "Externe examinator" }),
   ).toBeVisible();
   await expect(page.getByText("Nog geldig")).toBeVisible();
 });

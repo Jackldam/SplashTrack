@@ -118,7 +118,7 @@ test("compleet gelukt: registratie, bevestiging zonder uitzondering, resultaat, 
   await grantQualificationViaUI(
     page,
     assessor.personId,
-    "ZWEMBOND_INSTRUCTEUR",
+    "INDEPENDENT_ASSESSOR",
   );
 
   const assessorContext = await browser.newContext();
@@ -217,7 +217,7 @@ test("D-085 volledig geverifieerd bij bevestiging: geweigerd zonder uitzondering
   await grantQualificationViaUI(
     page,
     assessor.personId,
-    "ZWEMBOND_INSTRUCTEUR",
+    "INDEPENDENT_ASSESSOR",
   );
 
   await page.goto(`/groups/${groupId}`);

@@ -7,9 +7,6 @@
 export const TEXT_MAX = {
   /** An id arriving from a form field. */
   id: 40,
-  /** `PersonQualification.type` — an organisation's own label, the
-   * `AwardType.code` shape, not a long description. */
-  qualificationType: 100,
   /** A correction/withdrawal/override/revocation reason, in the actor's own
    * words. The `GroupMove.reason`/`CriterionWaiver.reason` bound. */
   reason: 500,

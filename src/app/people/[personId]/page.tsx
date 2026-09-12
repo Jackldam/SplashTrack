@@ -25,6 +25,7 @@ import {
   getExamCandidatesForStudent,
   getExamResultsForCandidate,
   listQualifications,
+  QUALIFICATION_TYPES,
 } from "@/modules/exams";
 import { listAwardTypesForPrincipal } from "@/modules/skills";
 import { getSkillProgressForStudent } from "@/modules/skills";
@@ -1446,7 +1447,11 @@ export default async function PersonDetailPage({
             <tbody>
               {qualifications.map((qualification) => (
                 <tr key={qualification.id}>
-                  <td>{qualification.type}</td>
+                  <td>
+                    {t(
+                      `people.qualifications.types.${qualification.type}` as "people.qualifications.types.INDEPENDENT_ASSESSOR",
+                    )}
+                  </td>
                   <td>{formatCalendarDate(qualification.validFrom)}</td>
                   <td>
                     {qualification.validTo
@@ -1463,13 +1468,24 @@ export default async function PersonDetailPage({
           <input type="hidden" name="personId" value={person.id} />
           <input type="hidden" name="qualificationPersonId" value={person.id} />
           <div className="col-auto">
-            <input
-              type="text"
-              className="form-control form-control-sm"
+            <select
+              className="form-select form-select-sm"
+              id="qualificationType"
               name="type"
-              placeholder={t("people.qualifications.typePlaceholder")}
               required
-            />
+              defaultValue=""
+            >
+              <option value="" disabled>
+                {t("people.qualifications.typePlaceholder")}
+              </option>
+              {QUALIFICATION_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {t(
+                    `people.qualifications.types.${type}` as "people.qualifications.types.INDEPENDENT_ASSESSOR",
+                  )}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="col-auto">
             <button type="submit" className="btn btn-sm btn-outline-primary">

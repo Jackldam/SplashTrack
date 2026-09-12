@@ -347,7 +347,11 @@
       "validTo": "Valid to",
       "current": "Still valid",
       "typePlaceholder": "Qualification type",
-      "grant": "Grant qualification"
+      "grant": "Grant qualification",
+      "types": {
+        "INDEPENDENT_ASSESSOR": "Independent assessor (aftest)",
+        "EXTERNAL_EXAMINER": "External examiner"
+      }
     }
   },
   "mfaEnrolment": {

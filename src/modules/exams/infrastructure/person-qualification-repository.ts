@@ -9,10 +9,20 @@
  */
 import { prisma } from "@/lib/database";
 
+/**
+ * The closed vocabulary, mirrored from `prisma/schema.prisma`'s
+ * `PersonQualificationType` enum as its own literal union — the
+ * `ExamResultOutcomeValue`/`domain/exam-result.ts` precedent, kept separate
+ * from the generated Prisma type so application code never imports
+ * `@/generated/prisma` directly.
+ */
+export type PersonQualificationTypeValue =
+  "INDEPENDENT_ASSESSOR" | "EXTERNAL_EXAMINER";
+
 export interface PersonQualificationView {
   readonly id: string;
   readonly personId: string;
-  readonly type: string;
+  readonly type: PersonQualificationTypeValue;
   readonly validFrom: Date;
   readonly validTo: Date | null;
   readonly grantedByPersonId: string | null;
