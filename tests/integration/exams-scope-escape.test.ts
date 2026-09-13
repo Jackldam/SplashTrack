@@ -2,7 +2,7 @@
  * The per-module scope-escape suite `06-delivery.md` §2.1 requires, for
  * `exams`.
  *
- * Three shapes are pinned by name:
+ * Four shapes are pinned by name:
  *
  *   1. A `SESSION`-scoped external examiner (D-052/D-068) can record an exam
  *      result on exactly the lesson slot their grant names, and is denied on
@@ -13,6 +13,11 @@
  *      candidate registered under a group they do not manage, even though
  *      the student is real and the award type is real.
  *   3. No grant at all is denied outright, for both the write and the read.
+ *   4. `registerExamCandidate`'s own `groupId` cannot be an arbitrary group
+ *      the actor holds no grant over, even when the student really is an
+ *      active member of it — the write guard is `{ group: groupId }`, the
+ *      exact `recordSkillProgress` pattern, not `{ student }` (see the file
+ *      comment on `exam-candidate-service.ts`).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -242,6 +247,66 @@ describe("GROUP-scoped reach follows the candidacy's OWN groupId snapshot (D-145
       pupil.studentProfileId,
     );
     expect(seenByOrg).toHaveLength(2);
+  });
+});
+
+describe("registerExamCandidate guards { group: groupId } — a caller-supplied groupId cannot escape the actor's own grant (phase 2.4 report §1.6, closed)", () => {
+  it("a GROUP-scoped exams manager cannot register a candidacy under a DIFFERENT group, even though the pupil really is an active member of it", async () => {
+    const ownGroupId = await makeGroup("esc1_own");
+    const otherGroupId = await makeGroup("esc1_other");
+    const pupil = await makeStudent("esc1_p");
+    // The pupil belongs to BOTH groups (D-060) — the exact ambiguity the
+    // file comment describes. The manager holds a grant over `ownGroupId`
+    // only.
+    await placeInGroup(ownGroupId, pupil.studentProfileId);
+    await placeInGroup(otherGroupId, pupil.studentProfileId);
+    const { awardTypeId } = await makeAssessableSet("esc1");
+
+    const managerId = await makePerson("esc1_manager");
+    await assignInstructorTo(ownGroupId, managerId);
+    await grantTo({
+      personId: managerId,
+      roleId: await makeRole("esc1_role", ["exams.manage"]),
+      scopeType: "GROUP",
+      scopeId: ownGroupId,
+    });
+
+    // Naming their OWN group succeeds.
+    await expect(
+      registerExamCandidate(actorFor(managerId), {
+        studentProfileId: pupil.studentProfileId,
+        awardTypeId,
+        groupId: ownGroupId,
+      }),
+    ).resolves.toMatchObject({ id: expect.any(String) as string });
+
+    // Naming the OTHER group — one the pupil is genuinely an active member
+    // of, but the manager holds no grant over — is denied outright, not
+    // merely accepted-but-mislabelled.
+    await expect(
+      registerExamCandidate(actorFor(managerId), {
+        studentProfileId: pupil.studentProfileId,
+        awardTypeId,
+        groupId: otherGroupId,
+      }),
+    ).rejects.toBeInstanceOf(PermissionDeniedError);
+  });
+
+  it("an ORGANIZATION-scoped actor is unaffected: any group the pupil is an active member of still works", async () => {
+    const groupA = await makeGroup("esc2_a");
+    const groupB = await makeGroup("esc2_b");
+    const pupil = await makeStudent("esc2_p");
+    await placeInGroup(groupA, pupil.studentProfileId);
+    await placeInGroup(groupB, pupil.studentProfileId);
+    const { awardTypeId } = await makeAssessableSet("esc2");
+
+    await expect(
+      registerExamCandidate(admin(), {
+        studentProfileId: pupil.studentProfileId,
+        awardTypeId,
+        groupId: groupB,
+      }),
+    ).resolves.toMatchObject({ id: expect.any(String) as string });
   });
 });
 

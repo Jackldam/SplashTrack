@@ -15,16 +15,39 @@
  * module folds `PersonQualification` into.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * `groupId` IS A CALLER-SUPPLIED SNAPSHOT, NOT A RESOLVED "CURRENT GROUP"
+ * `groupId` IS A CALLER-SUPPLIED SNAPSHOT, GUARDED AGAINST — NOT MERELY
+ * VALIDATED AGAINST — THE ACTOR'S OWN REACH (closing the phase 2.4 report's
+ * §1.6 flag)
  *
  * A pupil may belong to more than one group at once (D-060). Rather than
  * inventing a "the" current group resolver this module would have to defend,
  * the caller states which group's context this candidacy is registered
- * under — validated against `activeGroupMemberIds` (`groups`' own published
- * fact) so it cannot be an arbitrary id. Flagged in the phase 2.4 report as
- * the same open reading the assessment phase named for
- * `isActiveInstructorOfStudent` (§1's item 7): D-085 says "that student's
- * group", singular, and this is ambiguous the moment a pupil is in several.
+ * under. The phase 2.4 report originally guarded this write with
+ * `{ student: studentProfileId }` and validated `groupId` only against
+ * `activeGroupMemberIds` — which meant a `GROUP`-scoped exams manager who
+ * legitimately covers `{ student }` (because the pupil is an active member of
+ * a group they DO hold) could still name a *different* group the same pupil
+ * happens to also belong to, one they hold no grant over at all, and have it
+ * stamped onto the candidacy. Since `getExamCandidatesForStudent` narrows a
+ * `GROUP` reach by this exact snapshot (D-145 rule 2, `exams-scope-escape.test.ts`),
+ * that let a caller register a row that is invisible to their OWN group and
+ * visible instead to a group's staff who had no part in it.
+ *
+ * The fix is the same pattern `recordSkillProgress`
+ * (`@/modules/skills/application/skill-progress-service.ts`) already applies:
+ * guard `{ group: groupId }` directly, not `{ student: studentProfileId }`.
+ * `coversResource`'s `GROUPS` case requires an EXACT match against the
+ * grant's own `scopeId`s for a `group` resource ref (`covers-resource.ts`),
+ * so a `GROUP`-scoped actor is now denied outright for any `groupId` outside
+ * their own grant — the same scope-escape `skills-scope-escape.test.ts`
+ * already pins for `recordSkillProgress`. An `ORGANIZATION`- (or `UNIT`-)
+ * scoped actor is unaffected: that reach covers every `group` ref, so any
+ * `groupId` the domain check (`activeGroupMemberIds`) still accepts continues
+ * to work exactly as before. This is the SAME open reading the assessment
+ * phase named for `isActiveInstructorOfStudent` (§1's item 7) — D-085 says
+ * "that student's group", singular, still ambiguous the moment a pupil is in
+ * several — but the ambiguity can no longer be resolved by a caller naming a
+ * group they have no authority over.
  *
  * SERVER-ONLY.
  */
@@ -89,10 +112,14 @@ export async function registerExamCandidate(
   );
   const groupId = requiredText("groupId", input.groupId, TEXT_MAX.id);
 
+  // `{ group: groupId }`, not `{ student: studentProfileId }` — see the file
+  // comment. This is what stops a `GROUP`-scoped actor from naming a group
+  // they hold no grant over, even when the pupil happens to also be an
+  // active member of it.
   await requirePermission(
     actor.principal,
     "exams.manage",
-    { student: studentProfileId },
+    { group: groupId },
     { at },
   );
 

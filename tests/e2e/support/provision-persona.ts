@@ -48,6 +48,13 @@ function flag(name: string): string {
   return process.argv[idx + 1]!;
 }
 
+/** Like {@link flag}, but returns `undefined` when the flag is absent. */
+function optionalFlag(name: string): string | undefined {
+  const idx = process.argv.indexOf(`--${name}`);
+  if (idx === -1 || !process.argv[idx + 1]) return undefined;
+  return process.argv[idx + 1];
+}
+
 async function createAccount(): Promise<void> {
   const email = flag("email");
   const name = flag("name");
@@ -112,19 +119,26 @@ async function createAccount(): Promise<void> {
       });
     }
   }
-  // ORGANIZATION scope, no `scopeId` — the broadest grant, deliberately: what
-  // each spec's refusal case depends on is the ABSENCE of a specific
-  // permission (e.g. `assessment.independence.override`) or the presence of
-  // a domain relation (an `InstructorAssignment`), never a narrower scope
-  // type. A `SESSION`/`GROUP`-scoped variant of this same mechanism is real,
-  // useful follow-up test coverage (matching the phase reports' own
-  // scope-escape suites) but is not what either spec here is proving.
+  // ORGANIZATION scope, no `scopeId`, is the DEFAULT — the broadest grant,
+  // deliberately: what most specs' refusal cases depend on is the ABSENCE of
+  // a specific permission (e.g. `assessment.independence.override`) or the
+  // presence of a domain relation (an `InstructorAssignment`), never a
+  // narrower scope type. `skills-progress.spec.ts`'s D-145 rule 2 case is the
+  // first spec that genuinely needs a real `GROUP`-scoped grant (not merely a
+  // restricted ORGANIZATION one) — that reach only resolves, per
+  // `resolveReach`, when this RoleAssignment's `scopeId` names a group the
+  // account ALSO holds an active `InstructorAssignment` for, so callers pass
+  // `--scope-type GROUP --scope-id <groupId>` and still assign the
+  // instructor through the real "Lesgever toewijzen" screen themselves.
+  const scopeType = optionalFlag("scope-type") ?? "ORGANIZATION";
+  const scopeId = optionalFlag("scope-id") ?? null;
   await prisma.roleAssignment.create({
     data: {
       personId: account.personId,
       roleId,
-      scopeType: "ORGANIZATION",
-      scopeId: null,
+      scopeType: scopeType as
+        "ORGANIZATION" | "UNIT" | "GROUP" | "COURSE" | "SESSION",
+      scopeId,
       validFrom: new Date("2020-01-01T00:00:00Z"),
       validUntil: null,
     },
@@ -140,12 +154,77 @@ async function createAccount(): Promise<void> {
   );
 }
 
+/**
+ * Adds a SECOND `RoleAssignment` — with its own scope type — to an ACCOUNT
+ * `create-account` already provisioned. Needed by
+ * `skills-progress.spec.ts`'s D-145 rule 2 scenario: `getPersonForPrincipal`
+ * (`/people/[personId]`'s own top-level guard) checks `{ person: personId }`,
+ * which a `GROUP`-scoped reach never covers at all (`coversResource`'s
+ * `GROUPS` case returns `false` for a `person` ref, deliberately — "never
+ * upward", `covers-resource.ts`'s own comment). So a persona that needs to
+ * open the page AND be genuinely `GROUP`-scoped for the read this test
+ * narrows (`skills.read`, `getSkillProgressForStudent`) needs two grants: an
+ * `ORGANIZATION`-scoped one for `people.read` (to reach the page), and a
+ * `GROUP`-scoped one for `skills.read` (so `getSkillProgressForStudent`'s own
+ * `requirePermission` resolves a `GROUP` reach specifically, the one variant
+ * `skillProgressFilterForReach` narrows). One role, one more
+ * `RoleAssignment` — the account itself and its first role are untouched.
+ *
+ *   npx tsx tests/e2e/support/provision-persona.ts grant-role \
+ *     --person-id <id> --permissions people.read \
+ *     --scope-type ORGANIZATION
+ */
+async function grantRole(): Promise<void> {
+  const personId = flag("person-id");
+  const permissions = flag("permissions")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const scopeType = optionalFlag("scope-type") ?? "ORGANIZATION";
+  const scopeId = optionalFlag("scope-id") ?? null;
+
+  const roleId = `e2ewt_role2_${personId}`;
+  await prisma.role.create({
+    data: {
+      id: roleId,
+      key: roleId,
+      name: `e2e persona extra role: ${personId}`,
+    },
+  });
+  for (const key of permissions as PermissionKey[]) {
+    const permission = await prisma.permission.findUniqueOrThrow({
+      where: { key },
+      select: { id: true },
+    });
+    await prisma.rolePermission.create({
+      data: { roleId, permissionId: permission.id },
+    });
+  }
+  await prisma.roleAssignment.create({
+    data: {
+      personId,
+      roleId,
+      scopeType: scopeType as
+        "ORGANIZATION" | "UNIT" | "GROUP" | "COURSE" | "SESSION",
+      scopeId,
+      validFrom: new Date("2020-01-01T00:00:00Z"),
+      validUntil: null,
+    },
+  });
+
+  process.stdout.write(JSON.stringify({ personId, roleId }) + "\n");
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === "create-account") {
     await createAccount();
+  } else if (command === "grant-role") {
+    await grantRole();
   } else {
-    throw new Error(`Unknown command "${command}". Use "create-account".`);
+    throw new Error(
+      `Unknown command "${command}". Use "create-account" or "grant-role".`,
+    );
   }
 }
 
