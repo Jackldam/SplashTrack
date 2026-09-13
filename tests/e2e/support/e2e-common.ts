@@ -57,6 +57,10 @@ export function provisionPersona(
   name: string,
   password: string,
   permissions: readonly string[],
+  scope?: {
+    scopeType: "GROUP" | "UNIT" | "COURSE" | "SESSION";
+    scopeId: string;
+  },
 ): { personId: string; email: string; roleId: string } {
   const output = execFileSync(
     TSX_BIN,
@@ -71,6 +75,9 @@ export function provisionPersona(
       password,
       "--permissions",
       permissions.join(","),
+      ...(scope
+        ? ["--scope-type", scope.scopeType, "--scope-id", scope.scopeId]
+        : []),
     ],
     { cwd: REPO_ROOT, encoding: "utf8" },
   );
@@ -79,6 +86,37 @@ export function provisionPersona(
     email: string;
     roleId: string;
   };
+}
+
+/**
+ * Adds a SECOND `RoleAssignment`, with its own scope, to a `personId`
+ * `provisionPersona` already created — see `provision-persona.ts`'s own
+ * `grantRole` header for why a persona sometimes needs two independently
+ * scoped grants rather than one.
+ */
+export function grantAdditionalRole(
+  personId: string,
+  permissions: readonly string[],
+  scope?: {
+    scopeType: "GROUP" | "UNIT" | "COURSE" | "SESSION";
+    scopeId: string;
+  },
+): void {
+  execFileSync(
+    TSX_BIN,
+    [
+      "tests/e2e/support/provision-persona.ts",
+      "grant-role",
+      "--person-id",
+      personId,
+      "--permissions",
+      permissions.join(","),
+      ...(scope
+        ? ["--scope-type", scope.scopeType, "--scope-id", scope.scopeId]
+        : []),
+    ],
+    { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "inherit"] },
+  );
 }
 
 /**
@@ -191,6 +229,17 @@ export async function setUpCourseGroupAndSession(
   page: Page,
   suffix: string,
   labelPrefix: string,
+  options?: {
+    /**
+     * The norming/reference note (`Criterion.standard`, phase 2.1b's
+     * `#newCriterionStandard` field) — filled on the one criterion this
+     * helper creates, BEFORE the set is published, since `updateCriterion`
+     * refuses any edit once a set leaves `DRAFT`. Omitted by every existing
+     * caller (`assessment-aftest.spec.ts`, `exams-candidate-confirm.spec.ts`),
+     * which do not exercise that field.
+     */
+    criterionStandard?: string;
+  },
 ): Promise<{
   awardTypeId: string;
   awardName: string;
@@ -223,6 +272,9 @@ export async function setUpCourseGroupAndSession(
   await openDetails(page, "Eis toevoegen");
   await page.locator("#newCriterionCode").fill("E1");
   await page.locator("#newCriterionName").fill("Kopspringen");
+  if (options?.criterionStandard) {
+    await page.locator("#newCriterionStandard").fill(options.criterionStandard);
+  }
   await page.getByRole("button", { name: "Eis toevoegen" }).click();
   await expect(page).toHaveURL(/saved=criterion/);
 
