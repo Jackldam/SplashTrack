@@ -49,8 +49,17 @@ import { isLocale, locales, type Locale } from "@/i18n/config";
  * default, which is the whole reason D-036/D-037 chose a versioned JSON
  * document over a column per setting. The version is bumped anyway, so "which
  * shape was this written under" stays answerable from the document itself.
+ *
+ * **v3 (phase 3.0, the Recovery Kit)** adds the `backup` section — one
+ * member, `premigrationEnabled` (D-044's own trade-off paragraph: "It can be
+ * disabled only by an explicit setting, which the documentation advises
+ * against"). This is the ONLY §7 addition this phase ships as a live setting:
+ * `backup.schedule.*`, `backup.retention.*` and `update.check.enabled`
+ * describe §3.2 (scheduled backups) and §6 (update checking), neither of
+ * which is built this phase — see the phase report for why, and do not add
+ * fields here for settings nothing reads yet.
  */
-export const ORGANIZATION_CONFIG_VERSION = 2;
+export const ORGANIZATION_CONFIG_VERSION = 3;
 
 /**
  * Closed set of date/time presentation styles. Each maps to a fixed
@@ -311,6 +320,17 @@ export interface OrganizationConfig {
      */
     message: string | null;
   };
+  backup: {
+    /**
+     * D-044: an automatic pre-migration backup is taken whenever a start
+     * would apply migrations. True by default; the documentation advises
+     * against disabling it (D-044's own words), but it may be — an operator
+     * with disk pressure or an external backup strategy has a real reason to
+     * turn it off, and hiding that choice was ours to stop doing (the same
+     * argument D-103 makes about the backup destination).
+     */
+    premigrationEnabled: boolean;
+  };
 }
 
 /** The safe default document applied to an instance with no config yet. */
@@ -338,6 +358,9 @@ export function defaultOrganizationConfig(): OrganizationConfig {
     maintenance: {
       enabled: false,
       message: null,
+    },
+    backup: {
+      premigrationEnabled: true,
     },
   };
 }
@@ -408,6 +431,7 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
   const security = asRecord(root.security);
   const privacy = asRecord(root.privacy);
   const maintenance = asRecord(root.maintenance);
+  const backup = asRecord(root.backup);
 
   const rawTimeZone =
     typeof localization.timeZone === "string"
@@ -492,6 +516,16 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
         maintenance.message,
         CONFIG_TEXT_MAX.maintenanceMessage,
       ),
+    },
+    backup: {
+      // A malformed or absent value falls back to the DEFAULT (true) — the
+      // safe direction is the one D-044's trade-off paragraph names,
+      // "disabled only by an explicit setting", so a corrupt document must
+      // not silently read as that explicit choice.
+      premigrationEnabled:
+        typeof backup.premigrationEnabled === "boolean"
+          ? backup.premigrationEnabled
+          : defaults.backup.premigrationEnabled,
     },
   };
 }
@@ -636,6 +670,7 @@ export function validateOrganizationConfigInput(
   const security = { ...current.security, ...asRecord(root.security) };
   const privacy = { ...current.privacy, ...asRecord(root.privacy) };
   const maintenance = { ...current.maintenance, ...asRecord(root.maintenance) };
+  const backup = { ...current.backup, ...asRecord(root.backup) };
 
   const validatedSecurity = {
     sessionAbsoluteTimeoutMinutes: strictBoundedMinutes(
@@ -728,6 +763,12 @@ export function validateOrganizationConfigInput(
         "maintenance.message",
         maintenance.message,
         CONFIG_TEXT_MAX.maintenanceMessage,
+      ),
+    },
+    backup: {
+      premigrationEnabled: strictBoolean(
+        "backup.premigrationEnabled",
+        backup.premigrationEnabled,
       ),
     },
   };
