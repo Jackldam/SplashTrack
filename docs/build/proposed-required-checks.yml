@@ -24,6 +24,23 @@
 # Secret-scanning PUSH PROTECTION (as opposed to the scanning job below) is a
 # GitHub repository setting, not workflow YAML — Jack needs to enable it
 # himself under Settings → Code security. See the phase-3.1 report.
+#
+# FOLLOW-UP FIX, applied to the `test`, `migrate-against-populated-db` and
+# `e2e` jobs: the first version pointed DATABASE_URL/DATABASE_MAINTENANCE_URL
+# straight at the postgres image's own bootstrap superuser and skipped
+# `infra/provision-roles.sql` entirely. Verified against a real throwaway
+# `postgres:16-alpine` container that this fails hard — `role
+# "splashtrack_owner" does not exist" — the instant anything calls `prisma
+# migrate deploy` (`prisma.config.ts` always rewrites that connection to
+# `-c role=splashtrack_owner`, and `scripts/setup-test-db.ts` needs the same
+# role to `applyRoleModel`). Each of those three jobs now boots the service
+# container as a throwaway `postgres` superuser, runs
+# `infra/provision-roles.sql` (the exact command its own header documents for
+# a CI machine, `createdb=on`) to create the three ADR-0002 roles, and only
+# THEN points the app/Prisma connections at `splashtrack_app`/
+# `splashtrack_retention`. Re-verified end to end against a fresh container
+# after the fix: role provisioning, `npm run test:setup-db`, the boot seed,
+# and `npm run db:migrate:deploy` all succeed.
 
 name: Required checks (v1)
 
@@ -115,23 +132,34 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
+      # POSTGRES_USER here is the bootstrap SUPERUSER used only to run
+      # `infra/provision-roles.sql` below — never the role the app or Prisma
+      # connect as. ADR-0002/D-182's three application roles
+      # (`splashtrack_owner`/`splashtrack_app`/`splashtrack_retention`) are
+      # NOT created by the postgres image; a job that skips provisioning and
+      # points DATABASE_MAINTENANCE_URL straight at POSTGRES_USER fails with
+      # `role "splashtrack_owner" does not exist` the moment anything calls
+      # `prisma migrate deploy` — `prisma.config.ts` always rewrites that
+      # connection to `-c role=splashtrack_owner`. Verified against a
+      # throwaway container: this exact failure reproduces without the
+      # provisioning step.
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: splashtrack
-          POSTGRES_PASSWORD: splashtrack
-          POSTGRES_DB: splashtrack
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U splashtrack"
+          --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
-      DATABASE_MAINTENANCE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_ci_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_ci_test
       BETTER_AUTH_URL: http://localhost:3000
       SECRET_KEY_FILE: ./secrets/secret_key
     steps:
@@ -146,6 +174,15 @@ jobs:
         run: |
           mkdir -p secrets
           npm run secret:init -- ./secrets/secret_key
+
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
 
       # Runs package.json's `pretest` (creates + migrates the isolated
       # `<db>_test` database, truncates the audit trail) so each of the three
@@ -205,23 +242,27 @@ jobs:
   migrate-against-populated-db:
     runs-on: ubuntu-latest
     services:
+      # Same bootstrap-superuser-then-provision pattern as the `test` job
+      # above — see that job's comment for why. `db:migrate:deploy` below
+      # goes through `prisma.config.ts`, which needs `splashtrack_owner` to
+      # exist regardless of which job calls it.
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: splashtrack
-          POSTGRES_PASSWORD: splashtrack
-          POSTGRES_DB: splashtrack
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U splashtrack"
+          --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
       NODE_ENV: production
-      DATABASE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
-      DATABASE_MAINTENANCE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_ci_migrate_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_ci_migrate_test
       BETTER_AUTH_URL: http://localhost:3000
       SECRET_KEY_FILE: ./secrets/secret_key
     steps:
@@ -240,22 +281,35 @@ jobs:
           mkdir -p secrets
           npm run secret:init -- ./secrets/secret_key
 
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
+
       - name: Determine the merge/target base
         id: base
         run: echo "sha=${{ github.event.pull_request.base.sha || github.event.before }}" >> "$GITHUB_OUTPUT"
 
-      - name: Apply the TARGET branch's migrations
+      - name: Set aside this PR's migrations
+        run: cp -r prisma/migrations /tmp/pr-migrations
+
+      - name: Apply the TARGET branch's migrations against a fresh, provisioned database
         run: |
           git checkout ${{ steps.base.outputs.sha }} -- prisma/migrations
-          npx prisma migrate deploy
+          npm run test:setup-db
 
       - name: Populate rows (boot seed)
-        run: npx tsx -e "import('./src/lib/boot/seed.ts').then(m => m.seedInstallation())"
+        run: npx tsx -e "import('./src/lib/boot/seed').then(m => m.seedInstallation())"
 
-      - name: Restore the PR's own migrations and apply them on top
+      - name: Restore the PR's own migrations and apply them on top of the populated database
         run: |
-          git checkout HEAD -- prisma/migrations
-          npx prisma migrate deploy
+          rm -rf prisma/migrations
+          cp -r /tmp/pr-migrations prisma/migrations
+          npm run db:migrate:deploy
 
   # ---------------------------------------------------------------------
   # 8. Secret scanning — row 8. Push protection itself is a repository
@@ -280,23 +334,30 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     services:
+      # Same bootstrap-superuser-then-provision pattern as `test` above.
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: splashtrack
-          POSTGRES_PASSWORD: splashtrack
-          POSTGRES_DB: splashtrack
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U splashtrack"
+          --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
       NODE_ENV: production
-      DATABASE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
-      DATABASE_MAINTENANCE_URL: postgresql://splashtrack:splashtrack@localhost:5432/splashtrack
+      # `splashtrack_scratch_e2e_test` — matches BOTH the `_test`-suffix guard
+      # `resolveTestDatabaseUrl` enforces AND the `scratch`-prefix guard
+      # `scripts/reset-scratch-database.ts` enforces, and is the SAME generic
+      # name `tests/e2e/support/e2e-common.ts`'s own `SCRATCH_DB_NAME`
+      # constant falls back to (this worktree has since overridden it to a
+      # worktree-specific name for local runs only — see that file's header).
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_scratch_e2e_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_scratch_e2e_test
       BETTER_AUTH_URL: http://localhost:3001
       PORT: "3001"
       SECRET_KEY_FILE: ./secrets/secret_key
@@ -314,8 +375,17 @@ jobs:
           mkdir -p secrets
           npm run secret:init -- ./secrets/secret_key
 
-      - name: Apply migrations
-        run: npx prisma migrate deploy
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
+
+      - name: Create and migrate the e2e scratch database
+        run: npm run test:setup-db
 
       - name: Run Playwright (incl. axe accessibility assertions)
         run: npm run test:e2e
