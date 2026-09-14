@@ -920,5 +920,15 @@
       "errorPrefix": "Import geweigerd —",
       "errorNoFile": "Kies eerst een JSON-bestand."
     }
+  },
+  "backup": {
+    "title": "Backup",
+    "subtitle": "Maak een versleuteld backup-bestand (.stbak) van deze installatie.",
+    "createButton": "Backup nu maken",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Deze actie vereist de bevoegdheid \"{permission}\"."
+    },
+    "note": "Het bestand wordt versleuteld met de master key van deze installatie. Zonder het bijbehorende recovery-token (gegenereerd via `splashtrack backup:init-token`) is een backup-bestand nutteloos."
   }
 }
