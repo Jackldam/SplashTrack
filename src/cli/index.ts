@@ -78,6 +78,14 @@ const USAGE = `splashtrack <command> [flags]
   db:apply-grants [--owner <r>]   Put the ADR-0002 role model in force on this
                                   database. Runs after every migration
   secret:init --out <path>        Generate the one bootstrap secret (D-112)
+  secret:recover --file <f> --out <p>  Unwrap SECRET_KEY from a .stbak
+                 [--token-file <p>]    archive under its token (D-166 §4.2.2)
+  backup:init-token               Generate the Recovery Kit token (shown
+                                   ONCE) and persist its wrapped key record
+  backup:create --out <path>      Write one .stbak backup archive (§3.1)
+               [--reason <text>]
+  restore --file <path.stbak>     Restore onto a FRESH, EMPTY database ONLY
+          [--token-file <p>]      (§4.2/§4.4) — refuses on a running instance
 
 Every command that changes anything writes an audit event with a system:cli
 actor and raises a banner for all administrators. None of them prints a
@@ -118,6 +126,14 @@ async function resolve(name: string): Promise<Command | null> {
       return (await import("./commands/database")).databaseApplyGrants;
     case "secret:init":
       return secretInit;
+    case "secret:recover":
+      return (await import("./commands/backup")).secretRecover;
+    case "backup:init-token":
+      return (await import("./commands/backup")).backupInitToken;
+    case "backup:create":
+      return (await import("./commands/backup")).backupCreate;
+    case "restore":
+      return (await import("./commands/backup")).restoreCommand;
     default:
       return null;
   }
