@@ -24,6 +24,32 @@ module-boundary rules `05-technical.md` §3.1 describes.
 | `5ff885e` `test(e2e): axe accessibility assertions across the Playwright suite` | `tests/e2e/support/e2e-common.ts`, all 10 `tests/e2e/*.spec.ts`, `package.json` (`@axe-core/playwright`) |
 | `1e7eef1` `style: prettier line-wrap fix` | formatting only |
 | `a6d33c2` `ci: propose the 8 required-checks workflow (docs/build, not .github/)` | `docs/build/proposed-required-checks.yml` |
+| `734eab5` `ci: fix proposed workflow's Postgres role provisioning (ADR-0002/D-182)` | `docs/build/proposed-required-checks.yml` |
+
+### 0.0 Addendum — a real bug in the first proposal, found and fixed
+
+The first version of `proposed-required-checks.yml` pointed
+`DATABASE_URL`/`DATABASE_MAINTENANCE_URL` straight at a single generic role
+(`splashtrack`) created by the `postgres` service image's own bootstrap
+superuser, and never ran `infra/provision-roles.sql`. Verified against a real
+throwaway `postgres:16-alpine` container (`docker run` + `psql`, not
+simulated): every job that then calls `prisma migrate deploy` or
+`npm run test:setup-db` fails hard with `role "splashtrack_owner" does not
+exist` — `prisma.config.ts` always rewrites the maintenance connection to
+`-c role=splashtrack_owner`, and `apply-role-model.ts` needs the same role to
+`SET ROLE`. This would have made the `test`, `migrate-against-populated-db`
+and `e2e` jobs red on their first real CI run, for a reason unrelated to any
+actual code defect.
+
+Fixed in `734eab5`: each of those three jobs now boots the service container
+as a throwaway `postgres` superuser, runs `infra/provision-roles.sql`
+(`createdb=on`, the exact invocation its own header documents for a CI
+machine) to create `splashtrack_owner`/`splashtrack_app`/
+`splashtrack_retention`, and only then points the app/Prisma connections at
+the provisioned `splashtrack_app`/`splashtrack_retention` roles. Re-verified
+end to end against a fresh container after the fix: role provisioning,
+`npm run test:setup-db`, the boot seed (`seedInstallation()`), and
+`npm run db:migrate:deploy` all succeed. `actionlint 1.7.12` stays clean.
 
 ### 0.1 The one thing NOT built as asked, and why
 
