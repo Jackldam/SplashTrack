@@ -52,10 +52,14 @@ async function readAppliedMigrations(
  * admin action ("Set up the Recovery Kit"); refuses to overwrite an existing
  * wrap (`storeWrappedKeyRecord`'s own guard).
  */
-export function initializeRecoveryKit(tokenRaw: Buffer): void {
+export async function initializeRecoveryKit(tokenRaw: Buffer): Promise<void> {
   const secretKey = loadBootstrapSecret();
   const masterKey = deriveKey("backup-master-v1");
-  const wrapped = generateWrappedKeyRecord(tokenRaw, secretKey, masterKey);
+  const wrapped = await generateWrappedKeyRecord(
+    tokenRaw,
+    secretKey,
+    masterKey,
+  );
   storeWrappedKeyRecord(wrapped);
 }
 

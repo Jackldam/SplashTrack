@@ -127,7 +127,7 @@ export async function restoreFromArchive(
   }
 
   // ── open + authenticate (throws ArchiveFormatError on any failure) ────────
-  const opened = openArchive(archiveBytes, tokenRaw);
+  const opened = await openArchive(archiveBytes, tokenRaw);
 
   // ── §4.2.2 fingerprint gate — before anything is written ──────────────────
   const runningSecretKey = loadBootstrapSecret();

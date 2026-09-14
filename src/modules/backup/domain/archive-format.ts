@@ -105,11 +105,11 @@ export const KEY_RECORD_AAD = Buffer.from(
  * (`../infrastructure/key-record-store.ts`) and reused, unchanged, by every
  * archive built afterwards.
  */
-export function generateWrappedKeyRecord(
+export async function generateWrappedKeyRecord(
   tokenRaw: Buffer,
   secretKey: Buffer,
   masterKey: Buffer = generateKey(),
-): EnvelopeWrappedKeyRecord {
+): Promise<EnvelopeWrappedKeyRecord> {
   const keyFingerprint = computeKeyFingerprint(secretKey);
   return wrapKeyRecord(
     { masterKey, secretKey, keyFingerprint },
@@ -300,10 +300,10 @@ function readLengthPrefixed(
  * THEN authenticate the body. Throws before returning anything if any step
  * fails — nothing is "partially" opened.
  */
-export function openArchive(
+export async function openArchive(
   archive: Buffer,
   tokenRaw: Buffer,
-): OpenedArchive {
+): Promise<OpenedArchive> {
   if (
     archive.length < ARCHIVE_MAGIC.length ||
     !archive.subarray(0, ARCHIVE_MAGIC.length).equals(ARCHIVE_MAGIC)
@@ -350,7 +350,7 @@ export function openArchive(
 
   let record: KeyRecord;
   try {
-    record = unwrapKeyRecord(wrappedKeyRecord, tokenRaw, KEY_RECORD_AAD);
+    record = await unwrapKeyRecord(wrappedKeyRecord, tokenRaw, KEY_RECORD_AAD);
   } catch {
     throw new ArchiveFormatError(
       "the recovery token did not unwrap this archive's key record — wrong " +
@@ -425,11 +425,11 @@ export function assertFingerprintMatches(
  * match anything. This is the one path that lets an operator recover
  * `SECRET_KEY` after generating a fresh one by mistake.
  */
-export function recoverSecretKeyFromArchive(
+export async function recoverSecretKeyFromArchive(
   archive: Buffer,
   tokenRaw: Buffer,
-): Buffer {
-  return openArchive(archive, tokenRaw).secretKey;
+): Promise<Buffer> {
+  return (await openArchive(archive, tokenRaw)).secretKey;
 }
 
 /** A fresh recovery token plus the master key it will wrap, for `setup:init`

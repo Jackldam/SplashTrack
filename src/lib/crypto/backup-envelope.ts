@@ -34,13 +34,18 @@
  * invalidating archives already written — each `WrappedKeyRecord` is
  * self-describing.
  *
- * NATIVE `node:crypto` ARGON2ID. Node exposes `argon2Sync` natively (this
- * repository targets Node 24; verified present at the version pinned in
- * `Dockerfile`/`package.json`'s `engines`). No `argon2`/`libsodium-wrappers`
- * dependency was added for this — the KDF D-114 names is available without one,
- * and adding a native-binding dependency to a data-critical path this project
- * did not already carry is exactly the kind of retrofit-hostile choice
- * `CLAUDE.md` asks this build to avoid making casually.
+ * ARGON2ID VIA THE `argon2` PACKAGE, NOT `node:crypto`. An earlier version of
+ * this file called `node:crypto`'s native `argon2Sync` on the claim that this
+ * repository "targets Node 24" — false: the Dockerfile pins `node:22-alpine`
+ * by digest, and `argon2Sync` does not exist on Node 22 (confirmed by a live
+ * failure on the actually-deployed UAT container, `TypeError: argon2Sync is
+ * not a function`, and by the required-checks CI run pinned to Node 22). The
+ * "no native-binding dependency" reasoning this comment used to make was
+ * standing on that same false premise, so it does not survive it. `argon2`
+ * (>=16.17.0, well below this project's Node 22 floor) is exactly the
+ * dependency D-114 already accepted in principle; wrapping/unwrapping a key
+ * record is therefore async now, which ripples to every caller — backup and
+ * restore are I/O-bound operations already, so this costs nothing structural.
  */
 
 import {
@@ -48,9 +53,10 @@ import {
   createDecipheriv,
   hkdfSync,
   randomBytes,
-  argon2Sync,
   timingSafeEqual,
 } from "node:crypto";
+
+import argon2 from "argon2";
 
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
@@ -84,21 +90,20 @@ export class EnvelopeAuthenticationError extends Error {
 }
 
 /** Derives the Argon2id KEK over the recovery token's raw entropy. */
-function deriveKek(
+async function deriveKek(
   tokenRaw: Buffer,
   salt: Buffer,
   params: Argon2Params,
-): Buffer {
-  return Buffer.from(
-    argon2Sync("argon2id", {
-      message: tokenRaw,
-      nonce: salt,
-      memory: params.memoryKiB,
-      passes: params.passes,
-      parallelism: params.parallelism,
-      tagLength: KEY_BYTES,
-    }),
-  );
+): Promise<Buffer> {
+  return argon2.hash(tokenRaw, {
+    type: argon2.argon2id,
+    raw: true,
+    salt,
+    memoryCost: params.memoryKiB,
+    timeCost: params.passes,
+    parallelism: params.parallelism,
+    hashLength: KEY_BYTES,
+  });
 }
 
 function aesGcmSeal(key: Buffer, plaintext: Buffer, aad: Buffer): Buffer {
@@ -169,14 +174,14 @@ export interface WrappedKeyRecord {
  * record is bound as AAD to the archive's manifest digest, so it cannot be
  * spliced from one archive into another").
  */
-export function wrapKeyRecord(
+export async function wrapKeyRecord(
   record: KeyRecord,
   tokenRaw: Buffer,
   aad: Buffer,
   params: Argon2Params = DEFAULT_ARGON2_PARAMS,
-): WrappedKeyRecord {
+): Promise<WrappedKeyRecord> {
   const salt = randomBytes(SALT_BYTES);
-  const kek = deriveKek(tokenRaw, salt, params);
+  const kek = await deriveKek(tokenRaw, salt, params);
   const plaintext = Buffer.concat([record.masterKey, record.secretKey]);
   const sealed = aesGcmSeal(kek, plaintext, aad);
   return {
@@ -192,12 +197,12 @@ export function wrapKeyRecord(
  * wrapped under. Throws {@link EnvelopeAuthenticationError} on a wrong token,
  * a wrong AAD (the record was spliced from another archive), or corruption.
  */
-export function unwrapKeyRecord(
+export async function unwrapKeyRecord(
   wrapped: WrappedKeyRecord,
   tokenRaw: Buffer,
   aad: Buffer,
-): KeyRecord {
-  const kek = deriveKek(tokenRaw, wrapped.salt, wrapped.argon2Params);
+): Promise<KeyRecord> {
+  const kek = await deriveKek(tokenRaw, wrapped.salt, wrapped.argon2Params);
   const plaintext = aesGcmOpen(kek, wrapped.sealed, aad);
   if (plaintext.length !== KEY_BYTES * 2) {
     throw new EnvelopeAuthenticationError("unwrapped record has wrong length");

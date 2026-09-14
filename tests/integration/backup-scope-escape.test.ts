@@ -136,14 +136,14 @@ describe("backup.run / backup.download scope escape (D-030/D-042)", () => {
     ]);
     await grantOrganization(personId, roleId);
     const token = generateRecoveryToken();
-    initializeRecoveryKit(token.raw);
+    await initializeRecoveryKit(token.raw);
 
     const result = await createBackup({ principal: { personId } });
 
     expect(result.archive.length).toBeGreaterThan(0);
     expect(result.filename).toMatch(/^splashtrack-backup-.*\.stbak$/);
 
-    const opened = openArchive(result.archive, token.raw);
+    const opened = await openArchive(result.archive, token.raw);
     expect(opened.manifest.rowCounts.Organization).toBeGreaterThanOrEqual(0);
   });
 
