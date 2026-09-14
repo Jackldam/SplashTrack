@@ -47,6 +47,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   openDetails,
@@ -88,6 +89,8 @@ test("compleet gelukt: de hele groep registreren, de onbeschermde notitie, en ee
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const { groupId, sessionUrl } = await setUpCourseGroupAndSession(

@@ -1,0 +1,395 @@
+# Placed under .github/workflows/ on Jack's direct, explicit instruction in
+# chat (2026-09-14) after this same restriction — 06-delivery.md §4.3 point 3
+# and F-18, "no contributor (including Lucky) may modify `.github/`" — was
+# raised to him directly and he confirmed the restriction doesn't reflect his
+# intent ("Nee ik snap niet waarom het er in staat. Jij mag dit doen indien je
+# denkt dat het nodig is"). The build session that produced this file
+# correctly refused to place it here itself, since it could not verify that
+# authorization independently of a relayed task prompt — exactly the
+# escalation path this guardrail exists to block. This PR is not
+# auto-merged for the same reason; it waits for Jack to merge it himself.
+#
+# Not yet updated: 06-delivery.md §4.3/F-18 still reads as an absolute
+# restriction. Flagged for Jack to amend the design doc if he wants this
+# authorization to persist past this one instance, rather than being
+# re-litigated next time.
+#
+# Implements the 8 blocking checks `06-delivery.md` §2.1 requires for v1, one
+# job each so a failure names itself instead of hiding inside a combined
+# "verify" job. Runs on every PR into `build/v1-foundation` and `main`, and on
+# push to those branches (mirrors `ci-cd.yaml`'s existing trigger shape).
+#
+# Deliberately NOT built here (named in 06-delivery.md §2.1 "below the line",
+# not blocking in v1 — see the phase-3.1 report for the full list and why):
+# container build validation, npm audit / Dependabot, CodeQL, the attendance
+# load test, the skill-matrix query-count assertion, the Playwright trace
+# budget, the i18n missing-key check, the browser matrix.
+#
+# Secret-scanning PUSH PROTECTION (as opposed to the scanning job below) is a
+# GitHub repository setting, not workflow YAML — Jack needs to enable it
+# himself under Settings → Code security. See the phase-3.1 report.
+#
+# FOLLOW-UP FIX, applied to the `test`, `migrate-against-populated-db` and
+# `e2e` jobs: the first version pointed DATABASE_URL/DATABASE_MAINTENANCE_URL
+# straight at the postgres image's own bootstrap superuser and skipped
+# `infra/provision-roles.sql` entirely. Verified against a real throwaway
+# `postgres:16-alpine` container that this fails hard — `role
+# "splashtrack_owner" does not exist" — the instant anything calls `prisma
+# migrate deploy` (`prisma.config.ts` always rewrites that connection to
+# `-c role=splashtrack_owner`, and `scripts/setup-test-db.ts` needs the same
+# role to `applyRoleModel`). Each of those three jobs now boots the service
+# container as a throwaway `postgres` superuser, runs
+# `infra/provision-roles.sql` (the exact command its own header documents for
+# a CI machine, `createdb=on`) to create the three ADR-0002 roles, and only
+# THEN points the app/Prisma connections at `splashtrack_app`/
+# `splashtrack_retention`. Re-verified end to end against a fresh container
+# after the fix: role provisioning, `npm run test:setup-db`, the boot seed,
+# and `npm run db:migrate:deploy` all succeed.
+
+name: Required checks (v1)
+
+on:
+  pull_request:
+    branches:
+      - build/v1-foundation
+      - main
+  push:
+    branches:
+      - build/v1-foundation
+      - main
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 0. The workflow file itself — same pattern ci-cd.yaml already uses, so
+  #    an invalid workflow fails loudly instead of GitHub silently recording
+  #    a 0-second run nobody looks at.
+  # ---------------------------------------------------------------------
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint workflow files
+        uses: docker://rhysd/actionlint:1.7.12
+
+  # ---------------------------------------------------------------------
+  # 1. Format (Prettier) — 06-delivery.md §2.1 row 1.
+  # ---------------------------------------------------------------------
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npm run format:check
+
+  # ---------------------------------------------------------------------
+  # 2. Lint (ESLint, incl. module-boundary rules) — row 2.
+  # ---------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+
+  # ---------------------------------------------------------------------
+  # 3. Typecheck — row 3.
+  # ---------------------------------------------------------------------
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npm run typecheck
+
+  # ---------------------------------------------------------------------
+  # 4/5/6. Unit + integration + scope-escape — row 4, 5 and 6.
+  #
+  # ONE job: vitest.config.ts's "node" project runs unit and integration
+  # tests against the SAME real database in a single suite (fileParallelism
+  # is off — shared-state tests, e.g. the Organization singleton, are not
+  # safe to run concurrently). Splitting into three separate JOBS would mean
+  # three separate service containers re-running the same migrate+seed
+  # dance for no isolation benefit. Instead: one job, THREE EXPLICIT,
+  # SEPARATELY NAMED steps, each its own gate that fails on its own — so
+  # "unit", "integration" and "scope-escape" are each a nameable, individually
+  # red/green line in the PR checks list, per 06-delivery.md §2.1's demand
+  # that the scope-escape gate not be buried inside a combined step.
+  #
+  # A real Postgres SERVICE CONTAINER, not a mocked database — 06-delivery.md
+  # §2.1 row 5 ("Against a real Postgres service container").
+  # ---------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    services:
+      # POSTGRES_USER here is the bootstrap SUPERUSER used only to run
+      # `infra/provision-roles.sql` below — never the role the app or Prisma
+      # connect as. ADR-0002/D-182's three application roles
+      # (`splashtrack_owner`/`splashtrack_app`/`splashtrack_retention`) are
+      # NOT created by the postgres image; a job that skips provisioning and
+      # points DATABASE_MAINTENANCE_URL straight at POSTGRES_USER fails with
+      # `role "splashtrack_owner" does not exist` the moment anything calls
+      # `prisma migrate deploy` — `prisma.config.ts` always rewrites that
+      # connection to `-c role=splashtrack_owner`. Verified against a
+      # throwaway container: this exact failure reproduces without the
+      # provisioning step.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_ci_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_ci_test
+      BETTER_AUTH_URL: http://localhost:3000
+      SECRET_KEY_FILE: ./secrets/secret_key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+
+      - name: Generate the bootstrap secret (CI-only, throwaway)
+        run: |
+          mkdir -p secrets
+          npm run secret:init -- ./secrets/secret_key
+
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
+
+      # Runs package.json's `pretest` (creates + migrates the isolated
+      # `<db>_test` database, truncates the audit trail) so each of the three
+      # steps below can be invoked directly through vitest rather than
+      # through `npm test`, which would only run this once for a combined
+      # run.
+      - name: Prepare the test database
+        run: npm run test:setup-db
+
+      - name: Unit tests (incl. migration-safety, migration-history-append-only, person-reference-sync)
+        run: npx vitest run --project=node tests/unit
+
+      - name: Integration tests
+        run: >-
+          npx vitest run --project=node tests/integration
+          --exclude "**/*-scope-escape.test.ts"
+
+      # THE MOST IMPORTANT GATE IN THE TABLE (06-delivery.md §2.1). Named and
+      # run on its own so it cannot silently ride inside a green "tests"
+      # step: every module's GROUP/UNIT/SESSION-scoped read/write/list denial
+      # tests, plus the structural "a Reach cannot be constructed outside
+      # resolveReach()" proof.
+      #
+      # KNOWN GAP, flagged rather than silently passed over: attendance,
+      # assessment, exams, groups, skills and courses each have GROUP- and
+      # SESSION-scoped principal coverage but NO explicit UNIT-scoped
+      # read/write/list triad in their *-scope-escape.test.ts file (checked:
+      # only people-scope-escape.test.ts has full UNIT coverage; skills has a
+      # partial, list-only UNIT case). See the phase-3.1 report — this is a
+      # real coverage gap, not something this CI change fixes; it needs
+      # module-by-module UNIT-scope test authorship as its own follow-up.
+      - name: Scope-escape tests (structural authorization gate)
+        run: >-
+          npx vitest run --project=node
+          "tests/integration/*-scope-escape.test.ts"
+          tests/unit/reach-opacity.test.ts
+
+  # ---------------------------------------------------------------------
+  # 7. Migration against a populated database — row 7.
+  #
+  # Applies the TARGET branch's migrations to a fresh database, runs the
+  # existing idempotent boot seed (src/lib/boot/seed.ts — catalogue, the two
+  # system roles, the grade scale) so the database is POPULATED rather than
+  # empty, then checks out the PR's own prisma/migrations and applies those
+  # on top. A migration that is safe against an empty database (Prisma's own
+  # replay-from-scratch in every other job above) but unsafe against rows —
+  # the exact class migration-safety.test.ts's regex cannot always catch —
+  # fails here instead of stranding a self-hoster's upgrade.
+  #
+  # NOTE: this populates with the boot seed's baseline rows (roles,
+  # permission catalogue, the one grade scale), not a large synthetic
+  # dataset — 06-delivery.md §1's "rich synthetic dataset from a seed
+  # script" for DEV does not exist as a separate generator yet. Flagged for
+  # Jack: worth a richer fixture here, or is the boot seed's baseline enough
+  # to catch the migrations this job exists to catch?
+  # ---------------------------------------------------------------------
+  migrate-against-populated-db:
+    runs-on: ubuntu-latest
+    services:
+      # Same bootstrap-superuser-then-provision pattern as the `test` job
+      # above — see that job's comment for why. `db:migrate:deploy` below
+      # goes through `prisma.config.ts`, which needs `splashtrack_owner` to
+      # exist regardless of which job calls it.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_ci_migrate_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_ci_migrate_test
+      BETTER_AUTH_URL: http://localhost:3000
+      SECRET_KEY_FILE: ./secrets/secret_key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+
+      - name: Generate the bootstrap secret (CI-only, throwaway)
+        run: |
+          mkdir -p secrets
+          npm run secret:init -- ./secrets/secret_key
+
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
+
+      - name: Determine the merge/target base
+        id: base
+        run: echo "sha=${{ github.event.pull_request.base.sha || github.event.before }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set aside this PR's migrations
+        run: cp -r prisma/migrations /tmp/pr-migrations
+
+      - name: Apply the TARGET branch's migrations against a fresh, provisioned database
+        run: |
+          git checkout ${{ steps.base.outputs.sha }} -- prisma/migrations
+          npm run test:setup-db
+
+      - name: Populate rows (boot seed)
+        run: npx tsx -e "import('./src/lib/boot/seed').then(m => m.seedInstallation())"
+
+      - name: Restore the PR's own migrations and apply them on top of the populated database
+        run: |
+          rm -rf prisma/migrations
+          cp -r /tmp/pr-migrations prisma/migrations
+          npm run db:migrate:deploy
+
+  # ---------------------------------------------------------------------
+  # 8. Secret scanning — row 8. Push protection itself is a repository
+  #    setting (Settings → Code security → Push protection), not workflow
+  #    YAML — see the file header and the phase-3.1 report.
+  # ---------------------------------------------------------------------
+  secret-scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------
+  # 9. E2E (Playwright) with axe accessibility assertions — the table's
+  #    ninth row, referred to as "eight" in 06-delivery.md's prose.
+  # ---------------------------------------------------------------------
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      # Same bootstrap-superuser-then-provision pattern as `test` above.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: production
+      # `splashtrack_scratch_e2e_test` — matches BOTH the `_test`-suffix guard
+      # `resolveTestDatabaseUrl` enforces AND the `scratch`-prefix guard
+      # `scripts/reset-scratch-database.ts` enforces, and is the SAME generic
+      # name `tests/e2e/support/e2e-common.ts`'s own `SCRATCH_DB_NAME`
+      # constant falls back to (this worktree has since overridden it to a
+      # worktree-specific name for local runs only — see that file's header).
+      DATABASE_URL: postgresql://splashtrack_app:ci-app-password@localhost:5432/splashtrack_scratch_e2e_test
+      DATABASE_MAINTENANCE_URL: postgresql://splashtrack_retention:ci-retention-password@localhost:5432/splashtrack_scratch_e2e_test
+      BETTER_AUTH_URL: http://localhost:3001
+      PORT: "3001"
+      SECRET_KEY_FILE: ./secrets/secret_key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Generate the bootstrap secret (CI-only, throwaway)
+        run: |
+          mkdir -p secrets
+          npm run secret:init -- ./secrets/secret_key
+
+      - name: Provision database roles (ADR-0002/D-182)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=ci-app-password \
+            -v retention_password=ci-retention-password \
+            -v createdb=on \
+            -f infra/provision-roles.sql
+
+      - name: Create and migrate the e2e scratch database
+        run: npm run test:setup-db
+
+      - name: Run Playwright (incl. axe accessibility assertions)
+        run: npm run test:e2e

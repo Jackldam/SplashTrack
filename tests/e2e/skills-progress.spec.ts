@@ -43,6 +43,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   grantAdditionalRole,
@@ -76,6 +77,8 @@ test("compleet gelukt: voortgang becijferen, bevestiging, en de normering (nasla
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const standardText = `E2E normering ${suffix}: zoals in het diploma-boekje, kin op de borst.`;

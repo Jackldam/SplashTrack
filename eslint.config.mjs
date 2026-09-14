@@ -1,7 +1,86 @@
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import eslintConfigPrettier from "eslint-config-prettier";
+
+/**
+ * Module-boundary rule (`05-technical.md` §3.1, `06-delivery.md` §2.1
+ * "Lint … incl. module-boundary rules").
+ *
+ * A module may only reach another module through its published `index.ts` —
+ * never through a deep import into `modules/<other>/{application,domain,
+ * infrastructure}/**`. Generated per-module so module A's own deep imports
+ * stay legal while every OTHER module's internals are forbidden from A.
+ *
+ * KNOWN GAP, stated here rather than silently — `05-technical.md` §3.1 says
+ * this exact class of rule ("an ESLint `no-restricted-imports` rule forbids
+ * importing `modules/<a>/…` from `modules/<b>/…`") **does not catch the
+ * violation it exists to prevent**: a module reaching another module's data
+ * through `prisma.<otherModelsTable>.create(...)` directly has no cross-module
+ * *import* at all, so this rule is silent on it. The design's own fix (a
+ * per-module Prisma client wrapper + a second rule forbidding the raw `prisma`
+ * import inside `modules/**`) is designed but not built, and is a larger,
+ * separate change — flagged for Jack rather than half-built here.
+ */
+const modulesDir = fileURLToPath(new URL("./src/modules", import.meta.url));
+const moduleNames = readdirSync(modulesDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+
+const moduleBoundaryConfigs = moduleNames.map((name) => ({
+  files: [`src/modules/${name}/**/*.{ts,tsx}`],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: moduleNames
+          .filter((other) => other !== name)
+          .map((other) => ({
+            group: [`@/modules/${other}/*`, `@/modules/${other}/**`],
+            message:
+              `Import from "@/modules/${other}" (its index.ts) instead of ` +
+              `reaching into "@/modules/${other}/..." internals — modules talk ` +
+              "through their published surface only (05-technical.md §3.1).",
+          })),
+      },
+    ],
+  },
+}));
+
+/**
+ * D-051 — the public surface may not import a person repository
+ * (`06-delivery.md` §2.1: "`(public)` never imports a person repository").
+ *
+ * OPEN QUESTION FOR JACK, flagged rather than silently built: no `(public)`
+ * route group exists yet under `src/app` (checked — only `people`, `setup`,
+ * `sign-in`, `mfa-enrolment`, `skills`, `groups`, `admin`, `api`, `courses`,
+ * `exams`). A rule scoped to a path that does not exist would be exactly the
+ * "vacuous and pass forever" check `06-delivery.md` §2.1 itself warns against
+ * for the scope-escape gate. The rule below is written against the path the
+ * design specifies so it activates the moment that route group is added, but
+ * it currently matches nothing and enforces nothing — do not read it as a
+ * built D-051 gate.
+ */
+const publicSurfaceNoPersonRepository = {
+  files: ["src/app/(public)/**/*.{ts,tsx}"],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: ["**/person-repository", "**/person-repository.*"],
+            message:
+              "D-051: the public surface may not import a person repository.",
+          },
+        ],
+      },
+    ],
+  },
+};
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -9,6 +88,8 @@ const eslintConfig = defineConfig([
   // Must come last so it can disable any stylistic rules above that would
   // conflict with Prettier's formatting.
   eslintConfigPrettier,
+  ...moduleBoundaryConfigs,
+  publicSurfaceNoPersonRepository,
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",

@@ -56,6 +56,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { base32 } from "@better-auth/utils/base32";
 import { createOTP } from "@better-auth/utils/otp";
+import { assertNoAccessibilityViolations } from "./support/e2e-common";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const TSX_BIN = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -171,6 +172,8 @@ test("a group's course level survives a save and a reload, and can be cleared ag
   // Enrolment verified: back on the home page with a full, non-pending
   // session.
   await expect(page).toHaveURL(/\/$/);
+
+  await assertNoAccessibilityViolations(page);
 
   // --- Seed a course, a level, and a group, all through the real UI --------
   const uniqueSuffix = Date.now().toString(36);

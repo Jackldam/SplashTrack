@@ -32,6 +32,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   openDetails,
@@ -64,6 +65,8 @@ test("compleet gelukt: cursus aanmaken, niveau toevoegen, en beide verschijnen o
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const courseName = `E2E Cursus ${suffix}`;
