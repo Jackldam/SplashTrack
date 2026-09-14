@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { requireEnrolledSession } from "@/lib/auth/session";
@@ -49,6 +50,9 @@ export default async function BackupPage() {
   if (denied) {
     return (
       <main className="container py-5">
+        <nav aria-label="kruimelpad" className="mb-3">
+          <Link href="/">{t("backup.backToHome")}</Link>
+        </nav>
         <h1>{t("backup.title")}</h1>
         <div className="alert alert-warning mt-4" role="alert">
           <h2 className="h5">{t("backup.denied.title")}</h2>
@@ -62,6 +66,9 @@ export default async function BackupPage() {
 
   return (
     <main className="container py-5">
+      <nav aria-label="kruimelpad" className="mb-3">
+        <Link href="/">{t("backup.backToHome")}</Link>
+      </nav>
       <h1>{t("backup.title")}</h1>
       <p className="lead">{t("backup.subtitle")}</p>
       <form action="/api/admin/backup" method="POST">

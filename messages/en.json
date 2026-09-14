@@ -21,7 +21,8 @@
     "toEnrolment": "Set up your authenticator",
     "toGroups": "Go to groups",
     "toCourses": "Go to courses",
-    "toSkills": "Go to skills"
+    "toSkills": "Go to skills",
+    "toBackup": "Backup"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -929,6 +930,7 @@
       "title": "Access denied",
       "explanation": "This action requires the \"{permission}\" permission."
     },
-    "note": "The file is encrypted with this installation's master key. Without the matching recovery token (generated via `splashtrack backup:init-token`), a backup file is useless."
+    "note": "The file is encrypted with this installation's master key. Without the matching recovery token (generated via `splashtrack backup:init-token`), a backup file is useless.",
+    "backToHome": "Back to home"
   }
 }
