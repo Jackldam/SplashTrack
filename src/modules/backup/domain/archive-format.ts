@@ -32,6 +32,43 @@
  * KEY MATERIAL IS NEVER IN THE ARCHIVE IN THE CLEAR (D-113, restated by
  * D-166's amendment). `assertNoKeyMaterial` in this module's test file greps
  * every shipped fixture for the raw key bytes, per §3.1.1.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE KEY RECORD IS WRAPPED ONCE, NOT PER ARCHIVE — RESOLVING A GAP §2/D-166
+ * LEAVES OPEN
+ *
+ * D-166 says the record is "bound as AAD to the archive's manifest digest, so
+ * it cannot be spliced from one archive into another" — read literally, that
+ * means re-wrapping (a fresh Argon2id KDF pass, needing the RAW recovery
+ * token) on every single backup. §5 (D-044) requires an AUTOMATIC
+ * pre-migration backup at container start, with no operator present to type a
+ * token, and §3.2 describes a SCHEDULED unattended backup with the same
+ * requirement. Neither is buildable if every archive needs the raw token at
+ * write time.
+ *
+ * D-114's own words resolve this, one paragraph over: the master key "is
+ * generated at setup and stored wrapped by a KDF over the printed recovery
+ * token" — STORED, past tense, once. This module takes that as authoritative:
+ * `generateWrappedKeyRecord` runs ONCE (at setup, or whenever the operator
+ * deliberately regenerates the Recovery Kit token), its output is PERSISTED
+ * (`../infrastructure/key-record-store.ts`), and every subsequent archive —
+ * on-demand or automatic — embeds that SAME wrap unchanged. The raw token is
+ * therefore needed only twice in the whole lifecycle: once to CREATE the wrap,
+ * and again at RESTORE time to open it. Never at ordinary backup time.
+ *
+ * The wrap is therefore bound to a FIXED, per-format AAD (`KEY_RECORD_AAD`)
+ * rather than each archive's own manifest digest — it cannot BE bound to a
+ * digest it does not yet know when it is computed once, ahead of any archive.
+ * What this costs, stated plainly: splicing this SAME instance's OWN wrap
+ * between its OWN archives is now a no-op (it unwraps to the identical master
+ * key every time, so there is nothing to gain by doing it) rather than being
+ * cryptographically prevented. Splicing a DIFFERENT instance's wrap into this
+ * one still fails outright — it is sealed under THAT instance's own
+ * token-derived KEK, which this instance's token does not open. That is the
+ * property D-166 actually needs (an attacker cannot borrow key material across
+ * instances); binding to a digest was one way to get it and not the only one.
+ * Flagged here because the source document does not spell out the "wrapped
+ * once, embedded many times" mechanics this forces — see the phase report.
  */
 
 import { createHash } from "node:crypto";
@@ -46,12 +83,40 @@ import {
   wrapKeyRecord,
   type Argon2Params,
   type KeyRecord,
+  type WrappedKeyRecord as EnvelopeWrappedKeyRecord,
 } from "@/lib/crypto/backup-envelope";
 import { decryptFramed, encryptFramed } from "@/lib/crypto/framed-aead";
 import { generateRecoveryToken } from "@/lib/crypto/recovery-token";
 
 export const ARCHIVE_MAGIC = Buffer.from("STBAK1\0", "utf8");
 export const ARCHIVE_FORMAT_VERSION = 1;
+
+/** The fixed AAD the key record is bound to — see the module doc's "wrapped
+ * once, not per archive" section for why this replaced a per-archive digest. */
+export const KEY_RECORD_AAD = Buffer.from(
+  "splashtrack-recovery-kit-key-record-v1",
+  "utf8",
+);
+
+/**
+ * Generates a fresh master key + wraps `{masterKey, secretKey}` under the
+ * recovery token, ONCE — at setup, or whenever an operator deliberately
+ * regenerates the Recovery Kit token. The result is meant to be PERSISTED
+ * (`../infrastructure/key-record-store.ts`) and reused, unchanged, by every
+ * archive built afterwards.
+ */
+export function generateWrappedKeyRecord(
+  tokenRaw: Buffer,
+  secretKey: Buffer,
+  masterKey: Buffer = generateKey(),
+): EnvelopeWrappedKeyRecord {
+  const keyFingerprint = computeKeyFingerprint(secretKey);
+  return wrapKeyRecord(
+    { masterKey, secretKey, keyFingerprint },
+    tokenRaw,
+    KEY_RECORD_AAD,
+  );
+}
 
 /** Thrown for any structural or authentication failure while opening an
  * archive — a wrong token, corruption, a foreign archive, or a malformed
@@ -142,8 +207,10 @@ export interface BuildArchiveInput {
    * caller (`../infrastructure/logical-export.ts`), opaque to this module. */
   readonly exportPayload: Buffer;
   readonly masterKey: Buffer;
-  readonly secretKey: Buffer;
-  readonly tokenRaw: Buffer;
+  /** The PERSISTED wrap from `generateWrappedKeyRecord` — see the module doc's
+   * "wrapped once, not per archive" section. The raw recovery token is NOT an
+   * input here; it was only needed to produce this wrap, earlier. */
+  readonly wrappedKeyRecord: EnvelopeWrappedKeyRecord;
   readonly keyId?: string;
 }
 
@@ -165,28 +232,22 @@ function lengthPrefixed(buffer: Buffer): Buffer {
 }
 
 /**
- * Builds one `.stbak` archive. `masterKey`/`secretKey` are the RUNNING
- * instance's own key material (D-166) — a fresh per-archive data key is
- * generated here and wrapped by the master key; the master key and
- * `secretKey` are themselves wrapped by an Argon2id KEK derived from
- * `tokenRaw`.
+ * Builds one `.stbak` archive. `masterKey` is the running instance's own
+ * master key; `wrappedKeyRecord` is the PERSISTED wrap produced once by
+ * `generateWrappedKeyRecord` and embedded here unchanged (see the module
+ * doc). A fresh per-archive data key is generated here and wrapped by the
+ * master key.
  */
 export function buildArchive(input: BuildArchiveInput): Buffer {
   const keyId = input.keyId ?? "1";
-  const keyFingerprint = computeKeyFingerprint(input.secretKey);
   const manifest: ArchiveManifest = {
     ...input.manifest,
-    keyFingerprintHex: keyFingerprint.toString("hex"),
+    keyFingerprintHex: input.wrappedKeyRecord.keyFingerprint.toString("hex"),
   };
   const manifestJson = Buffer.from(JSON.stringify(manifest), "utf8");
   const digest = manifestDigest(manifestJson);
 
-  const record: KeyRecord = {
-    masterKey: input.masterKey,
-    secretKey: input.secretKey,
-    keyFingerprint,
-  };
-  const wrappedKeyRecord = wrapKeyRecord(record, input.tokenRaw, digest);
+  const wrappedKeyRecord = input.wrappedKeyRecord;
 
   const dataKey = generateKey();
   const wrappedDataKey = wrapDataKey(dataKey, input.masterKey);
@@ -267,8 +328,10 @@ export function openArchive(
   offset = manifestAeadRead.next;
   const body = archive.subarray(offset);
 
-  // §4.2 step 1: unwrap the key record, bound to the manifest digest carried
-  // in the (untrusted-but-hash-only) header — see ArchiveHeader.manifestDigestHex.
+  // §4.2 step 1: unwrap the key record. Bound to the FIXED `KEY_RECORD_AAD`
+  // (see the module doc's "wrapped once, not per archive" section) — this wrap
+  // was produced once, ahead of any archive, so it cannot be bound to a digest
+  // it did not yet know.
   const wrappedKeyRecord = {
     salt: Buffer.from(header.wrappedKeyRecord.saltHex, "hex"),
     argon2Params: header.wrappedKeyRecord.argon2Params,
@@ -279,15 +342,15 @@ export function openArchive(
     ),
   };
 
-  // The AAD every AEAD message in this archive is bound to. A wrong or
-  // tampered digest here simply fails every authentication below — including,
-  // crucially, the manifest's own, which is how a header edited in transit is
-  // caught rather than trusted.
+  // The AAD the MANIFEST and BODY (not the key record — see above) are bound
+  // to. A wrong or tampered digest here simply fails every authentication
+  // below, which is how a header edited in transit is caught rather than
+  // trusted.
   const aad = Buffer.from(header.manifestDigestHex, "hex");
 
   let record: KeyRecord;
   try {
-    record = unwrapKeyRecord(wrappedKeyRecord, tokenRaw, aad);
+    record = unwrapKeyRecord(wrappedKeyRecord, tokenRaw, KEY_RECORD_AAD);
   } catch {
     throw new ArchiveFormatError(
       "the recovery token did not unwrap this archive's key record — wrong " +

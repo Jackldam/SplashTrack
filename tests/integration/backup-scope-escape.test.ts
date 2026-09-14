@@ -13,6 +13,9 @@
  * sits IN FRONT of the export, not merely beside it).
  */
 import { randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,6 +25,7 @@ import { prisma } from "@/lib/database";
 import { openArchive } from "@/modules/backup/domain/archive-format";
 import {
   createBackup,
+  initializeRecoveryKit,
   requireBackupDownload,
 } from "@/modules/backup/application/backup-service";
 
@@ -85,19 +89,31 @@ async function cleanup(): Promise<void> {
   await prisma.person.deleteMany({ where: { id: { startsWith: PREFIX } } });
 }
 
-beforeEach(cleanup);
-afterEach(cleanup);
+// `initializeRecoveryKit`/`createBackup` read $DATA_DIR for the persisted
+// wrapped key record (see key-record-store.ts) — a fresh temp directory per
+// test so tests never collide with each other or with the worktree's own
+// `data/`.
+let originalDataDir: string | undefined;
+let tempDataDir: string;
+
+beforeEach(async () => {
+  await cleanup();
+  originalDataDir = process.env.DATA_DIR;
+  tempDataDir = mkdtempSync(path.join(tmpdir(), "splashtrack-backup-test-"));
+  process.env.DATA_DIR = tempDataDir;
+});
+afterEach(async () => {
+  await cleanup();
+  process.env.DATA_DIR = originalDataDir;
+  rmSync(tempDataDir, { recursive: true, force: true });
+});
 
 describe("backup.run / backup.download scope escape (D-030/D-042)", () => {
   it("refuses createBackup to a principal holding neither permission", async () => {
     const bystanderId = await makePerson("bystander");
-    const token = generateRecoveryToken();
 
     await expect(
-      createBackup({
-        principal: { personId: bystanderId },
-        tokenRaw: token.raw,
-      }),
+      createBackup({ principal: { personId: bystanderId } }),
     ).rejects.toThrow(PermissionDeniedError);
   });
 
@@ -107,11 +123,10 @@ describe("backup.run / backup.download scope escape (D-030/D-042)", () => {
       "backup.download",
     ]);
     await grantOrganization(personId, roleId);
-    const token = generateRecoveryToken();
 
-    await expect(
-      createBackup({ principal: { personId }, tokenRaw: token.raw }),
-    ).rejects.toThrow(PermissionDeniedError);
+    await expect(createBackup({ principal: { personId } })).rejects.toThrow(
+      PermissionDeniedError,
+    );
   });
 
   it("allows createBackup to a principal holding backup.run, and the archive opens under the same token", async () => {
@@ -121,11 +136,9 @@ describe("backup.run / backup.download scope escape (D-030/D-042)", () => {
     ]);
     await grantOrganization(personId, roleId);
     const token = generateRecoveryToken();
+    initializeRecoveryKit(token.raw);
 
-    const result = await createBackup({
-      principal: { personId },
-      tokenRaw: token.raw,
-    });
+    const result = await createBackup({ principal: { personId } });
 
     expect(result.archive.length).toBeGreaterThan(0);
     expect(result.filename).toMatch(/^splashtrack-backup-.*\.stbak$/);

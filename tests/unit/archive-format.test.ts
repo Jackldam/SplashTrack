@@ -8,6 +8,7 @@ import {
   ArchiveFormatError,
   assertFingerprintMatches,
   buildArchive,
+  generateWrappedKeyRecord,
   KeyFingerprintMismatchError,
   openArchive,
   recoverSecretKeyFromArchive,
@@ -37,12 +38,16 @@ function build(overrides?: {
   const payload =
     overrides?.payload ?? Buffer.from(JSON.stringify({ hello: "world" }));
 
+  const wrappedKeyRecord = generateWrappedKeyRecord(
+    token,
+    secretKey,
+    masterKey,
+  );
   const archive = buildArchive({
     manifest: baseManifest(),
     exportPayload: payload,
     masterKey,
-    secretKey,
-    tokenRaw: token,
+    wrappedKeyRecord,
   });
   return { archive, token, secretKey, masterKey, payload };
 }
