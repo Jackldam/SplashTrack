@@ -261,39 +261,71 @@ case "${ACTION}" in
     log ""
 
     # D-044: an automatic pre-migration backup is taken whenever a start would
-    # apply migrations. THE BACKUP ENGINE DOES NOT EXIST YET — D-095/D-169 make
-    # the backup a structured logical export the application writes itself,
-    # `pg_dump` is explicitly out of v1 scope and `postgresql-client` is
-    # therefore not in this image, and the export/import engine is Phase-1 work
-    # that has not landed.
+    # apply migrations. The backup engine (D-095/D-169's logical export,
+    # src/modules/backup/) is now built, so this runs a REAL backup rather than
+    # asking the operator to acknowledge that none exists.
     #
-    # Migrating anyway with a warning would be exactly the shape the design
-    # rejects everywhere else: doing the dangerous thing loudly. Refusing every
-    # upgrade forever would be worse. So the operator acknowledges it ONCE PER
-    # MIGRATING START, from the host, by creating a marker file — the same
-    # host-access-is-authority pattern as D-101's setup token — and the marker
-    # is consumed, so the next migrating start asks again.
+    # It needs the Recovery Kit to have been initialized already
+    # (\`splashtrack backup:init-token\`, which persists the token-wrapped key
+    # record every archive embeds — see key-record-store.ts). An instance that
+    # has never run that command cannot take an ENCRYPTED backup, and this gate
+    # does not silently write an unencrypted one instead (that would be a much
+    # bigger, quieter downgrade of D-040's whole promise than asking once).
+    #
+    # The old acknowledge-marker mechanism SURVIVES as the noodklep D-044's own
+    # trade-off paragraph anticipates ("It can be disabled only by an explicit
+    # setting"): if the backup engine itself fails — Recovery Kit not
+    # initialized, disk full, an export bug — the marker is still the way an
+    # operator overrides ONE migrating start, exactly as before. It is no
+    # longer the ROUTE every upgrade takes.
+    BACKUP_DIR="/app/data/backups/pre-migration"
     MARKER="/app/data/allow-unbacked-migration"
-    if [ ! -f "${MARKER}" ]; then
+
+    mkdir -p "${BACKUP_DIR}"
+    BACKUP_FILE="${BACKUP_DIR}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).stbak"
+
+    set +e
+    splashtrack backup:create --out "${BACKUP_FILE}" --reason pre-migration
+    BACKUP_STATUS=$?
+    set -e
+
+    if [ "${BACKUP_STATUS}" -eq 3 ]; then
+      # backup.premigrationEnabled is off (§7, D-044) — an explicit operator
+      # choice, not a failure. Nothing to acknowledge and nothing to prune.
+      log "Pre-migration backup skipped by settings (backup.premigrationEnabled=false)."
+    elif [ "${BACKUP_STATUS}" -eq 0 ]; then
+      log "Pre-migration backup written: ${BACKUP_FILE}"
+      # D-104: at most three pre-migration backups are kept. Each exists to
+      # make the NEXT start recoverable; once THIS start succeeds (below,
+      # after migrations and the post-migration verify), older ones beyond the
+      # cap are no longer needed. Pruned here (pre-existing older backups) and
+      # after a successful start (see the SERVE-adjacent pruning at the end of
+      # this branch) rather than trusted to one code path.
+      ls -1t "${BACKUP_DIR}"/pre-migration-*.stbak 2>/dev/null | tail -n +4 | xargs -r rm -f
+    elif [ -f "${MARKER}" ]; then
+      log "Pre-migration backup failed; the acknowledge-marker is present — consuming it and proceeding without a fresh backup."
+      rm -f "${MARKER}"
+    else
       fail \
-"Refusing to migrate: there is no pre-migration backup, and D-044 requires one.
+"Refusing to migrate: the pre-migration backup (D-044) failed and there is no
+  acknowledge-marker to override it. See the backup engine's own error above.
 
-  The backup engine is not built yet. D-095/D-169 make a SplashTrack backup a
-  structured export the application writes and reads itself; \`pg_dump\` is out
-  of v1 scope and is not in this image. So this container cannot take the
-  snapshot D-044 asks for before it changes your schema.
+  Most likely cause: the Recovery Kit has never been initialized on this
+  instance. Run this once, from the host:
 
-  Take your own backup of the database, then acknowledge it once:
+      docker compose exec app splashtrack backup:init-token
+
+  which prints a recovery token (WRITE IT DOWN — shown once) and lets this
+  container take encrypted backups from then on. Restart, and this gate will
+  produce a real backup instead of asking again.
+
+  If the backup engine itself is broken (see the error above) and you have
+  taken your own backup of the database, acknowledge THIS ONE migrating start
+  instead:
 
       docker compose exec app touch /app/data/allow-unbacked-migration
-      docker compose restart app
-
-  The marker is consumed by the migration, so the next upgrade asks again.
-  This whole gate disappears when the export engine lands."
+      docker compose restart app"
     fi
-
-    log "Pre-migration acknowledgement found; consuming it."
-    rm -f "${MARKER}"
 
     # Runs as DATABASE_MAINTENANCE_URL acting as splashtrack_owner —
     # prisma.config.ts derives that connection, so it is not spelled here and
@@ -324,6 +356,13 @@ case "${ACTION}" in
     VERIFY="$(splashtrack boot:state)" || fail \
 "The database is not in a serviceable state after migrating. See above."
     log "Post-migration state: ${VERIFY}"
+
+    # D-104: a pre-migration backup exists to make THIS start recoverable.
+    # Reaching here means it succeeded, so its purpose is served — prune to
+    # at most three, keeping the most recent for the case of an operator
+    # upgrading repeatedly while debugging. (Not "delete the one just taken":
+    # that backup is itself the newest and stays under the same cap.)
+    ls -1t "${BACKUP_DIR}"/pre-migration-*.stbak 2>/dev/null | tail -n +4 | xargs -r rm -f
     ;;
 
   SERVE)

@@ -80,10 +80,21 @@ export async function backupInitToken(ctx: CommandContext): Promise<number> {
   return 0;
 }
 
+/** Exit code `backup:create --reason pre-migration` returns when D-044's
+ * `backup.premigrationEnabled` setting is off — distinct from 0 (backup
+ * written) and 1 (failed), so `docker-entrypoint.sh` can tell "skipped by an
+ * explicit setting" apart from "the engine failed" without parsing stderr. */
+export const SKIPPED_BY_SETTING_EXIT_CODE = 3;
+
 /**
  * `backup:create --out <path>` — §3.1's `Create backup now`, from the host.
  * No token is needed (the persisted wrap from `backup:init-token` is reused —
  * see `backup-service.ts`'s module doc).
+ *
+ * `--reason pre-migration` is the one caller that checks D-044's
+ * `backup.premigrationEnabled` setting first (§7) — every other caller (the
+ * admin UI's `backup.run`, an ordinary manual `backup:create`) is the
+ * operator asking directly, which the setting has no say over.
  */
 export async function backupCreate(ctx: CommandContext): Promise<number> {
   const out = ctx.flags.out ?? ctx.positionals[0];
@@ -91,8 +102,21 @@ export async function backupCreate(ctx: CommandContext): Promise<number> {
     ctx.error("Usage: splashtrack backup:create --out <path>");
     return 2;
   }
+  const reason = ctx.flags.reason ?? "manual (CLI)";
 
-  const result = await createSystemBackup(ctx.flags.reason ?? "manual (CLI)");
+  if (reason === "pre-migration") {
+    const { getPublicOrganizationConfig } = await import("@/lib/settings");
+    const { config } = await getPublicOrganizationConfig();
+    if (!config.backup.premigrationEnabled) {
+      ctx.log(
+        "Pre-migration backup skipped: backup.premigrationEnabled is off " +
+          "(§7, D-044). The documentation advises against disabling this.",
+      );
+      return SKIPPED_BY_SETTING_EXIT_CODE;
+    }
+  }
+
+  const result = await createSystemBackup(reason);
   writeFileSync(out, result.archive, { mode: 0o600 });
 
   ctx.log(`Wrote ${result.archive.length} bytes to ${out}.`);
