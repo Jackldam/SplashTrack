@@ -30,63 +30,63 @@ function record(): KeyRecord {
 }
 
 describe("two-level key envelope (D-114, D-166)", () => {
-  it("wraps and unwraps a key record under the recovery token", () => {
+  it("wraps and unwraps a key record under the recovery token", async () => {
     const token = generateRecoveryToken();
     const rec = record();
     const aad = Buffer.from("manifest-digest-1");
 
-    const wrapped = wrapKeyRecord(rec, token.raw, aad, FAST_PARAMS);
-    const opened = unwrapKeyRecord(wrapped, token.raw, aad);
+    const wrapped = await wrapKeyRecord(rec, token.raw, aad, FAST_PARAMS);
+    const opened = await unwrapKeyRecord(wrapped, token.raw, aad);
 
     expect(opened.masterKey).toEqual(rec.masterKey);
     expect(opened.secretKey).toEqual(rec.secretKey);
     expect(wrapped.keyFingerprint).toEqual(rec.keyFingerprint);
   });
 
-  it("refuses the wrong token", () => {
+  it("refuses the wrong token", async () => {
     const token = generateRecoveryToken();
     const wrongToken = generateRecoveryToken();
     const rec = record();
     const aad = Buffer.from("manifest-digest-1");
 
-    const wrapped = wrapKeyRecord(rec, token.raw, aad, FAST_PARAMS);
-    expect(() => unwrapKeyRecord(wrapped, wrongToken.raw, aad)).toThrow(
+    const wrapped = await wrapKeyRecord(rec, token.raw, aad, FAST_PARAMS);
+    await expect(unwrapKeyRecord(wrapped, wrongToken.raw, aad)).rejects.toThrow(
       EnvelopeAuthenticationError,
     );
   });
 
-  it("refuses a key record spliced from a different archive (AAD mismatch)", () => {
+  it("refuses a key record spliced from a different archive (AAD mismatch)", async () => {
     const token = generateRecoveryToken();
     const rec = record();
-    const wrapped = wrapKeyRecord(
+    const wrapped = await wrapKeyRecord(
       rec,
       token.raw,
       Buffer.from("archive-A-digest"),
       FAST_PARAMS,
     );
-    expect(() =>
+    await expect(
       unwrapKeyRecord(wrapped, token.raw, Buffer.from("archive-B-digest")),
-    ).toThrow(EnvelopeAuthenticationError);
+    ).rejects.toThrow(EnvelopeAuthenticationError);
   });
 
-  it("rotation: re-wrapping under a new token keeps the master key identical, so archives written under the old wrap stay readable", () => {
+  it("rotation: re-wrapping under a new token keeps the master key identical, so archives written under the old wrap stay readable", async () => {
     const oldToken = generateRecoveryToken();
     const newToken = generateRecoveryToken();
     const rec = record();
     const aad = Buffer.from("manifest-digest-1");
 
-    const wrappedOld = wrapKeyRecord(rec, oldToken.raw, aad, FAST_PARAMS);
-    const wrappedNew = wrapKeyRecord(rec, newToken.raw, aad, FAST_PARAMS);
+    const wrappedOld = await wrapKeyRecord(rec, oldToken.raw, aad, FAST_PARAMS);
+    const wrappedNew = await wrapKeyRecord(rec, newToken.raw, aad, FAST_PARAMS);
 
-    const openedOld = unwrapKeyRecord(wrappedOld, oldToken.raw, aad);
-    const openedNew = unwrapKeyRecord(wrappedNew, newToken.raw, aad);
+    const openedOld = await unwrapKeyRecord(wrappedOld, oldToken.raw, aad);
+    const openedNew = await unwrapKeyRecord(wrappedNew, newToken.raw, aad);
 
     expect(openedOld.masterKey).toEqual(rec.masterKey);
     expect(openedNew.masterKey).toEqual(rec.masterKey);
     // The old token no longer opens the NEW wrap.
-    expect(() => unwrapKeyRecord(wrappedNew, oldToken.raw, aad)).toThrow(
-      EnvelopeAuthenticationError,
-    );
+    await expect(
+      unwrapKeyRecord(wrappedNew, oldToken.raw, aad),
+    ).rejects.toThrow(EnvelopeAuthenticationError);
   });
 
   it("wraps and unwraps a per-archive data key under the master key", () => {

@@ -26,7 +26,7 @@ function baseManifest(): Omit<ArchiveManifest, "keyFingerprintHex"> {
   };
 }
 
-function build(overrides?: {
+async function build(overrides?: {
   token?: Buffer;
   secretKey?: Buffer;
   masterKey?: Buffer;
@@ -38,7 +38,7 @@ function build(overrides?: {
   const payload =
     overrides?.payload ?? Buffer.from(JSON.stringify({ hello: "world" }));
 
-  const wrappedKeyRecord = generateWrappedKeyRecord(
+  const wrappedKeyRecord = await generateWrappedKeyRecord(
     token,
     secretKey,
     masterKey,
@@ -53,9 +53,9 @@ function build(overrides?: {
 }
 
 describe("Recovery Kit archive format (D-040, D-102, D-166)", () => {
-  it("round-trips: builds and opens with the correct token", () => {
-    const { archive, token, secretKey, masterKey, payload } = build();
-    const opened = openArchive(archive, token);
+  it("round-trips: builds and opens with the correct token", async () => {
+    const { archive, token, secretKey, masterKey, payload } = await build();
+    const opened = await openArchive(archive, token);
     expect(opened.exportPayload).toEqual(payload);
     expect(opened.secretKey).toEqual(secretKey);
     expect(opened.masterKey).toEqual(masterKey);
@@ -66,37 +66,43 @@ describe("Recovery Kit archive format (D-040, D-102, D-166)", () => {
     ]);
   });
 
-  it("refuses the wrong token, nothing parsed", () => {
-    const { archive } = build();
+  it("refuses the wrong token, nothing parsed", async () => {
+    const { archive } = await build();
     const wrongToken = generateRecoveryToken().raw;
-    expect(() => openArchive(archive, wrongToken)).toThrow(ArchiveFormatError);
-  });
-
-  it("refuses a corrupted magic prefix", () => {
-    const { archive } = build();
-    const corrupted = Buffer.from(archive);
-    corrupted[0] = 0x00;
-    expect(() => openArchive(corrupted, generateRecoveryToken().raw)).toThrow(
+    await expect(openArchive(archive, wrongToken)).rejects.toThrow(
       ArchiveFormatError,
     );
   });
 
-  it("refuses a bit-flipped body (framed AEAD failure surfaces as ArchiveFormatError)", () => {
-    const { archive, token } = build();
+  it("refuses a corrupted magic prefix", async () => {
+    const { archive } = await build();
+    const corrupted = Buffer.from(archive);
+    corrupted[0] = 0x00;
+    await expect(
+      openArchive(corrupted, generateRecoveryToken().raw),
+    ).rejects.toThrow(ArchiveFormatError);
+  });
+
+  it("refuses a bit-flipped body (framed AEAD failure surfaces as ArchiveFormatError)", async () => {
+    const { archive, token } = await build();
     const tampered = Buffer.from(archive);
     tampered[tampered.length - 10] ^= 0xff;
-    expect(() => openArchive(tampered, token)).toThrow(ArchiveFormatError);
+    await expect(openArchive(tampered, token)).rejects.toThrow(
+      ArchiveFormatError,
+    );
   });
 
-  it("refuses a truncated archive", () => {
-    const { archive, token } = build();
+  it("refuses a truncated archive", async () => {
+    const { archive, token } = await build();
     const truncated = archive.subarray(0, archive.length - 50);
-    expect(() => openArchive(truncated, token)).toThrow(ArchiveFormatError);
+    await expect(openArchive(truncated, token)).rejects.toThrow(
+      ArchiveFormatError,
+    );
   });
 
-  it("refuses a header spliced from a different archive (manifest digest mismatch)", () => {
-    const a = build();
-    const b = build();
+  it("refuses a header spliced from a different archive (manifest digest mismatch)", async () => {
+    const a = await build();
+    const b = await build();
     // Splice archive B's header onto archive A's manifest+body.
     const aMagicLen = 7;
     const aHeaderLen = a.archive.readUInt32BE(aMagicLen);
@@ -106,31 +112,37 @@ describe("Recovery Kit archive format (D-040, D-102, D-166)", () => {
       b.archive.subarray(aMagicLen, aMagicLen + 4 + bHeaderLen),
       a.archive.subarray(aMagicLen + 4 + aHeaderLen),
     ]);
-    expect(() => openArchive(spliced, a.token)).toThrow(ArchiveFormatError);
-    expect(() => openArchive(spliced, b.token)).toThrow(ArchiveFormatError);
+    await expect(openArchive(spliced, a.token)).rejects.toThrow(
+      ArchiveFormatError,
+    );
+    await expect(openArchive(spliced, b.token)).rejects.toThrow(
+      ArchiveFormatError,
+    );
   });
 
-  it("the fingerprint gate (§4.2.2/D-166) refuses a mismatched running SECRET_KEY", () => {
-    const { archive, token } = build();
-    const opened = openArchive(archive, token);
+  it("the fingerprint gate (§4.2.2/D-166) refuses a mismatched running SECRET_KEY", async () => {
+    const { archive, token } = await build();
+    const opened = await openArchive(archive, token);
     expect(() => assertFingerprintMatches(opened, randomBytes(32))).toThrow(
       KeyFingerprintMismatchError,
     );
   });
 
-  it("the fingerprint gate accepts the matching running SECRET_KEY", () => {
-    const { archive, token, secretKey } = build();
-    const opened = openArchive(archive, token);
+  it("the fingerprint gate accepts the matching running SECRET_KEY", async () => {
+    const { archive, token, secretKey } = await build();
+    const opened = await openArchive(archive, token);
     expect(() => assertFingerprintMatches(opened, secretKey)).not.toThrow();
   });
 
-  it("recoverSecretKeyFromArchive (D-166 §2.3 secret:recover) returns just the SECRET_KEY", () => {
-    const { archive, token, secretKey } = build();
-    expect(recoverSecretKeyFromArchive(archive, token)).toEqual(secretKey);
+  it("recoverSecretKeyFromArchive (D-166 §2.3 secret:recover) returns just the SECRET_KEY", async () => {
+    const { archive, token, secretKey } = await build();
+    await expect(recoverSecretKeyFromArchive(archive, token)).resolves.toEqual(
+      secretKey,
+    );
   });
 
-  it("key material never appears in the clear anywhere in the archive bytes (D-113)", () => {
-    const { archive, secretKey, masterKey } = build();
+  it("key material never appears in the clear anywhere in the archive bytes (D-113)", async () => {
+    const { archive, secretKey, masterKey } = await build();
     expect(archive.includes(secretKey)).toBe(false);
     expect(archive.includes(masterKey)).toBe(false);
     // Nor as hex, the encoding the header uses for everything else.
@@ -142,22 +154,22 @@ describe("Recovery Kit archive format (D-040, D-102, D-166)", () => {
     ).toBe(false);
   });
 
-  it("the manifest's cleartext fingerprint matches the key record's", () => {
-    const { archive, token, secretKey } = build();
-    const opened = openArchive(archive, token);
+  it("the manifest's cleartext fingerprint matches the key record's", async () => {
+    const { archive, token, secretKey } = await build();
+    const opened = await openArchive(archive, token);
     expect(opened.manifest.keyFingerprintHex).toBe(
       computeKeyFingerprint(secretKey).toString("hex"),
     );
   });
 
-  it("rotation: an archive built before a token rotation is still openable with the OLD token — rotation only affects future wraps, per D-114", () => {
+  it("rotation: an archive built before a token rotation is still openable with the OLD token — rotation only affects future wraps, per D-114", async () => {
     // Simulates: the archive itself always carries its OWN wrap (there is no
     // shared on-disk wrap to rotate), so "rotation" for an archive means it
     // keeps opening with whatever token it was built under, forever. This
     // pins that a later, unrelated `generateRecoveryToken()` call does not
     // change that.
-    const { archive, token } = build();
+    const { archive, token } = await build();
     generateRecoveryToken(); // a "new" token minted elsewhere, unrelated
-    expect(() => openArchive(archive, token)).not.toThrow();
+    await expect(openArchive(archive, token)).resolves.toBeDefined();
   });
 });

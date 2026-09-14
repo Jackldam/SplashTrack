@@ -61,7 +61,7 @@ export async function backupInitToken(ctx: CommandContext): Promise<number> {
   }
 
   const token = generateRecoveryToken();
-  initializeRecoveryKit(token.raw);
+  await initializeRecoveryKit(token.raw);
 
   ctx.log("");
   ctx.log("═══════════════════════════════════════════════════════════════");
@@ -215,7 +215,7 @@ export async function secretRecover(ctx: CommandContext): Promise<number> {
   const archiveBytes = readFileSync(file);
   let secretKey: Buffer;
   try {
-    secretKey = recoverSecretKeyFromArchive(archiveBytes, token.raw);
+    secretKey = await recoverSecretKeyFromArchive(archiveBytes, token.raw);
   } catch (error) {
     ctx.error((error as Error).message);
     return 1;
