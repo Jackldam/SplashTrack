@@ -25,6 +25,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   grantQualificationViaUI,
@@ -47,6 +48,8 @@ test("kent een bevoegdheid toe via het scherm, en die verschijnt in de lijst", a
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const familyName = `Beoordelaar${suffix}`;

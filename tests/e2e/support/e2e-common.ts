@@ -13,6 +13,7 @@ import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { base32 } from "@better-auth/utils/base32";
 import { createOTP } from "@better-auth/utils/otp";
+import AxeBuilder from "@axe-core/playwright";
 
 export const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 export const TSX_BIN = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -362,6 +363,38 @@ export async function setUpCourseGroupAndSession(
   const sessionUrl = new URL(href!, page.url()).toString();
 
   return { awardTypeId, awardName, groupId, groupUrl, sessionUrl };
+}
+
+/**
+ * Accessibility gate — `06-delivery.md` §2.1: "E2E (Playwright) … Axe
+ * accessibility assertions are a **required addition** — they do not exist."
+ * They didn't, anywhere in `tests/` (grep found axe only in prose). This is
+ * the shared helper every e2e spec now calls at least once, on the
+ * currently-loaded page, rather than each spec inventing its own axe setup.
+ *
+ * `wcag2a`/`wcag2aa`/`wcag21aa` — the standard axe-core "reasonably
+ * enforceable, low false-positive" tag set — rather than the full ruleset,
+ * which includes best-practice rules that are noisy on a first pass and would
+ * make this gate someone's problem to tune before it can block anything.
+ * Tightening the tag set is a deliberate follow-up, not something to guess at
+ * here.
+ */
+export async function assertNoAccessibilityViolations(
+  page: Page,
+): Promise<void> {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+
+  const summary = results.violations
+    .map(
+      (violation) =>
+        `${violation.id} (${violation.impact}): ${violation.help} — ${violation.nodes.length} node(s)\n` +
+        violation.nodes.map((node) => `  ${node.target.join(" ")}`).join("\n"),
+    )
+    .join("\n\n");
+
+  expect(results.violations, summary).toEqual([]);
 }
 
 /** Creates a pupil (a `Person` + `StudentProfile`) and returns their person id. */

@@ -19,6 +19,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { base32 } from "@better-auth/utils/base32";
 import { createOTP } from "@better-auth/utils/otp";
+import { assertNoAccessibilityViolations } from "./support/e2e-common";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const TSX_BIN = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -93,6 +94,8 @@ async function signInAndEnrol(page: Page): Promise<void> {
   await page.locator("#code").fill(code);
   await page.getByRole("button", { name: "Instellen afronden" }).click();
   await expect(page).toHaveURL(/\/$/);
+
+  await assertNoAccessibilityViolations(page);
 }
 
 interface CatalogueGradeRef {
@@ -129,6 +132,8 @@ test("exports the catalogue, edits it, re-imports it, and rejects a broken uploa
   page,
 }) => {
   await signInAndEnrol(page);
+
+  await assertNoAccessibilityViolations(page);
 
   const uniqueSuffix = Date.now().toString(36);
   const awardCode = `E2E-${uniqueSuffix}`;

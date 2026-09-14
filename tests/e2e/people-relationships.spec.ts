@@ -45,6 +45,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   openDetails,
@@ -81,6 +82,8 @@ test("compleet gelukt: een relatie toevoegen via de live-search picker, met een 
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const subjectFamilyName = `RelatieKind${suffix}`;

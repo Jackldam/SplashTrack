@@ -41,6 +41,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  assertNoAccessibilityViolations,
   createAdmin,
   createStudent,
   openDetails,
@@ -74,6 +75,8 @@ test("een groep aanmaken, een leerling plaatsen via de live-search picker, en ee
   page,
 }) => {
   await signInAndEnrol(page, ADMIN_EMAIL, PASSWORD);
+
+  await assertNoAccessibilityViolations(page);
 
   const suffix = Date.now().toString(36);
   const groupName = `E2E Lifecycle Groep ${suffix}`;
