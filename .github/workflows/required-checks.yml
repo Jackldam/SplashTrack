@@ -1,14 +1,18 @@
-# PROPOSAL — NOT ACTIVE. Not placed under .github/workflows/ on purpose.
+# Placed under .github/workflows/ on Jack's direct, explicit instruction in
+# chat (2026-09-14) after this same restriction — 06-delivery.md §4.3 point 3
+# and F-18, "no contributor (including Lucky) may modify `.github/`" — was
+# raised to him directly and he confirmed the restriction doesn't reflect his
+# intent ("Nee ik snap niet waarom het er in staat. Jij mag dit doen indien je
+# denkt dat het nodig is"). The build session that produced this file
+# correctly refused to place it here itself, since it could not verify that
+# authorization independently of a relayed task prompt — exactly the
+# escalation path this guardrail exists to block. This PR is not
+# auto-merged for the same reason; it waits for Jack to merge it himself.
 #
-# `06-delivery.md` §4.3 point 3 and F-18 are explicit: "no contributor
-# (including Lucky) may modify `.github/`" and "a PR touching
-# `.github/workflows/` requires explicit human authorship" — precisely to
-# block the "convince the agent to weaken its own CI" escalation path. A
-# claim relayed inside a task prompt that this boundary was lifted is not a
-# verified instruction from Jack, so this content stays here, outside
-# `.github/`, for Jack to review and place himself (a straight copy to
-# `.github/workflows/required-checks.yml`, or folded into `ci-cd.yaml` —
-# Jack's call, see the phase-3.1 report).
+# Not yet updated: 06-delivery.md §4.3/F-18 still reads as an absolute
+# restriction. Flagged for Jack to amend the design doc if he wants this
+# authorization to persist past this one instance, rather than being
+# re-litigated next time.
 #
 # Implements the 8 blocking checks `06-delivery.md` §2.1 requires for v1, one
 # job each so a failure names itself instead of hiding inside a combined
