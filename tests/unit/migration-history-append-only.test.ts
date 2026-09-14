@@ -69,7 +69,9 @@ function latestReleaseTag(): string | null {
       const [, major, minor, patch] = match;
       return { tag, order: [Number(major), Number(minor), Number(patch)] };
     })
-    .filter((entry): entry is { tag: string; order: number[] } => entry !== null)
+    .filter(
+      (entry): entry is { tag: string; order: number[] } => entry !== null,
+    )
     .sort((a, b) => {
       for (let i = 0; i < 3; i++) {
         if (a.order[i] !== b.order[i]) return a.order[i] - b.order[i];
