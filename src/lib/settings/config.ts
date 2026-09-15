@@ -58,8 +58,18 @@ import { isLocale, locales, type Locale } from "@/i18n/config";
  * describe §3.2 (scheduled backups) and §6 (update checking), neither of
  * which is built this phase — see the phase report for why, and do not add
  * fields here for settings nothing reads yet.
+ *
+ * **v4 (phase 3.2, the settings registry — R-17/R-21)** adds `authentication`
+ * (`passwordMinLength`), `email` (`smtpHost` — `smtpHost` only: the SMTP
+ * password is `sensitive: true` and lives in `OrganizationSettingSecret`,
+ * never in this document, so a database dump of `Organization.config` alone
+ * cannot leak it), `security.allowPrivateNetworkEgress` (D-142's audited
+ * escape hatch) and `backup.retentionDays` (D-171: `free` with a mandatory
+ * diagnostics warning, never a hard ceiling). Every new field is covered by
+ * `@/modules/settings`'s typed registry — see that module for the
+ * `class`/`appliesLive`/`permission` metadata this file does not carry.
  */
-export const ORGANIZATION_CONFIG_VERSION = 3;
+export const ORGANIZATION_CONFIG_VERSION = 4;
 
 /**
  * Closed set of date/time presentation styles. Each maps to a fixed
@@ -262,6 +272,34 @@ export const AGE_OF_DIGITAL_CONSENT_YEARS = {
  */
 export const SUPPORT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Minimum acceptable local-account password length, in characters — a
+ * `bounded` setting (D-150). Floor of 8 is the conventional minimum for a
+ * volunteer-run swim school's shared devices; ceiling of 128 matches
+ * Better Auth's own field limit, so a ceiling above it would accept a value
+ * the auth layer then refuses.
+ */
+export const PASSWORD_MIN_LENGTH = {
+  min: 8,
+  max: 128,
+  default: 12,
+} as const;
+
+/**
+ * Backup retention, in days — `free` per D-171, deliberately NOT `bounded`:
+ * D-104 lets an operator exceed the shortest special-category retention period
+ * for a documented reason, which is a diagnostics warning rather than a
+ * ceiling the schema enforces. The floor below is a sanity minimum (a
+ * retention of zero days is not a retention policy), not the D-104 figure.
+ */
+export const BACKUP_RETENTION_DAYS = {
+  min: 1,
+  default: 30,
+} as const;
+
+/** Length bound for the SMTP host field — generous for the longest real FQDN. */
+export const EMAIL_HOST_MAX = 255;
+
 /** The typed configuration document. */
 export interface OrganizationConfig {
   version: number;
@@ -299,6 +337,26 @@ export interface OrganizationConfig {
      * between this and the standard value is phase 0.4.
      */
     sessionIdleTimeoutMinutesElevated: number;
+    /**
+     * D-142's audited escape hatch: allow an admin-configured egress
+     * destination (OIDC discovery, SMTP test-send, a self-hosted backup
+     * endpoint) to resolve to a private/loopback/link-local address. Off by
+     * default — deny-by-default is the control; this is the deliberate,
+     * recorded exception a self-hoster running an internal relay needs.
+     */
+    allowPrivateNetworkEgress: boolean;
+  };
+  authentication: {
+    /** Minimum local-account password length (D-150 `bounded`). */
+    passwordMinLength: number;
+  };
+  email: {
+    /**
+     * SMTP host for outbound mail. Null ⇒ not configured (no email sending).
+     * The password half of this credential is NEVER stored here — see
+     * `@/modules/settings`'s `sensitive` registry entries.
+     */
+    smtpHost: string | null;
   };
   privacy: {
     /**
@@ -330,6 +388,12 @@ export interface OrganizationConfig {
      * argument D-103 makes about the backup destination).
      */
     premigrationEnabled: boolean;
+    /**
+     * How long backups are retained, in days. `free` (D-171) — a documented
+     * reason may exceed the shortest special-category retention period; the
+     * diagnostics page (`@/modules/settings`) warns rather than refuses.
+     */
+    retentionDays: number;
   };
 }
 
@@ -351,6 +415,13 @@ export function defaultOrganizationConfig(): OrganizationConfig {
       sessionIdleTimeoutMinutes: SESSION_IDLE_TIMEOUT_MINUTES.default,
       sessionIdleTimeoutMinutesElevated:
         SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES.default,
+      allowPrivateNetworkEgress: false,
+    },
+    authentication: {
+      passwordMinLength: PASSWORD_MIN_LENGTH.default,
+    },
+    email: {
+      smtpHost: null,
     },
     privacy: {
       ageOfDigitalConsentYears: AGE_OF_DIGITAL_CONSENT_YEARS.default,
@@ -361,6 +432,7 @@ export function defaultOrganizationConfig(): OrganizationConfig {
     },
     backup: {
       premigrationEnabled: true,
+      retentionDays: BACKUP_RETENTION_DAYS.default,
     },
   };
 }
@@ -429,6 +501,8 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
   const contact = asRecord(root.contact);
   const localization = asRecord(root.localization);
   const security = asRecord(root.security);
+  const authentication = asRecord(root.authentication);
+  const email = asRecord(root.email);
   const privacy = asRecord(root.privacy);
   const maintenance = asRecord(root.maintenance);
   const backup = asRecord(root.backup);
@@ -494,6 +568,17 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
         SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES,
         defaults.security.sessionIdleTimeoutMinutesElevated,
       ),
+      allowPrivateNetworkEgress: security.allowPrivateNetworkEgress === true,
+    },
+    authentication: {
+      passwordMinLength: coerceBoundedMinutes(
+        authentication.passwordMinLength,
+        PASSWORD_MIN_LENGTH,
+        defaults.authentication.passwordMinLength,
+      ),
+    },
+    email: {
+      smtpHost: coerceText(email.smtpHost, EMAIL_HOST_MAX),
     },
     // A malformed or absent value falls back to the DEFAULT (sixteen), not to
     // the floor. The strictest-on-error asymmetry above exists because a
@@ -526,6 +611,12 @@ export function coerceOrganizationConfig(raw: unknown): OrganizationConfig {
         typeof backup.premigrationEnabled === "boolean"
           ? backup.premigrationEnabled
           : defaults.backup.premigrationEnabled,
+      retentionDays: (() => {
+        const n = Number(backup.retentionDays);
+        return Number.isInteger(n) && n >= BACKUP_RETENTION_DAYS.min
+          ? n
+          : defaults.backup.retentionDays;
+      })(),
     },
   };
 }
@@ -644,6 +735,40 @@ function strictBoundedYears(
   return n;
 }
 
+/**
+ * Strict bounded whole number (min and max). Used for `bounded`-class
+ * registry entries that are not minutes or years — password length today.
+ * Refused rather than clamped, matching every other `bounded` setting.
+ */
+function strictBoundedInt(
+  field: string,
+  value: unknown,
+  bounds: { min: number; max: number },
+): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < bounds.min || n > bounds.max) {
+    fail(
+      field,
+      `Must be a whole number between ${bounds.min} and ${bounds.max}.`,
+    );
+  }
+  return n;
+}
+
+/**
+ * Strict whole number with a floor only, no ceiling — `free` (D-171) settings
+ * like backup retention, where a documented reason may exceed any number this
+ * schema could state as a hard ceiling. The floor is a sanity minimum, not a
+ * security bound.
+ */
+function strictMinInt(field: string, value: unknown, min: number): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min) {
+    fail(field, `Must be a whole number of at least ${min}.`);
+  }
+  return n;
+}
+
 /** Strict boolean. */
 function strictBoolean(field: string, value: unknown): boolean {
   if (typeof value !== "boolean") fail(field, "Must be true or false.");
@@ -668,6 +793,11 @@ export function validateOrganizationConfigInput(
     ...asRecord(root.localization),
   };
   const security = { ...current.security, ...asRecord(root.security) };
+  const authentication = {
+    ...current.authentication,
+    ...asRecord(root.authentication),
+  };
+  const email = { ...current.email, ...asRecord(root.email) };
   const privacy = { ...current.privacy, ...asRecord(root.privacy) };
   const maintenance = { ...current.maintenance, ...asRecord(root.maintenance) };
   const backup = { ...current.backup, ...asRecord(root.backup) };
@@ -687,6 +817,10 @@ export function validateOrganizationConfigInput(
       "security.sessionIdleTimeoutMinutesElevated",
       security.sessionIdleTimeoutMinutesElevated,
       SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES,
+    ),
+    allowPrivateNetworkEgress: strictBoolean(
+      "security.allowPrivateNetworkEgress",
+      security.allowPrivateNetworkEgress,
     ),
   };
 
@@ -748,6 +882,20 @@ export function validateOrganizationConfigInput(
       ),
     },
     security: validatedSecurity,
+    authentication: {
+      passwordMinLength: strictBoundedInt(
+        "authentication.passwordMinLength",
+        authentication.passwordMinLength,
+        PASSWORD_MIN_LENGTH,
+      ),
+    },
+    email: {
+      smtpHost: strictTextOrNull(
+        "email.smtpHost",
+        email.smtpHost,
+        EMAIL_HOST_MAX,
+      ),
+    },
     privacy: {
       // REFUSED rather than clamped, like every other bounded value: an
       // administrator who typed 21 must be told, not silently given 18.
@@ -769,6 +917,11 @@ export function validateOrganizationConfigInput(
       premigrationEnabled: strictBoolean(
         "backup.premigrationEnabled",
         backup.premigrationEnabled,
+      ),
+      retentionDays: strictMinInt(
+        "backup.retentionDays",
+        backup.retentionDays,
+        BACKUP_RETENTION_DAYS.min,
       ),
     },
   };
