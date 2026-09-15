@@ -153,6 +153,12 @@ export default async function LandingPage() {
               <Link className="btn btn-secondary" href="/admin/backup">
                 {t("landing.toBackup")}
               </Link>
+              <Link className="btn btn-secondary" href="/admin/settings">
+                {t("landing.toSettings")}
+              </Link>
+              <Link className="btn btn-secondary" href="/admin/diagnostics">
+                {t("landing.toDiagnostics")}
+              </Link>
             </div>
           )}
         </>

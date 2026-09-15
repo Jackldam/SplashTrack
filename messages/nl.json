@@ -22,7 +22,9 @@
     "toGroups": "Naar groepen",
     "toCourses": "Naar cursussen",
     "toSkills": "Naar vaardigheden",
-    "toBackup": "Backup"
+    "toBackup": "Backup",
+    "toSettings": "Instellingen",
+    "toDiagnostics": "Diagnostics"
   },
   "errors": {
     "notFound": "Deze pagina bestaat niet.",
@@ -931,6 +933,28 @@
       "explanation": "Deze actie vereist de bevoegdheid \"{permission}\"."
     },
     "note": "Het bestand wordt versleuteld met de master key van deze installatie. Zonder het bijbehorende recovery-token (gegenereerd via `splashtrack backup:init-token`) is een backup-bestand nutteloos.",
+    "backToHome": "Terug naar home"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "subtitle": "Instance-brede instellingen, direct van kracht na opslaan — geen herstart nodig.",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Deze actie vereist de bevoegdheid \"{permission}\"."
+    },
+    "updated": "Instelling \"{key}\" is opgeslagen.",
+    "lockoutInvariantRefused": "Geweigerd: dit zou de installatie zonder een lokaal, MFA-geverifieerd beheerdersaccount achterlaten (D-141).",
+    "validationFailed": "De ingevoerde waarde voor \"{field}\" is ongeldig.",
+    "unknownSetting": "Onbekende instelling.",
+    "backToHome": "Terug naar home"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "subtitle": "Veilig te plakken in een publieke issue — geen geheimen, geen persoonsgegevens.",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Deze actie vereist de bevoegdheid \"{permission}\"."
+    },
     "backToHome": "Terug naar home"
   }
 }

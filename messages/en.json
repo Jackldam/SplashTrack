@@ -22,7 +22,9 @@
     "toGroups": "Go to groups",
     "toCourses": "Go to courses",
     "toSkills": "Go to skills",
-    "toBackup": "Backup"
+    "toBackup": "Backup",
+    "toSettings": "Settings",
+    "toDiagnostics": "Diagnostics"
   },
   "errors": {
     "notFound": "This page does not exist.",
@@ -931,6 +933,28 @@
       "explanation": "This action requires the \"{permission}\" permission."
     },
     "note": "The file is encrypted with this installation's master key. Without the matching recovery token (generated via `splashtrack backup:init-token`), a backup file is useless.",
+    "backToHome": "Back to home"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Instance-wide settings, live after saving — no restart required.",
+    "denied": {
+      "title": "Access denied",
+      "explanation": "This action requires the \"{permission}\" permission."
+    },
+    "updated": "Setting \"{key}\" was saved.",
+    "lockoutInvariantRefused": "Refused: this would leave the installation without a local, MFA-verified administrator account (D-141).",
+    "validationFailed": "The submitted value for \"{field}\" is invalid.",
+    "unknownSetting": "Unknown setting.",
+    "backToHome": "Back to home"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "subtitle": "Safe to paste into a public issue — no secrets, no personal data.",
+    "denied": {
+      "title": "Access denied",
+      "explanation": "This action requires the \"{permission}\" permission."
+    },
     "backToHome": "Back to home"
   }
 }
