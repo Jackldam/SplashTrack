@@ -91,6 +91,7 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   RoleAssignment: "ROLE_ASSIGNMENTS",
   ApiCredential: "API_CREDENTIALS",
   CredentialRoleAssignment: "ROLE_ASSIGNMENTS",
+  OrganizationSettingSecret: "ORGANIZATION_SETTINGS",
   AuditEvent: "AUDIT_EVENTS",
   AuditCheckpoint: "AUDIT_EVENTS",
   RetentionPolicy: "ORGANIZATION_SETTINGS",

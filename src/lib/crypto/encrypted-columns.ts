@@ -125,6 +125,20 @@ export const ENCRYPTED_COLUMNS = {
       'about the scissor kick, not about the sitting" — kept beside the ' +
       "grade it explains.",
   },
+  // --- phase 3.2, the `settings` module — R-17, D-096's own anticipated home
+  // for "the settings-registry secrets (SMTP, OAuth) once
+  // `OrganizationSettingSecret` exists" (see this file's own header). One row
+  // per `sensitive: true` registry entry, keyed by the setting's own key.
+  "organization_setting_secrets.value": {
+    columnId: "organization_setting_secrets.value",
+    model: "OrganizationSettingSecret",
+    field: "value",
+    purpose: "settings-secret-v1",
+    note:
+      "A `sensitive: true` settings-registry value — an SMTP password today, " +
+      "an OAuth client secret in the future — never returned to any client " +
+      "(the admin API exposes `secretSet: boolean`, `13-…` §5).",
+  },
   "fixture.round_trip": {
     columnId: "fixture.round_trip",
     model: "__fixture__",

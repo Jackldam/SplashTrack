@@ -236,6 +236,32 @@ model Organization {
   @@index([updatedByPersonId])
 }
 
+/// A sensitive settings-registry value (D-096, the `settings-secret-v1` HKDF
+/// branch reserved for exactly this in `src/lib/crypto/secret-key.ts`).
+///
+/// One row per `sensitive: true` registry entry (`@/modules/settings`),
+/// keyed by the setting's own key — e.g. `email.smtpPassword`. The key IS the
+/// primary key AND the AAD primary-key component (D-096/D-167), so a
+/// ciphertext cannot be copied from one setting to another and still
+/// authenticate. Never read by anything outside `@/modules/settings` — the
+/// admin API exposes a `secretSet: boolean`, never the value (`13-…` §5).
+/// @dataClass ORGANIZATION_SETTINGS
+model OrganizationSettingSecret {
+  /// The settings-registry key this row belongs to. PERMANENT once a value has
+  /// been written under it, for the same reason a `columnId` is permanent.
+  id String @id
+
+  /// @encrypted organization_setting_secrets.value
+  value String
+
+  updatedAt         DateTime @updatedAt
+  /// Who last set this secret. No relation — accountability only, and a
+  /// dangling id here is not a referential-integrity concern the way a live FK
+  /// would be (the audit trail is the accountability record; this is a
+  /// convenience label).
+  updatedByPersonId String?
+}
+
 // ---------------------------------------------------------------------------
 // People and accounts
 // ---------------------------------------------------------------------------

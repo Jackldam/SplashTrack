@@ -203,6 +203,15 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "is precisely why it needs a classification now rather than when " +
       "someone finally writes to it.",
   },
+  "OrganizationSettingSecret.updatedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO LAST SET a settings-registry secret (e.g. an SMTP password) — " +
+      "accountability only, on the `ApiCredential.createdByPersonId` pattern: " +
+      "a plain token with no FK. The secret is a live, encrypted asset the " +
+      "installation keeps using after whoever set it is erased; the erasure " +
+      "severs the pointer explicitly.",
+  },
   "SkillProgress.assessedByPersonId": {
     category: "SEVER_AND_RETAIN",
     reason:
