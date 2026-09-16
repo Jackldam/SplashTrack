@@ -407,6 +407,58 @@ export function examsGrantStatements(names: RoleModelNames): string[] {
 }
 
 /**
+ * THE FEES EXCEPTION — P-07's sixth member (phase 3.3), the `Award` shape
+ * applied to `Charge` and a plain `ExamResult` shape for `Payment`.
+ *
+ * `Charge` carries its own mutable pair the way `Award` carries
+ * `revokedAt`/`revokeReason` — `01-domain-model.md` §6.1's `status` moving to
+ * `WAIVED` or `CANCELLED` is a considered administrative decision recorded on
+ * the SAME row, not a new one, and the schema's own model comment explains
+ * why (PAID/PARTIAL are computed, never stored, so the only writes this table
+ * ever needs after creation are the waive/cancel pair). The runtime role
+ * therefore gets `SELECT, INSERT` plus a column-restricted `UPDATE` limited to
+ * exactly `status`, `waivedAt`, `waivedReason`, `waivedByPersonId`,
+ * `cancelledAt`, `cancelledReason`, `cancelledByPersonId` — `amount`,
+ * `dueDate`, `feeTypeId`, `payerPersonId` and every other fact about the
+ * charge stay exactly as immutable as `Award.number`/`issuedAt`.
+ *
+ * `Payment` gets the plain `ExamResult` shape: `SELECT, INSERT` and nothing
+ * else. No service in this module ever updates a `Payment` row — see the
+ * model's own comment on why a mis-recorded payment is reversed by a second
+ * row, never corrected in place.
+ *
+ * The retention role holds `SELECT, UPDATE, DELETE` on both tables, on the
+ * `assessmentGrantStatements`/`examsGrantStatements` precedent: `UPDATE` for
+ * the sever-on-erasure `payerPersonId`/`createdByPersonId`/
+ * `waivedByPersonId`/`cancelledByPersonId`/`recordedByPersonId` columns a
+ * future R-25 `erasePersonData` may need to null directly, `DELETE` for the
+ * D-092 pseudonymisation/prune this module's own erasure-registry entry
+ * anticipates but does not build (v1 ships no automated job, D-120).
+ */
+export function feesGrantStatements(names: RoleModelNames): string[] {
+  const { app, retention } = names;
+  return [
+    // ── The runtime role: append-only on the charge, PLUS the waive/cancel
+    //    pair ──────────────────────────────────────────────────────────────
+    `REVOKE ALL ON TABLE "Charge" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "Charge" TO ${quote(app)}`,
+    `GRANT UPDATE ("status", "waivedAt", "waivedReason", "waivedByPersonId", "cancelledAt", "cancelledReason", "cancelledByPersonId") ON TABLE "Charge" TO ${quote(app)}`,
+
+    // ── The retention role: full UPDATE (sever) and DELETE (retention) ──────
+    `REVOKE ALL ON TABLE "Charge" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "Charge" TO ${quote(retention)}`,
+
+    // ── The runtime role: append-only on the payment ─────────────────────────
+    `REVOKE ALL ON TABLE "Payment" FROM ${quote(app)}`,
+    `GRANT SELECT, INSERT ON TABLE "Payment" TO ${quote(app)}`,
+
+    // ── The retention role: the only UPDATE (sever) and DELETE (retention) ──
+    `REVOKE ALL ON TABLE "Payment" FROM ${quote(retention)}`,
+    `GRANT SELECT, UPDATE, DELETE ON TABLE "Payment" TO ${quote(retention)}`,
+  ];
+}
+
+/**
  * Puts ownership of everything in `public` back on the owner role.
  *
  * A self-heal, not the main path — `migrationUrlFrom` means objects are created

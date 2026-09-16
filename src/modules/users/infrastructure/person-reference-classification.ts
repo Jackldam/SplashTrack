@@ -307,6 +307,59 @@ export const PERSON_REFERENCE_CLASSIFICATION: Record<
       "regardless — a confirmation stands after its confirmer leaves.",
   },
 
+  "Charge.payerPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "THE FINANCIAL FACT survives the payer's erasure; only the link to " +
+      "them goes. `Charge` is `exempt` in `ERASURE_REGISTRY` on a fiscal " +
+      "retention ground (D-092, 7 years) — while that ground applies, an " +
+      "ordinary erasure walk does not touch this table at all, so this " +
+      "column is not severed by `erasePersonData` today (R-25, not built). " +
+      "What this classification records is the eventual answer once the " +
+      "ground lapses: pseudonymisation (D-092) — the charge keeps its " +
+      "amount, date, fee type and period and loses the link to the " +
+      "person, which is exactly SEVER_AND_RETAIN's shape. The FK is " +
+      "onDelete: SetNull as defence in depth for the same reason every " +
+      "other SEVER_AND_RETAIN column in this file carries it.",
+  },
+  "Charge.createdByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO CREATED the charge — accountability evidence about somebody " +
+      "else's financial record, on the `RoleAssignment.grantedByPersonId` " +
+      "pattern. Not the payer's own data; the charge is theirs to keep " +
+      "regardless of who administered it. Same `exempt`-table caveat as " +
+      "`payerPersonId` immediately above: not severed by an ordinary " +
+      "erasure walk while the fiscal ground applies, `SetNull` FK as " +
+      "defence in depth.",
+  },
+  "Charge.waivedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO WAIVED the charge — accountability evidence, the " +
+      "`createdByPersonId` pattern immediately above. `waivedAt`/" +
+      "`waivedReason` stay; only the deciding administrator's name goes.",
+  },
+  "Charge.cancelledByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO CANCELLED the charge — the same accountability shape as " +
+      "`waivedByPersonId` immediately above (D-089's own trade-off: a " +
+      "withdrawn exam candidacy cancels its charge rather than deleting " +
+      'it, "the correct trace", and that trace survives the cancelling ' +
+      "administrator's own erasure).",
+  },
+  "Payment.recordedByPersonId": {
+    category: "SEVER_AND_RETAIN",
+    reason:
+      "WHO RECORDED the payment — accountability evidence about somebody " +
+      "else's financial record, the `Charge.createdByPersonId` pattern. " +
+      "`Payment` is `exempt` in `ERASURE_REGISTRY` on the same fiscal " +
+      "ground as `Charge` (a payment is meaningless without the charge it " +
+      "settles) — not severed by an ordinary erasure walk today, `SetNull` " +
+      "FK as defence in depth, same reasoning as `Charge.payerPersonId`.",
+  },
+
   // --- RETAIN_BY_DESIGN — the id token is kept, forever, on purpose ---
   "AuditEvent.actorPersonId": {
     category: "RETAIN_BY_DESIGN",

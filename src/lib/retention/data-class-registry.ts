@@ -151,4 +151,12 @@ export const DATA_CLASS_BY_MODEL: Readonly<Record<string, DataClass>> = {
   ExamCandidate: "EXAM_RESULTS_AND_AWARDS",
   ExamResult: "EXAM_RESULTS_AND_AWARDS",
   Award: "EXAM_RESULTS_AND_AWARDS",
+  // --- phase 3.3, the `fees` module -----------------------------------------
+  // The catalogue: teaching-configuration-shaped, on the `AwardType`/`Course`
+  // precedent — an administrator-authored list, no personal data.
+  FeeType: "ORGANIZATION_SETTINGS",
+  // `01-domain-model.md` §5's own rows — pre-provisioned by phase 0.4b,
+  // exactly as `EXAM_RESULTS_AND_AWARDS` was for `exams`.
+  Charge: "CHARGES",
+  Payment: "PAYMENTS",
 };
