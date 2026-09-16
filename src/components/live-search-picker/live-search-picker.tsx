@@ -27,9 +27,25 @@
  * `value` was the id and never typed by anyone. Editing the text after a pick
  * clears the hidden value, so a half-changed query can never submit a stale
  * id.
+ *
+ * `ref` exposes ONE imperative escape hatch, `setSelection`, for the one
+ * legitimate case a controlled `value` prop would not fit better: a SIBLING
+ * field programmatically supplying a default this field still owns (D-090's
+ * automatic payer, `src/app/fees/charge-payer-and-student.tsx`). It fills the
+ * same query/selectedId state a mouse pick does — so the result is, from this
+ * component's own perspective, indistinguishable from something the person
+ * chose, and remains exactly as editable.
  */
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { useTranslations } from "next-intl";
 
 export interface LiveSearchPickerResult {
@@ -59,21 +75,36 @@ export interface LiveSearchPickerProps {
   /** Debounce, in ms, between the last keystroke and the request. */
   debounceMs?: number;
   required?: boolean;
+  /** Fires after a pick, mouse or keyboard — never after a programmatic `setSelection`. */
+  onSelect?: (result: LiveSearchPickerResult) => void;
+}
+
+/** The imperative handle `ref` exposes — see the file header. */
+export interface LiveSearchPickerHandle {
+  /** Fills this field exactly as a pick would, without firing `onSelect`. */
+  setSelection: (result: LiveSearchPickerResult) => void;
 }
 
 /** Nothing shorter than this is worth a round trip. */
 const MIN_QUERY_LENGTH = 1;
 
-export function LiveSearchPicker({
-  name,
-  label,
-  placeholder,
-  searchUrl,
-  queryParam = "q",
-  excludeIds,
-  debounceMs = 300,
-  required,
-}: LiveSearchPickerProps) {
+export const LiveSearchPicker = forwardRef<
+  LiveSearchPickerHandle,
+  LiveSearchPickerProps
+>(function LiveSearchPicker(
+  {
+    name,
+    label,
+    placeholder,
+    searchUrl,
+    queryParam = "q",
+    excludeIds,
+    debounceMs = 300,
+    required,
+    onSelect,
+  },
+  ref,
+) {
   const t = useTranslations("common.livePicker");
   const inputId = useId();
   const listboxId = useId();
@@ -178,7 +209,21 @@ export function LiveSearchPicker({
     setQuery(result.label);
     setOpen(false);
     setHighlighted(-1);
+    onSelect?.(result);
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setSelection(result: LiveSearchPickerResult) {
+        setSelectedId(result.id);
+        setQuery(result.label);
+        setOpen(false);
+        setHighlighted(-1);
+      },
+    }),
+    [],
+  );
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (!open || visibleResults.length === 0) {
@@ -287,4 +332,4 @@ export function LiveSearchPicker({
       ) : null}
     </div>
   );
-}
+});

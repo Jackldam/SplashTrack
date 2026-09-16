@@ -4,14 +4,13 @@ import { getTranslations } from "next-intl/server";
 
 import { listFeeTypesForPrincipal } from "@/modules/fees";
 
-import { LiveSearchPicker } from "@/components/live-search-picker/live-search-picker";
-
 import { guarded, requireSignedIn } from "./access";
 import {
   createChargeAction,
   createFeeTypeAction,
   updateFeeTypeAction,
 } from "./actions";
+import { ChargePayerAndStudentFields } from "./charge-payer-and-student";
 import { formatMoney } from "./format";
 
 /**
@@ -262,26 +261,13 @@ export default async function FeesPage({
       ) : (
         <form action={createChargeAction} className="row g-3 mt-2">
           <input type="hidden" name="clientEventId" value={randomUUID()} />
-          <div className="col-md-4">
-            <LiveSearchPicker
-              name="payerPersonId"
-              label={t("fees.charges.fields.payer")}
-              placeholder={t("fees.charges.fields.payerPlaceholder")}
-              searchUrl="/api/people/relative-candidates"
-              required
-            />
-          </div>
-          <div className="col-md-4">
-            <LiveSearchPicker
-              name="studentProfileId"
-              label={t("fees.charges.fields.student")}
-              placeholder={t("fees.charges.fields.studentPlaceholder")}
-              searchUrl="/api/people/student-candidates"
-            />
-            <div className="form-text">
-              {t("fees.charges.fields.studentHelp")}
-            </div>
-          </div>
+          <ChargePayerAndStudentFields
+            payerLabel={t("fees.charges.fields.payer")}
+            payerPlaceholder={t("fees.charges.fields.payerPlaceholder")}
+            studentLabel={t("fees.charges.fields.student")}
+            studentPlaceholder={t("fees.charges.fields.studentPlaceholder")}
+            studentHelp={t("fees.charges.fields.studentHelp")}
+          />
           <div className="col-md-4">
             <label className="form-label" htmlFor="feeTypeId">
               {t("fees.charges.fields.feeType")}

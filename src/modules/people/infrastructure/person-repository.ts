@@ -21,6 +21,7 @@ import { open, seal, type Sealed } from "@/lib/crypto";
 import { prisma, type DatabaseClient } from "@/lib/database";
 
 import {
+  coversInstant,
   isCurrentlyAMember,
   type MembershipInterval,
 } from "../domain/membership";
@@ -415,6 +416,68 @@ export async function findRelationship(
     validTo: row.validTo,
     subjectDateOfBirth: row.toPerson.dateOfBirth,
   };
+}
+
+/** One guardian, as much as a payer-default picker needs to show a name. */
+export interface ActiveGuardianCandidate {
+  id: string;
+  givenName: string;
+  familyName: string;
+}
+
+/**
+ * The `GUARDIAN_OF` relatives of the person behind a `StudentProfile` id whose
+ * relationship is administratively open right now — D-090's *"derived from
+ * `PersonRelationship(GUARDIAN_OF)`"*, read with `coversInstant`
+ * (`../domain/membership`, the same half-open-interval rule `Membership`
+ * periods use), never the D-151 consent-authority derivation: paying a fee is
+ * not consenting on a child's behalf, so a `GUARDIAN_OF` row with
+ * `authority: false` counts exactly the same as one that claims it.
+ *
+ * Returns `null` when the `StudentProfile` does not exist — the caller's guard
+ * has nothing to check a nonexistent resource against, the same "nothing to
+ * guard" shape `findRelationship` already returns for a missing relationship.
+ */
+export async function findActiveGuardiansForStudent(
+  studentProfileId: string,
+  at: Date,
+  client: DatabaseClient = prisma,
+): Promise<{
+  subjectPersonId: string;
+  guardians: ActiveGuardianCandidate[];
+} | null> {
+  const profile = await client.studentProfile.findUnique({
+    where: { id: studentProfileId },
+    select: {
+      personId: true,
+      person: {
+        select: {
+          relationshipsAsSubject: {
+            where: { type: "GUARDIAN_OF" },
+            select: {
+              validFrom: true,
+              validTo: true,
+              fromPerson: {
+                select: { id: true, givenName: true, familyName: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!profile) return null;
+
+  const guardians = profile.person.relationshipsAsSubject
+    .filter((relationship) =>
+      coversInstant(
+        { startedAt: relationship.validFrom, endedAt: relationship.validTo },
+        at,
+      ),
+    )
+    .map((relationship) => relationship.fromPerson);
+
+  return { subjectPersonId: profile.personId, guardians };
 }
 
 /**

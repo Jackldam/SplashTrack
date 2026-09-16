@@ -53,10 +53,12 @@ export type { StudentCandidate } from "./infrastructure/student-candidate-reposi
 export {
   describeRelationshipAuthority,
   endRelationship,
+  listActiveGuardiansForStudent,
   recordRelationship,
   revealRelationshipEvidence,
   RelationshipAuthorityError,
   RELATIONSHIP_TYPES,
+  type ActiveGuardianCandidate,
   type RecordRelationshipInput,
   type RelationshipAuthorityRefusal,
   type RelationshipType,
