@@ -27,6 +27,7 @@ import {
   listQualifications,
   QUALIFICATION_TYPES,
 } from "@/modules/exams";
+import { getFeeBalanceForPayer, getFeeBalanceForStudent } from "@/modules/fees";
 import { listAwardTypesForPrincipal } from "@/modules/skills";
 import { getSkillProgressForStudent } from "@/modules/skills";
 
@@ -42,6 +43,7 @@ import {
   revokeAwardAction,
   withdrawExamCandidateAction,
 } from "@/app/exams/actions";
+import { FeeBalanceSection } from "@/app/fees/balance-section";
 import { formatMoment } from "@/app/skills/format";
 
 import { guarded, requireSignedIn } from "../access";
@@ -195,6 +197,31 @@ export default async function PersonDetailPage({
         (entry) => entry.endedAt === null && !entry.courseWithheld,
       )
     : [];
+
+  // ── Fees (phase 3.3) — R-32's balance views, per payer and per student ────
+  //
+  // TWO INDEPENDENT GUARDED READS, both `fees.read`-gated: a person can be a
+  // PAYER (owes money themselves, or on a child's behalf) and a STUDENT
+  // (charges are about them) at once, and neither implies the other.
+  // `guarded()` means an instructor with `people.read` but no `fees.read`
+  // sees NEITHER section at all — not a denial panel, nothing — which is
+  // D-093's "arrears never appear on the poolside surface" applied to a
+  // screen this module does not own: silence here is not a missing feature,
+  // it is the control.
+  const feesAsPayer = await guarded(() =>
+    getFeeBalanceForPayer(
+      { principal: { personId: session.person.id }, at },
+      person.id,
+    ),
+  );
+  const feesAsStudent = person.studentProfile
+    ? await guarded(() =>
+        getFeeBalanceForStudent(
+          { principal: { personId: session.person.id }, at },
+          person.studentProfile!.id,
+        ),
+      )
+    : null;
 
   // ── Skill progress (phase 2.1) — read-only here; see the section below. ──
   const skillProgress = person.studentProfile
@@ -1604,6 +1631,28 @@ export default async function PersonDetailPage({
           </form>
         </details>
       </section>
+
+      {/* ── Fees (phase 3.3) ──────────────────────────────────────────────
+          Rendered ONLY on a successful guarded read — no denial panel, no
+          hint that the section exists at all when it is withheld. See the
+          `feesAsPayer`/`feesAsStudent` comment above for why silence, not a
+          message, is the correct behaviour here. */}
+      {feesAsPayer.ok ? (
+        <FeeBalanceSection
+          headingKey="asPayer"
+          backPath={`/people/${person.id}`}
+          balance={feesAsPayer.value}
+          clientEventIdFor={() => randomUUID()}
+        />
+      ) : null}
+      {feesAsStudent?.ok ? (
+        <FeeBalanceSection
+          headingKey="asStudent"
+          backPath={`/people/${person.id}`}
+          balance={feesAsStudent.value}
+          clientEventIdFor={() => randomUUID()}
+        />
+      ) : null}
     </main>
   );
 }

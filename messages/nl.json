@@ -22,6 +22,7 @@
     "toGroups": "Naar groepen",
     "toCourses": "Naar cursussen",
     "toSkills": "Naar vaardigheden",
+    "toFees": "Naar financiën",
     "toBackup": "Backup"
   },
   "errors": {
@@ -150,7 +151,10 @@
       "REVOKE_REASON_REQUIRED": "Voor het intrekken van een diploma/certificaat is een reden verplicht.",
       "QUALIFICATION_NOT_FOUND": "Deze bevoegdheid bestaat niet.",
       "ALREADY_ENDED": "Deze bevoegdheid is al beëindigd.",
-      "INVALID_WINDOW": "De einddatum ligt voor de begindatum."
+      "INVALID_WINDOW": "De einddatum ligt voor de begindatum.",
+      "CHARGE_NOT_FOUND": "Deze post bestaat niet, of is verwijderd voordat het verzoek werd afgerond.",
+      "ALREADY_WAIVED": "Deze post is al kwijtgescholden.",
+      "ALREADY_CANCELLED": "Deze post is al geannuleerd."
     },
     "search": {
       "label": "Zoeken",
@@ -920,6 +924,116 @@
       "success": "Geïmporteerd: {awardTypes} diplomatype(n), {criterionSets} eisenset(ten), {criteria} eis(en).",
       "errorPrefix": "Import geweigerd —",
       "errorNoFile": "Kies eerst een JSON-bestand."
+    }
+  },
+  "fees": {
+    "title": "Financiën",
+    "subtitle": "Kostensoorten, posten en betalingen — uitsluitend bijhouden, nooit een factuur.",
+    "denied": {
+      "title": "Geen toegang",
+      "explanation": "Je mag de financiën niet beheren. De benodigde rechten: {permission}."
+    },
+    "errors": {
+      "denied": "Je mag dit niet doen.",
+      "validation": "De ingevoerde gegevens kloppen niet. Controleer de velden en probeer het opnieuw.",
+      "DUPLICATE_CODE": "Er bestaat al een kostensoort met deze code. Corrigeer de spelling van de bestaande in plaats van een tweede aan te maken voor dezelfde kostenpost.",
+      "FEE_TYPE_NOT_FOUND": "Deze kostensoort bestaat niet.",
+      "FEE_TYPE_INACTIVE": "Deze kostensoort is niet meer actief. Activeer hem opnieuw, of kies een actuele.",
+      "PAYER_NOT_FOUND": "Deze betaler bestaat niet.",
+      "STUDENT_NOT_FOUND": "Deze leerling bestaat niet."
+    },
+    "saved": {
+      "feeType": "Kostensoort opgeslagen.",
+      "feeTypeUpdated": "Kostensoort opgeslagen."
+    },
+    "export": {
+      "download": "CSV downloaden"
+    },
+    "feeTypes": {
+      "title": "Kostensoorten",
+      "empty": "Er zijn nog geen kostensoorten aangemaakt.",
+      "columns": {
+        "code": "Code",
+        "name": "Naam",
+        "amount": "Bedrag",
+        "recurrence": "Terugkerend",
+        "active": "Actief"
+      },
+      "recurrence": {
+        "PERIODIC": "Periodiek",
+        "ONE_OFF": "Eenmalig"
+      },
+      "edit": {
+        "submit": "Opslaan"
+      },
+      "create": {
+        "title": "Kostensoort toevoegen",
+        "submit": "Kostensoort toevoegen"
+      },
+      "fields": {
+        "code": "Code",
+        "name": "Naam",
+        "amount": "Bedrag (EUR)",
+        "recurrence": "Terugkerend"
+      }
+    },
+    "charges": {
+      "create": {
+        "title": "Post aanmaken",
+        "submit": "Post aanmaken",
+        "noFeeTypes": "Er is nog geen actieve kostensoort om in rekening te brengen. Voeg er hierboven eerst een toe."
+      },
+      "fields": {
+        "payer": "Betaler",
+        "payerPlaceholder": "Zoek op naam…",
+        "student": "Leerling (optioneel)",
+        "studentPlaceholder": "Zoek op naam of leerlingnummer…",
+        "studentHelp": "Laat leeg voor kosten die niet over een specifiek kind gaan, zoals contributie.",
+        "feeType": "Kostensoort",
+        "feeTypePlaceholder": "Kies een kostensoort",
+        "periodStart": "Periode vanaf",
+        "periodEnd": "Periode tot",
+        "dueDate": "Vervaldatum",
+        "note": "Notitie"
+      }
+    },
+    "balance": {
+      "asPayer": "Financiën — als betaler",
+      "asStudent": "Financiën — deze leerling",
+      "empty": "Er zijn nog geen posten geregistreerd.",
+      "columns": {
+        "feeType": "Kosten",
+        "period": "Periode",
+        "dueDate": "Vervaldatum",
+        "amount": "Bedrag",
+        "paid": "Betaald",
+        "open": "Openstaand",
+        "status": "Status"
+      },
+      "actions": "Acties",
+      "actionsToggle": "Acties",
+      "payments": "Betalingen ({count})",
+      "states": {
+        "OPEN": "Openstaand",
+        "PARTIAL": "Deels betaald",
+        "PAID": "Betaald",
+        "WAIVED": "Kwijtgescholden",
+        "CANCELLED": "Geannuleerd"
+      },
+      "methods": {
+        "BANK": "Bankoverschrijving",
+        "CASH": "Contant",
+        "OTHER": "Overig"
+      },
+      "form": {
+        "amount": "Bedrag",
+        "reference": "Referentie",
+        "recordPayment": "Betaling registreren",
+        "reasonPlaceholder": "Reden",
+        "waive": "Kwijtschelden",
+        "cancel": "Post annuleren"
+      },
+      "total": "Openstaand saldo:"
     }
   },
   "backup": {

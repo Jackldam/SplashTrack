@@ -22,6 +22,7 @@
     "toGroups": "Go to groups",
     "toCourses": "Go to courses",
     "toSkills": "Go to skills",
+    "toFees": "Go to fees",
     "toBackup": "Backup"
   },
   "errors": {
@@ -150,7 +151,10 @@
       "REVOKE_REASON_REQUIRED": "Revoking a diploma/certificate requires a reason.",
       "QUALIFICATION_NOT_FOUND": "This qualification does not exist.",
       "ALREADY_ENDED": "This qualification has already ended.",
-      "INVALID_WINDOW": "The end date is before the start date."
+      "INVALID_WINDOW": "The end date is before the start date.",
+      "CHARGE_NOT_FOUND": "This charge does not exist, or was removed before the request completed.",
+      "ALREADY_WAIVED": "This charge has already been waived.",
+      "ALREADY_CANCELLED": "This charge has already been cancelled."
     },
     "search": {
       "label": "Search",
@@ -920,6 +924,116 @@
       "success": "Imported: {awardTypes} award type(s), {criterionSets} criterion set(s), {criteria} criterion/criteria.",
       "errorPrefix": "Import rejected —",
       "errorNoFile": "Choose a JSON file first."
+    }
+  },
+  "fees": {
+    "title": "Fees",
+    "subtitle": "Fee types, charges and payments — tracking only, never an invoice.",
+    "denied": {
+      "title": "No access",
+      "explanation": "You may not manage fees. Required permission: {permission}."
+    },
+    "errors": {
+      "denied": "You are not permitted to do this.",
+      "validation": "The submitted details are not valid. Check the fields and try again.",
+      "DUPLICATE_CODE": "A fee type with this code already exists. Correct the spelling of the one already there instead of creating a second entry for the same fee.",
+      "FEE_TYPE_NOT_FOUND": "This fee type does not exist.",
+      "FEE_TYPE_INACTIVE": "This fee type is no longer active. Reactivate it, or choose a current one.",
+      "PAYER_NOT_FOUND": "This payer does not exist.",
+      "STUDENT_NOT_FOUND": "This student does not exist."
+    },
+    "saved": {
+      "feeType": "Fee type saved.",
+      "feeTypeUpdated": "Fee type saved."
+    },
+    "export": {
+      "download": "Download CSV"
+    },
+    "feeTypes": {
+      "title": "Fee types",
+      "empty": "No fee types have been created yet.",
+      "columns": {
+        "code": "Code",
+        "name": "Name",
+        "amount": "Amount",
+        "recurrence": "Recurrence",
+        "active": "Active"
+      },
+      "recurrence": {
+        "PERIODIC": "Periodic",
+        "ONE_OFF": "One-off"
+      },
+      "edit": {
+        "submit": "Save"
+      },
+      "create": {
+        "title": "Add a fee type",
+        "submit": "Add fee type"
+      },
+      "fields": {
+        "code": "Code",
+        "name": "Name",
+        "amount": "Amount (EUR)",
+        "recurrence": "Recurrence"
+      }
+    },
+    "charges": {
+      "create": {
+        "title": "Create a charge",
+        "submit": "Create charge",
+        "noFeeTypes": "There is no active fee type to charge yet. Add one above first."
+      },
+      "fields": {
+        "payer": "Payer",
+        "payerPlaceholder": "Search by name…",
+        "student": "Student (optional)",
+        "studentPlaceholder": "Search by name or student number…",
+        "studentHelp": "Leave empty for a fee that is not about a specific child, such as a membership fee.",
+        "feeType": "Fee type",
+        "feeTypePlaceholder": "Choose a fee type",
+        "periodStart": "Period start",
+        "periodEnd": "Period end",
+        "dueDate": "Due date",
+        "note": "Note"
+      }
+    },
+    "balance": {
+      "asPayer": "Finances — as payer",
+      "asStudent": "Finances — this student",
+      "empty": "No charges have been recorded.",
+      "columns": {
+        "feeType": "Fee",
+        "period": "Period",
+        "dueDate": "Due date",
+        "amount": "Amount",
+        "paid": "Paid",
+        "open": "Open",
+        "status": "Status"
+      },
+      "actions": "Actions",
+      "actionsToggle": "Actions",
+      "payments": "Payments ({count})",
+      "states": {
+        "OPEN": "Open",
+        "PARTIAL": "Partially paid",
+        "PAID": "Paid",
+        "WAIVED": "Waived",
+        "CANCELLED": "Cancelled"
+      },
+      "methods": {
+        "BANK": "Bank transfer",
+        "CASH": "Cash",
+        "OTHER": "Other"
+      },
+      "form": {
+        "amount": "Amount",
+        "reference": "Reference",
+        "recordPayment": "Record payment",
+        "reasonPlaceholder": "Reason",
+        "waive": "Waive",
+        "cancel": "Cancel charge"
+      },
+      "total": "Running balance:"
     }
   },
   "backup": {
