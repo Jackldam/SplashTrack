@@ -19,7 +19,7 @@ export const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 export const TSX_BIN = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
 
 /** This worktree's own dedicated e2e scratch database — see `.env.e2e`. */
-export const SCRATCH_DB_NAME = "splashtrack_scratch_e2e_wt_attendance";
+export const SCRATCH_DB_NAME = "splashtrack_scratch_e2e_wt_fees";
 
 export function resetScratchDatabase(): void {
   execFileSync(
