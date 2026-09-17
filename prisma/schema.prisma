@@ -367,6 +367,17 @@ model Person {
   /// `ExamResult` rows this person RECORDED (phase 2.4), the same
   /// sever-on-erasure shape as `assessmentsAssessed`.
   examResultsRecorded     ExamResult[]          @relation("ExamResultRecordedBy")
+
+  /// Phase 3.3, the `fees` module. `Charge`/`Payment` are `exempt` in the D-014
+  /// erasure registry (D-092's fiscal ground), so these five person-reference
+  /// columns are SEVER_AND_RETAIN rather than HARD_DELETE — the row is
+  /// somebody else's financial fact, never the erased person's own data, on
+  /// the `assessmentsAssessed`/`examResultsRecorded` pattern above.
+  chargesAsPayer   Charge[]  @relation("ChargePayer")
+  chargesCreated   Charge[]  @relation("ChargeCreatedBy")
+  chargesWaived    Charge[]  @relation("ChargeWaivedBy")
+  chargesCancelled Charge[]  @relation("ChargeCancelledBy")
+  paymentsRecorded Payment[] @relation("PaymentRecordedBy")
 }
 
 /// Optional login credential holder, 1:0..1 with a `Person`. Better Auth owns
@@ -857,6 +868,16 @@ model StudentProfile {
   /// Phase 2.4. Cascades with the pupil, on the `assessments` precedent
   /// immediately above — a candidacy is part of the pupil's own record.
   examCandidates ExamCandidate[]
+
+  /// Phase 3.3. `SetNull`, NOT cascade — the one place this model's relations
+  /// deliberately break the `assessments`/`examCandidates` pattern above.
+  /// `Charge`'s 7-year fiscal retention (`01-domain-model.md` §5) routinely
+  /// outlives this profile's own 24-month one, so erasing the pupil must not
+  /// take the financial fact with it: the charge keeps its amount, date, fee
+  /// type and period and loses the link to the student (D-092's
+  /// pseudonymisation, applied to the student side the same way it applies to
+  /// the payer). See `model Charge`'s own comment.
+  charges Charge[]
 
   @@index([unitId])
 }
@@ -4001,4 +4022,277 @@ model RetentionPolicy {
   confirmedBy Person? @relation("RetentionPolicyConfirmedBy", fields: [confirmedByPersonId], references: [id], onDelete: SetNull)
 
   @@index([confirmedByPersonId])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Phase 3.3 — the `fees` module (R-32, `15-assessment-and-fees.md` §6).
+//
+// Billing-LITE, and the line is the document (D-091): a balance view and a
+// CSV are internal administration; nothing here ever renders anything headed
+// *Factuur*. No invoice, no payment provider, no SEPA/iDEAL, no VAT, no
+// sequential numbering, no dunning. `01-domain-model.md` §2.2:
+// `FeeType ──< Charge ──< Payment`.
+//
+// MONEY IS AN INTEGER IN MINOR UNITS (eurocent) EVERYWHERE BELOW — never a
+// float. `€67,50` is stored as `6750`.
+//
+// `status` DELIBERATELY STORES THREE STATES, NOT §6.1's FIVE. See
+// `model Charge`'s own comment — the build brief's "balance is derived from
+// immutable financial facts, not a mutable cached total" overrides the
+// design's literal `OPEN, PAID, PARTIAL, WAIVED, CANCELLED` enum; `PAID`/
+// `PARTIAL` are computed at read time (`src/modules/fees/domain/balance.ts`),
+// never stored.
+//
+// D-089 (an exam-fee charge is created ONLY by an `ExamCandidate` reaching
+// `CONFIRMED`) and §6.2's scheduled periodic-membership-billing job are
+// DELIBERATELY NOT WIRED here — see `docs/build/phase-3.3-fees-report.md` §1
+// for why, and for the manual path this phase ships instead: an
+// administrator may create a `Charge` of any `FeeType` for any payer/student
+// pair, which is what the build brief's own "Required product behavior"
+// asks for.
+// ═════════════════════════════════════════════════════════════════════════
+
+/// The club's own catalogue of what may be charged — *contributie*,
+/// *examengeld* — authored by an administrator, the `AwardType`/`Course`
+/// shape: never seeded, `active` retires an entry without deleting the
+/// history of charges already created against it.
+///
+/// `amount` is the CURRENT price. A `Charge` copies it at creation time
+/// (`model Charge`'s own comment) rather than joining here at read time, so
+/// raising next year's contribution never restates last year's open charges.
+/// @dataClass ORGANIZATION_SETTINGS
+model FeeType {
+  id String @id @default(cuid(2))
+
+  /// The club's own short identifier — the `AwardType.code` shape. Stable; a
+  /// typo is corrected by editing `name`, not by reusing a code.
+  code String @unique
+
+  /// *"Contributie"*, *"Examengeld Diploma A"* — the club's own words.
+  name String
+
+  /// Minor units (eurocent). Always positive
+  /// (`FeeType_amount_positive_check`).
+  amount Int
+
+  /// A single implicit currency in v1 — the column exists because `15-…`
+  /// §6.1 names it, but no screen offers a choice (the club bills in EUR
+  /// only; `13-configuration-and-setup.md`'s bootstrap-necessity criterion
+  /// gives multi-currency no home here). Flagged in the phase report.
+  currency String @default("EUR")
+
+  recurrence FeeRecurrence
+  active     Boolean       @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges Charge[]
+
+  @@index([active])
+}
+
+/// `PERIODIC` — *contributie*, billed per `MembershipPeriod` (§6.2). `ONE_OFF`
+/// — *examengeld* and anything else charged once. Recorded on the `FeeType`
+/// so a `Charge` inherits it without repeating the classification; nothing in
+/// this phase branches on it (§6.2's scheduled job is not built — see the
+/// phase report), but the field is what a future job would read.
+enum FeeRecurrence {
+  PERIODIC
+  ONE_OFF
+}
+
+/// One charge — an immutable financial fact against a payer, optionally about
+/// a specific student (D-088). `01-domain-model.md` §5: `CHARGES`, legal
+/// obligation (fiscal administration), 7 years, `REVIEW` on expiry — and
+/// D-092's erasure EXEMPTION on that same ground
+/// (`src/lib/retention/erasure-registry.ts`), never a destructive delete
+/// path.
+///
+/// **WHY `status` IS THREE STATES, NOT §6.1's FIVE.** `15-…` §6.1 specifies
+/// `OPEN, PAID, PARTIAL, WAIVED, CANCELLED`. The build brief's own required
+/// behaviour is explicit: *"Balance is derived from immutable financial
+/// facts, not maintained as a mutable cached total."* A stored `PAID`/
+/// `PARTIAL` column is exactly such a cache — it would need updating on every
+/// `Payment` insert, by a trigger or by application code remembering to, and
+/// it would drift the moment a payment is corrected out of band. So this
+/// column stores only the two ADMINISTRATIVE DECISIONS a person actually
+/// makes — `WAIVED` ("we are not collecting this") and `CANCELLED` ("this
+/// charge should not have existed", D-089's own withdrawal trade-off: "that
+/// is the correct trace") — plus the `OPEN` default. Whether an open charge
+/// currently reads as unpaid, partially paid or fully paid is COMPUTED at
+/// read time from `sum(Payment.amount)` against `amount`
+/// (`src/modules/fees/domain/balance.ts`), every time, never written to a
+/// column. Reconciled in full in `docs/build/phase-3.3-fees-report.md` §1.
+///
+/// `amount` is COPIED from `FeeType.amount` at creation, never joined at read
+/// time (`15-…` §6.1's own words): changing next year's contribution must not
+/// silently restate last year's open charges.
+///
+/// `payerPersonId`/`studentProfileId` are both nullable so a future
+/// pseudonymisation (D-092) can sever them without deleting the row; a NEW
+/// charge always has a payer (enforced in the application, not the database —
+/// the `ExamCandidate.confirmedAt`/`confirmedByPersonId` shape: the
+/// accountability-adjacent column stays severable even though the service
+/// always writes it).
+/// @dataClass CHARGES
+model Charge {
+  id String @id @default(cuid(2))
+
+  /// The payer — a PERSON, never the child (`15-…` §6.1's own words: *"the
+  /// payer is a Person, never the child"*). Not a standing `Household` link
+  /// (D-090 — no such entity exists): the payer is decided per charge, at
+  /// creation, and stored here so a later change of payer never restates
+  /// history. SEVER_AND_RETAIN on erasure (D-092's pseudonymisation) — see
+  /// `PERSON_REFERENCE_CLASSIFICATION`.
+  payerPersonId String?
+
+  /// Optional: a membership fee is owed by an adult member who is not a
+  /// student; an exam fee is always about a specific child (`15-…` §6.1).
+  /// `SetNull` on the student's own erasure — the financial fact outlives the
+  /// pupil record it was about, the same pseudonymisation reasoning as the
+  /// payer link (see `model StudentProfile`'s own comment on `charges`).
+  studentProfileId String?
+
+  feeTypeId String
+
+  /// Which billing period this charge covers — a `PERIODIC` fee's quarter,
+  /// say. Null for a `ONE_OFF` charge (an exam fee has no period). When both
+  /// are set, `periodEnd >= periodStart` (`Charge_period_order_check`).
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  /// Minor units, COPIED from `FeeType.amount` at creation — see the model
+  /// comment. Always positive (`Charge_amount_positive_check`).
+  amount   Int
+  currency String
+
+  dueDate DateTime
+
+  status ChargeStatus @default(OPEN)
+
+  /// A free-text note an administrator writes about the CHARGE itself — *"Q3,
+  /// naar afspraak in twee termijnen"*. Plain, unprotected text: this is
+  /// administration about money, not the D-148 protected class (medical/
+  /// pastoral/assessment remarks, inquiry text) — the `ExamResult.remarks`
+  /// precedent, not `AssessmentCriterionResult.remark`'s. If an administrator
+  /// ever writes something about a CHILD here rather than about the money,
+  /// that is a misuse this field does not detect; nothing about a fee note's
+  /// normal use requires it.
+  note String?
+
+  /// Set together, EXACTLY when `status = WAIVED`
+  /// (`Charge_waived_fields_check`) — never separately, and (like
+  /// `ExamCandidate.confirmedByPersonId`) `waivedByPersonId` is deliberately
+  /// NOT part of that constraint: it is SEVER_AND_RETAIN, and an erasure must
+  /// be able to null it without leaving a waived charge in violation of a
+  /// CHECK.
+  waivedAt         DateTime?
+  waivedReason     String?
+  waivedByPersonId String?
+
+  /// Set together, EXACTLY when `status = CANCELLED`
+  /// (`Charge_cancelled_fields_check`) — the same shape as the waive pair
+  /// immediately above, and D-089's own trade-off: a withdrawn exam candidacy
+  /// cancels its charge rather than deleting it, "the correct trace".
+  cancelledAt         DateTime?
+  cancelledReason     String?
+  cancelledByPersonId String?
+
+  /// Who created the charge — accountability, SEVER_AND_RETAIN, the
+  /// `RoleAssignment.grantedByPersonId` shape.
+  createdByPersonId String?
+
+  /// P-02's idempotency key — the `AttendanceEvent`/`ExamResult` discipline,
+  /// so a retried create (a network drop, a double form submit) can never
+  /// double-bill a family.
+  clientEventId String @unique
+
+  createdAt DateTime @default(now())
+  // NO `updatedAt`, deliberately — the `Award` precedent. A Prisma
+  // `@updatedAt` column is touched by the CLIENT on every update regardless
+  // of which fields changed, which would silently need its own place in
+  // `feesGrantStatements`' column-restricted GRANT — and did, once, until
+  // this module's own append-only proof caught the gap (phase 3.3 report).
+  // Simpler to have no such column at all, matching `Award`'s own shape.
+
+  feeType     FeeType         @relation(fields: [feeTypeId], references: [id], onDelete: Restrict)
+  payer       Person?         @relation("ChargePayer", fields: [payerPersonId], references: [id], onDelete: SetNull)
+  student     StudentProfile? @relation(fields: [studentProfileId], references: [id], onDelete: SetNull)
+  waivedBy    Person?         @relation("ChargeWaivedBy", fields: [waivedByPersonId], references: [id], onDelete: SetNull)
+  cancelledBy Person?         @relation("ChargeCancelledBy", fields: [cancelledByPersonId], references: [id], onDelete: SetNull)
+  createdBy   Person?         @relation("ChargeCreatedBy", fields: [createdByPersonId], references: [id], onDelete: SetNull)
+
+  payments Payment[]
+
+  @@index([payerPersonId])
+  @@index([studentProfileId])
+  @@index([feeTypeId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([waivedByPersonId])
+  @@index([cancelledByPersonId])
+  @@index([createdByPersonId])
+}
+
+/// Three states, deliberately not five — see `model Charge`'s own comment.
+enum ChargeStatus {
+  OPEN
+  WAIVED
+  CANCELLED
+}
+
+/// One payment — an immutable financial fact against exactly one `Charge`
+/// (D-088). TRUE append-only: unlike `Charge`, no column on this row is ever
+/// updated by any service in this module (no waive/cancel-shaped pair), so
+/// the runtime role holds `SELECT, INSERT` and nothing else
+/// (`feesGrantStatements`) — the `ExamResult` shape, not `Award`'s.
+///
+/// A MIS-RECORDED PAYMENT IS NOT CORRECTED IN PLACE. `15-…` does not specify
+/// a reversal mechanism, and none is invented here: an administrator records
+/// a second `Payment` (negative-sense, described in `reference`) or waives/
+/// cancels the charge. Flagged in the phase report rather than guessed at
+/// further.
+/// @dataClass PAYMENTS
+model Payment {
+  id       String @id @default(cuid(2))
+  chargeId String
+
+  /// Minor units. Always positive (`Payment_amount_positive_check`) — never
+  /// checked against the charge's remaining balance, at the database or the
+  /// service level: an overpayment is a fact (a family that paid twice, or
+  /// paid ahead of a future charge) rather than an error, and the balance
+  /// view renders a negative "openstaand" honestly rather than refusing the
+  /// row.
+  amount Int
+
+  receivedAt DateTime
+  method     PaymentMethod
+
+  /// A bank reference, a receipt number — whatever the treasurer's own
+  /// process already uses to reconcile. Plain text, the `Charge.note`
+  /// reasoning.
+  reference String?
+
+  /// Who recorded the payment — accountability, SEVER_AND_RETAIN, the
+  /// `Charge.createdByPersonId` shape.
+  recordedByPersonId String?
+
+  /// P-02's idempotency key.
+  clientEventId String @unique
+
+  createdAt DateTime @default(now())
+
+  charge     Charge  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  recordedBy Person? @relation("PaymentRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
+
+  @@index([chargeId])
+  @@index([recordedByPersonId])
+  @@index([receivedAt])
+}
+
+enum PaymentMethod {
+  BANK
+  CASH
+  OTHER
 }

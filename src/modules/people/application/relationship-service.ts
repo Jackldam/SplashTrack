@@ -45,9 +45,11 @@ import {
 } from "../domain/guardian-authority";
 import { ensurePeopleRegistrations } from "../infrastructure/registrations";
 import {
+  findActiveGuardiansForStudent,
   findRelationship,
   readRelationshipEvidence,
   sealEvidence,
+  type ActiveGuardianCandidate,
 } from "../infrastructure/person-repository";
 import { optionalDate, optionalText, requiredEnum, TEXT_MAX } from "./input";
 import type { ActorContext } from "./people-service";
@@ -296,6 +298,47 @@ export async function describeRelationshipAuthority(
     ageOfDigitalConsentYears,
     at,
   );
+}
+
+export type { ActiveGuardianCandidate };
+
+/**
+ * D-090's automatic payer default: the ACTIVE `GUARDIAN_OF` relatives of the
+ * pupil behind a `StudentProfile` id.
+ *
+ * Returns the RAW list — deciding "unambiguous" is not this module's call to
+ * make. D-090 reads *"derived… with a per-charge override"*, not *"guessed
+ * when there is any doubt"*, so the caller (`fees`) is the one that turns
+ * zero or several candidates into "no default, ask" and exactly one into a
+ * preselection. This function only ever states the facts.
+ *
+ * Guarded exactly like `revealRelationshipEvidence`: `people.read` on the
+ * SUBJECT — resolved from the `StudentProfile` id first (the same "look up,
+ * then guard on what was found" shape `endRelationship` uses, because the
+ * resource reference does not exist until the row does) — so a caller only
+ * ever sees who the record says answers for a pupil they may themselves read.
+ * A `StudentProfile` id that does not exist yields an empty list rather than
+ * a denial: there is no resource to guard, the same "nothing to guard" shape
+ * `endRelationship` uses for a missing relationship id.
+ */
+export async function listActiveGuardiansForStudent(
+  actor: ActorContext,
+  studentProfileId: string,
+): Promise<ActiveGuardianCandidate[]> {
+  ensurePeopleRegistrations();
+  const at = actor.at ?? new Date();
+
+  const found = await findActiveGuardiansForStudent(studentProfileId, at);
+  if (!found) return [];
+
+  await requirePermission(
+    actor.principal,
+    "people.read",
+    { person: found.subjectPersonId },
+    { at },
+  );
+
+  return found.guardians;
 }
 
 /**

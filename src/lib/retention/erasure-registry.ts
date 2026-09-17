@@ -162,6 +162,50 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },
     RetentionPolicy: { kind: "erase" },
+    // Phase 3.3, the `fees` module — the entry this file's own header
+    // anticipated: "`Charge` and `Payment` are NOT yet in this registry ...
+    // Add them here the day the tables land." D-092's fiscal ground (Dutch
+    // Boekhoudverplichting, 7 years) is an ERASURE EXEMPTION, not an ordinary
+    // `erase` participant: while the ground applies, an Article 17 request
+    // does not remove the row at all — `Charge.payerPersonId`/
+    // `studentProfileId` are classified SEVER_AND_RETAIN in
+    // `PERSON_REFERENCE_CLASSIFICATION`, but there is no `erasePersonData`
+    // walk yet to invoke that severing (R-25, not built — same as every
+    // other module's entry above). What `until` describes is the FUTURE
+    // trigger: once the 7-year `CHARGES`/`PAYMENTS` retention lapses
+    // (`RETENTION_CATALOGUE`), the correct action is D-092's
+    // pseudonymisation — sever the person link, keep the amount, date, fee
+    // type and period — never a delete, and that mechanism is not built
+    // either. Both tables share one entry: a `Payment` is meaningless
+    // without the `Charge` it settles, so the same fiscal ground and the
+    // same future mechanism cover it.
+    Charge: {
+      kind: "exempt",
+      ground:
+        "Legal obligation — fiscal administration (Dutch " +
+        "Boekhoudverplichting, 7 years). `01-domain-model.md` §5's `CHARGES` " +
+        "row; D-092.",
+      until:
+        "Not a fixed date. The 7-year `CHARGES` retention window lapses " +
+        "(RETENTION_CATALOGUE), at which point D-092's pseudonymisation — " +
+        "severing payerPersonId/studentProfileId while keeping amount, " +
+        "date, fee type and period — is the correct action. That mechanism " +
+        "is not built in v1 (R-25 territory, the same as erasePersonData " +
+        "itself); until it is, an Article 17 request against a person with " +
+        "an open or recent Charge is answered by hand, citing this ground.",
+    },
+    Payment: {
+      kind: "exempt",
+      ground:
+        "Legal obligation — fiscal administration (Dutch " +
+        "Boekhoudverplichting, 7 years). `01-domain-model.md` §5's " +
+        "`PAYMENTS` row; D-092. Shares Charge's ground: a payment is " +
+        "meaningless without the charge it settles.",
+      until:
+        "Not a fixed date — the same not-yet-built pseudonymisation " +
+        "mechanism as Charge, above, once the 7-year `PAYMENTS` retention " +
+        "window lapses.",
+    },
     AuditEvent: {
       kind: "exempt",
       ground:

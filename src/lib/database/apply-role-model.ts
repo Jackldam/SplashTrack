@@ -25,6 +25,7 @@ import {
   auditGrantStatements,
   databaseProvisionStatements,
   examsGrantStatements,
+  feesGrantStatements,
   migrationUrlFrom,
   ownershipReassignStatement,
   redactUrl,
@@ -101,6 +102,7 @@ export async function applyRoleModel(
       ...skillProgressGrantStatements(names),
       ...assessmentGrantStatements(names),
       ...examsGrantStatements(names),
+      ...feesGrantStatements(names),
     ]) {
       await client.query(statement);
     }

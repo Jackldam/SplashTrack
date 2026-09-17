@@ -39,3 +39,15 @@ input[type="radio"] {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
+
+/*
+ * Bootstrap's default `<code>` colour (`$code-color`, a fixed pink) renders
+ * at 4.06:1 against `.alert-warning`'s background — below the 4.5:1 WCAG AA
+ * threshold. The alert's own text colour (`$warning-text-emphasis`) is
+ * chosen by Bootstrap 5.3's "-emphasis"/"-subtle" pair specifically to clear
+ * AA against that same background (7.21:1), so `<code>` inside any
+ * `.alert-*` inherits it instead of the fixed pink.
+ */
+.alert code {
+  color: inherit;
+}

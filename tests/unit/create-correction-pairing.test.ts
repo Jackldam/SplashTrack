@@ -60,7 +60,21 @@ import { describe, expect, it } from "vitest";
 const APP_DIR = path.resolve(process.cwd(), "src/app");
 
 /** Nouns with a `create<Noun>Action` but no `update<Noun>Action`, each with why that's fine. */
-const NO_CORRECTION_NEEDED: ReadonlyMap<string, string> = new Map([]);
+const NO_CORRECTION_NEEDED: ReadonlyMap<string, string> = new Map([
+  [
+    "Charge",
+    "A DIFFERENT verb serves the correction, on this file's own rule: " +
+      "cancelChargeAction, then a new createChargeAction. Not a gap like " +
+      "Membership/StudentProfile above — `amount`/`payerPersonId`/" +
+      "`feeTypeId`/`dueDate` are IMMUTABLE by design, enforced at the " +
+      "database (`feesGrantStatements`'s column-restricted GRANT), the " +
+      "exact reason CLAUDE.md rule 4 gives for append-only history: a " +
+      "mis-entered charge is evidence of what was billed, not a typo to " +
+      "edit away. `waiveChargeAction`/`cancelChargeAction` are the only " +
+      "mutations this row ever takes, and both are additive decisions " +
+      "recorded on it, never a rewrite of the original facts.",
+  ],
+]);
 
 /** Every `.ts`/`.tsx` file under a directory, absolute. */
 function sourceFiles(directory: string): string[] {
