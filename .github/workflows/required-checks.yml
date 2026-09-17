@@ -79,6 +79,14 @@ jobs:
   # ---------------------------------------------------------------------
   format:
     runs-on: ubuntu-latest
+    # `npm ci`'s postinstall runs `prisma generate`, which loads
+    # prisma.config.ts, which refuses to load at all without
+    # DATABASE_MAINTENANCE_URL set (ADR-0002/D-116) — even though `generate`
+    # itself never opens a connection. This job needs no database, so the
+    # value only has to be SET, not reachable; a placeholder is correct here,
+    # not a workaround.
+    env:
+      DATABASE_MAINTENANCE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -93,6 +101,10 @@ jobs:
   # ---------------------------------------------------------------------
   lint:
     runs-on: ubuntu-latest
+    # See `format`'s comment above — same postinstall requirement, same
+    # reason a placeholder (never connected to) is correct here.
+    env:
+      DATABASE_MAINTENANCE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -107,6 +119,10 @@ jobs:
   # ---------------------------------------------------------------------
   typecheck:
     runs-on: ubuntu-latest
+    # See `format`'s comment above — same postinstall requirement, same
+    # reason a placeholder (never connected to) is correct here.
+    env:
+      DATABASE_MAINTENANCE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

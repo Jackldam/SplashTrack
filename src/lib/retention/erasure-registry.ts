@@ -161,6 +161,12 @@ export const ERASURE_REGISTRY: Readonly<Record<string, ErasureRegistryEntry>> =
     RoleAssignment: { kind: "erase" },
     ApiCredential: { kind: "erase" },
     CredentialRoleAssignment: { kind: "erase" },
+    // Phase 3.2, the settings registry's one sensitive-value table
+    // (`@/modules/settings`). `updatedByPersonId` is a plain accountability
+    // token with no FK — the `ApiCredential.createdByPersonId` pattern — and
+    // is `SEVER_AND_RETAIN` in `PERSON_REFERENCE_CLASSIFICATION`: the secret
+    // row stays usable after whoever last set it is erased.
+    OrganizationSettingSecret: { kind: "erase" },
     RetentionPolicy: { kind: "erase" },
     AuditEvent: {
       kind: "exempt",

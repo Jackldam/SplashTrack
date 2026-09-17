@@ -196,6 +196,12 @@ export const getRequestConfigData = cache(
           sessionIdleTimeoutMinutes: SESSION_IDLE_TIMEOUT_MINUTES.min,
           sessionIdleTimeoutMinutesElevated:
             SESSION_ELEVATED_IDLE_TIMEOUT_MINUTES.min,
+          // Not a security-critical bound (D-142's audited opt-in, off by
+          // default) — falls back to the safe default like every other
+          // non-timeout field here, not to a "floor" that has no meaning for
+          // a boolean.
+          allowPrivateNetworkEgress:
+            defaults.security.allowPrivateNetworkEgress,
         },
         // The DEFAULT, not a floor. "Strictest" is not a coherent direction for
         // a legal threshold — see `coerceOrganizationConfig`'s note on the same
@@ -245,18 +251,61 @@ export async function getConfiguredSecurityPolicy(): Promise<
   return (await getRequestConfigData()).security;
 }
 
+/** The full row `@/modules/settings`'s registry needs: read path. */
+export interface FullOrganizationSettings {
+  name: string;
+  config: OrganizationConfig;
+  /**
+   * The instance's cheap, cross-process cache-invalidation signal (`13-…`
+   * §4). No separate `settings_version` counter table: `Organization.updatedAt`
+   * is already bumped by every settings write and already indexed by the
+   * primary key, so it IS the version — the property a dedicated counter row
+   * would give, without a second thing to keep in sync with the row it counts.
+   */
+  version: number;
+  updatedAt: Date;
+  updatedByPersonId: string | null;
+}
+
+/**
+ * GUARDED read of the full settings document — `@/modules/settings`'s own read
+ * path, never called from an unauthenticated surface. Unlike
+ * {@link getRequestConfigData} this is not on the per-request hot path and
+ * degrades by THROWING rather than by falling back to defaults: an admin
+ * screen or the diagnostics page needs to know a read failed, not silently
+ * present the built-in defaults as though they were the live configuration.
+ */
+export async function getFullOrganizationSettings(): Promise<FullOrganizationSettings> {
+  const row = await prisma.organization.upsert({
+    where: { id: ORGANIZATION_ID },
+    update: {},
+    create: { id: ORGANIZATION_ID },
+    select: {
+      name: true,
+      config: true,
+      updatedAt: true,
+      updatedByPersonId: true,
+    },
+  });
+  return {
+    name: row.name,
+    config: coerceOrganizationConfig(row.config),
+    version: row.updatedAt.getTime(),
+    updatedAt: row.updatedAt,
+    updatedByPersonId: row.updatedByPersonId,
+  };
+}
+
 /**
  * Writes a validated configuration document, recording who changed it.
  *
- * DELIBERATELY NOT EXPORTED from `@/lib/settings`, and deliberately taking an
- * already-resolved `updatedByPersonId` rather than a principal: this function
- * performs NO authorization of its own. The guarded admin surface that will
- * call it — after `requirePermission` (D-147) — is phase 0.4. It exists now
- * only so the strict validator has an exercised write path and so the shape of
- * the eventual service is fixed rather than invented later.
+ * Deliberately taking an already-resolved `updatedByPersonId` rather than a
+ * principal: this function performs NO authorization of its own.
+ * `@/modules/settings`'s service calls it AFTER `requirePermission` (D-147)
+ * and the D-141 lockout-invariant check for the `Authentication`/`Security`
+ * categories.
  *
- * Callers must be inside an already-authorized code path. There is none in
- * phase 0.2.
+ * Callers must be inside an already-authorized code path.
  */
 export async function writeOrganizationConfig(
   input: unknown,
@@ -277,4 +326,22 @@ export async function writeOrganizationConfig(
   });
 
   return { config: coerceOrganizationConfig(updated.config) };
+}
+
+/**
+ * Writes `Organization.name` — the one registry setting (`organization.name`)
+ * that lives OUTSIDE the JSON document, because it predates it and is
+ * injected over `common.brand` by column, not by document key (see the model
+ * comment on `Organization.name`). `@/modules/settings` validates the value
+ * with {@link isValidOrganizationName} before calling this.
+ */
+export async function writeOrganizationName(
+  name: string,
+  updatedByPersonId: string | null,
+): Promise<void> {
+  await prisma.organization.upsert({
+    where: { id: ORGANIZATION_ID },
+    update: { name, updatedByPersonId },
+    create: { id: ORGANIZATION_ID, name, updatedByPersonId },
+  });
 }

@@ -1,0 +1,25 @@
+## gitleaks configuration for the required-checks secret-scanning job
+## (docs/design/06-delivery.md §2.1's "Secret scanning" row, PR #33/#35).
+##
+## Extends gitleaks' own default ruleset rather than replacing it — this file
+## exists only to allowlist ONE structural false positive, not to relax
+## scanning generally.
+##
+## `prisma/migrations/.lockfile.json` (D-048, tests/unit/migration-history-
+## append-only.test.ts) is a committed map of `migrationName -> SHA-256 hex
+## digest of that migration's SQL`. By construction it can never hold a real
+## credential: the value is always a content hash, never anything an
+## application reads back as a secret. `gitleaks`'s `generic-api-key` rule
+## flags entries anyway when a migration's own name contains a word like
+## "secret" (e.g. the migration that adds `OrganizationSettingSecret`) next to
+## a high-entropy hex value — the name, not the value, trips the heuristic.
+## Allowlisting the path is safe precisely because the file's shape is
+## test-enforced elsewhere; a real secret accidentally added to any OTHER
+## file is still caught.
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''prisma/migrations/\.lockfile\.json''',
+]
